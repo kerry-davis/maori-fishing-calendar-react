@@ -1,0 +1,415 @@
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Modal, ModalHeader, ModalBody } from './Modal';
+import { useSingleModal } from '../../hooks/useModal';
+import { useLocationContext } from '../../contexts/LocationContext';
+import { 
+  getLunarPhase, 
+  getMoonPhaseData, 
+  calculateBiteTimes, 
+  getSunMoonTimes,
+  formatTime 
+} from '../../services/lunarService';
+import { 
+  fetchWeatherForLocation, 
+  getWeatherErrorMessage,
+  formatTemperatureRange,
+  formatWindInfo,
+  isWeatherAvailable 
+} from '../../services/weatherService';
+import type { 
+  LunarPhase, 
+  BiteTime, 
+  UserLocation, 
+  WeatherData,
+  BITE_QUALITY_COLORS 
+} from '../../types';
+import { BITE_QUALITY_COLORS } from '../../types';
+
+export interface LunarModalProps {
+  selectedDate: Date;
+  onTripLogOpen?: (date: Date) => void;
+}
+
+interface LunarModalData {
+  selectedDate: Date;
+  onTripLogOpen?: (date: Date) => void;
+}
+
+/**
+ * LunarModal Component
+ * 
+ * Displays detailed lunar phase information for a selected date including:
+ * - Lunar phase details and moon age/illumination
+ * - Day navigation (previous/next day)
+ * - Bite times with location-based calculations
+ * - Weather forecast integration
+ * - Sun and moon rise/set times
+ * - Trip log access button
+ */
+export const LunarModal: React.FC = () => {
+  const { isOpen, data, close } = useSingleModal('lunar');
+  const { userLocation, setLocation, requestLocation } = useLocationContext();
+  const [currentDate, setCurrentDate] = useState<Date>(new Date());
+  const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
+  const [weatherError, setWeatherError] = useState<string | null>(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [locationInput, setLocationInput] = useState('');
+  const [isRequestingLocation, setIsRequestingLocation] = useState(false);
+
+  // Extract data from modal state
+  const modalData = data as LunarModalData | undefined;
+  const selectedDate = modalData?.selectedDate || new Date();
+  const onTripLogOpen = modalData?.onTripLogOpen;
+
+  // Update current date when modal opens or selectedDate changes
+  useEffect(() => {
+    if (isOpen && modalData?.selectedDate) {
+      setCurrentDate(new Date(modalData.selectedDate));
+    }
+  }, [isOpen, modalData?.selectedDate]);
+
+  // Calculate lunar phase data for current date
+  const lunarData = useMemo(() => {
+    const phase = getLunarPhase(currentDate);
+    const phaseData = getMoonPhaseData(currentDate);
+    return {
+      phase,
+      moonAge: phaseData.moonAge,
+      illumination: phaseData.illumination
+    };
+  }, [currentDate]);
+
+  // Calculate bite times if location is available
+  const biteTimesData = useMemo(() => {
+    if (!userLocation) return null;
+    
+    try {
+      return calculateBiteTimes(currentDate, userLocation.lat, userLocation.lon);
+    } catch (error) {
+      console.error('Error calculating bite times:', error);
+      return null;
+    }
+  }, [currentDate, userLocation]);
+
+  // Calculate sun and moon times if location is available
+  const sunMoonTimes = useMemo(() => {
+    if (!userLocation) return null;
+    
+    try {
+      return getSunMoonTimes(currentDate, userLocation);
+    } catch (error) {
+      console.error('Error calculating sun/moon times:', error);
+      return null;
+    }
+  }, [currentDate, userLocation]);
+
+  // Fetch weather data when date or location changes
+  useEffect(() => {
+    if (!userLocation || !isWeatherAvailable(currentDate)) {
+      setWeatherData(null);
+      setWeatherError(null);
+      return;
+    }
+
+    const fetchWeather = async () => {
+      setWeatherLoading(true);
+      setWeatherError(null);
+      
+      try {
+        const weather = await fetchWeatherForLocation(userLocation, currentDate);
+        setWeatherData(weather);
+      } catch (error: any) {
+        console.error('Weather fetch error:', error);
+        setWeatherError(getWeatherErrorMessage(error));
+        setWeatherData(null);
+      } finally {
+        setWeatherLoading(false);
+      }
+    };
+
+    fetchWeather();
+  }, [currentDate, userLocation]);
+
+  // Navigation handlers
+  const handlePrevDay = useCallback(() => {
+    const prevDay = new Date(currentDate);
+    prevDay.setDate(prevDay.getDate() - 1);
+    setCurrentDate(prevDay);
+  }, [currentDate]);
+
+  const handleNextDay = useCallback(() => {
+    const nextDay = new Date(currentDate);
+    nextDay.setDate(nextDay.getDate() + 1);
+    setCurrentDate(nextDay);
+  }, [currentDate]);
+
+  // Location handlers
+  const handleLocationRequest = useCallback(async () => {
+    setIsRequestingLocation(true);
+    try {
+      await requestLocation();
+    } catch (error) {
+      console.error('Location request failed:', error);
+      // Error handling could be improved with user feedback
+    } finally {
+      setIsRequestingLocation(false);
+    }
+  }, [requestLocation]);
+
+  const handleLocationSearch = useCallback(() => {
+    // This would integrate with a geocoding service
+    // For now, just a placeholder
+    console.log('Location search not implemented yet:', locationInput);
+  }, [locationInput]);
+
+  // Trip log handler
+  const handleTripLogOpen = useCallback(() => {
+    if (onTripLogOpen) {
+      onTripLogOpen(currentDate);
+    }
+  }, [currentDate, onTripLogOpen]);
+
+  // Format date for display
+  const formatDate = (date: Date): string => {
+    return date.toLocaleDateString('en-NZ', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  // Get quality color class
+  const getQualityColorClass = (quality: string): string => {
+    switch (quality.toLowerCase()) {
+      case 'excellent': return 'bg-green-500';
+      case 'good': return 'bg-blue-500';
+      case 'average': return 'bg-yellow-500';
+      case 'poor': return 'bg-red-500';
+      default: return 'bg-gray-500';
+    }
+  };
+
+  // Render bite time item
+  const renderBiteTime = (bite: BiteTime, index: number) => (
+    <div key={index} className="bite-time-item flex items-center justify-between py-1">
+      <span className="text-sm">{bite.start} - {bite.end}</span>
+      <i 
+        className="fas fa-fish ml-2" 
+        style={{ color: BITE_QUALITY_COLORS[bite.quality] }}
+      ></i>
+    </div>
+  );
+
+  if (!isOpen) return null;
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={close}
+      maxWidth="lg"
+      maxHeight="90vh"
+    >
+      <ModalHeader
+        title={lunarData.phase.name}
+        subtitle={formatDate(currentDate)}
+        onClose={close}
+      >
+        {/* Navigation buttons */}
+        <button
+          onClick={handlePrevDay}
+          className="nav-button px-3 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 transition"
+          aria-label="Previous day"
+        >
+          <i className="fas fa-chevron-left"></i>
+        </button>
+        <button
+          onClick={handleNextDay}
+          className="nav-button px-3 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 transition ml-2"
+          aria-label="Next day"
+        >
+          <i className="fas fa-chevron-right"></i>
+        </button>
+      </ModalHeader>
+
+      <ModalBody className="max-h-[70vh] overflow-y-auto">
+        {/* Moon Phase Info */}
+        <div className="flex items-center mb-4">
+          <span className="text-4xl mr-3">🌙</span>
+          <div>
+            <div className={`inline-block px-2 py-1 rounded text-white text-sm font-bold ${getQualityColorClass(lunarData.phase.quality)}`}>
+              {lunarData.phase.quality}
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+              Moon age: {lunarData.moonAge.toFixed(1)} days
+            </p>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Illumination: {Math.round(lunarData.illumination * 100)}%
+            </p>
+          </div>
+        </div>
+
+        <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">
+          {lunarData.phase.description}
+        </p>
+
+        {/* Trip Log Section */}
+        <div className="border-t dark:border-gray-700 pt-4 mb-4">
+          <button
+            onClick={handleTripLogOpen}
+            className="w-full px-4 py-2 bg-main-500 text-white rounded-md hover:bg-main-600 transition"
+          >
+            <i className="fas fa-book-open mr-2"></i>
+            View / Manage Trip Log
+          </button>
+        </div>
+
+        {/* Bite Times Section */}
+        <div className="border-t dark:border-gray-700 pt-4 mb-4">
+          <h4 className="font-semibold text-lg mb-3 dark:text-gray-100">Bite Times</h4>
+          
+          {/* Location Input */}
+          <div className="mb-4">
+            <label htmlFor="location-input" className="form-label">Location</label>
+            <div className="flex items-center space-x-1">
+              <input
+                type="text"
+                id="location-input"
+                value={locationInput}
+                onChange={(e) => setLocationInput(e.target.value)}
+                placeholder="Enter a location"
+                className="w-full px-3 py-2 border border-gray-300 rounded-l-md dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                onClick={handleLocationSearch}
+                className="px-3 py-2 bg-gray-500 text-white hover:bg-gray-600 transition"
+                title="Search location"
+              >
+                <i className="fas fa-search"></i>
+              </button>
+              <button
+                onClick={handleLocationRequest}
+                disabled={isRequestingLocation}
+                className="px-3 py-2 bg-main-500 text-white rounded-r-md hover:bg-main-600 transition disabled:opacity-50"
+                title="Use current location"
+              >
+                <i className={`fas ${isRequestingLocation ? 'fa-spinner fa-spin' : 'fa-map-marker-alt'}`}></i>
+              </button>
+            </div>
+            {userLocation && (
+              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                Current: {userLocation.name}
+              </p>
+            )}
+          </div>
+
+          {/* Bite Times Display */}
+          {biteTimesData ? (
+            <>
+              <div className="mb-4">
+                <h5 className="font-medium text-green-600 mb-2">Major Bites</h5>
+                <div className="space-y-1">
+                  {biteTimesData.major.length > 0 ? (
+                    biteTimesData.major.map(renderBiteTime)
+                  ) : (
+                    <p className="text-sm text-gray-500">No major bite times for this day</p>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <h5 className="font-medium text-blue-600 mb-2">Minor Bites</h5>
+                <div className="space-y-1">
+                  {biteTimesData.minor.length > 0 ? (
+                    biteTimesData.minor.map(renderBiteTime)
+                  ) : (
+                    <p className="text-sm text-gray-500">No minor bite times for this day</p>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-gray-500">Set a location to see bite times</p>
+          )}
+        </div>
+
+        {/* Weather Forecast Section */}
+        <div className="border-t dark:border-gray-700 pt-4 mb-4">
+          <h4 className="font-semibold text-lg mb-3 dark:text-gray-100">Weather Forecast</h4>
+          <div className="text-sm">
+            {weatherLoading ? (
+              <p className="text-gray-500">Loading weather...</p>
+            ) : weatherError ? (
+              <p className="text-red-500">{weatherError}</p>
+            ) : weatherData ? (
+              <div className="space-y-2">
+                <p>
+                  <strong>Temperature:</strong> {formatTemperatureRange(weatherData.temperatureMin, weatherData.temperatureMax)}
+                </p>
+                <p>
+                  <strong>Wind:</strong> {formatWindInfo(weatherData.windSpeed, weatherData.windDirectionCardinal)}
+                </p>
+              </div>
+            ) : !userLocation ? (
+              <p className="text-gray-500">Set a location to see weather forecast</p>
+            ) : !isWeatherAvailable(currentDate) ? (
+              <p className="text-gray-500">Weather forecast not available for this date</p>
+            ) : (
+              <p className="text-gray-500">Weather data unavailable</p>
+            )}
+          </div>
+        </div>
+
+        {/* Sun and Moon Times Section */}
+        <div className="border-t dark:border-gray-700 pt-4 mb-4">
+          <h4 className="font-semibold text-lg mb-3 dark:text-gray-100">Sun & Moon</h4>
+          <div className="text-sm">
+            {sunMoonTimes ? (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p><strong>Sunrise:</strong> {sunMoonTimes.sunrise}</p>
+                  <p><strong>Sunset:</strong> {sunMoonTimes.sunset}</p>
+                </div>
+                <div>
+                  <p><strong>Moonrise:</strong> {sunMoonTimes.moonrise}</p>
+                  <p><strong>Moonset:</strong> {sunMoonTimes.moonset}</p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-gray-500">Set a location to see sun and moon times</p>
+            )}
+          </div>
+        </div>
+
+        {/* Bite Time Quality Legend */}
+        <div className="border-t dark:border-gray-700 pt-4">
+          <h5 className="font-semibold mb-2 dark:text-gray-100">Bite Time Quality Legend</h5>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2 dark:text-gray-300">
+            <div className="flex items-center">
+              <i className="fas fa-fish mr-2" style={{ color: BITE_QUALITY_COLORS.excellent }}></i>
+              <span className="text-sm">Excellent</span>
+            </div>
+            <div className="flex items-center">
+              <i className="fas fa-fish mr-2" style={{ color: BITE_QUALITY_COLORS.good }}></i>
+              <span className="text-sm">Good</span>
+            </div>
+            <div className="flex items-center">
+              <i className="fas fa-fish mr-2" style={{ color: BITE_QUALITY_COLORS.average }}></i>
+              <span className="text-sm">Average</span>
+            </div>
+            <div className="flex items-center">
+              <i className="fas fa-fish mr-2" style={{ color: BITE_QUALITY_COLORS.fair }}></i>
+              <span className="text-sm">Fair</span>
+            </div>
+            <div className="flex items-center">
+              <i className="fas fa-fish mr-2" style={{ color: BITE_QUALITY_COLORS.poor }}></i>
+              <span className="text-sm">Poor</span>
+            </div>
+          </div>
+        </div>
+      </ModalBody>
+    </Modal>
+  );
+};
+
+export default LunarModal;
