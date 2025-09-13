@@ -1,25 +1,25 @@
-import { vi } from 'vitest';
-import { Trip, WeatherLog, FishCaught } from '../../types';
+import { vi } from "vitest";
+import type { Trip, WeatherLog, FishCaught } from "../../types";
 
 // Mock data stores
 export const mockTripsStore: Trip[] = [
   {
     id: 1,
-    date: '2024-01-15',
-    water: 'Lake Taupo',
-    location: 'Western Bay',
+    date: "2024-01-15",
+    water: "Lake Taupo",
+    location: "Western Bay",
     hours: 4,
-    companions: 'John Doe',
-    notes: 'Great fishing day',
+    companions: "John Doe",
+    notes: "Great fishing day",
   },
   {
     id: 2,
-    date: '2024-01-16',
-    water: 'Lake Rotorua',
-    location: 'Eastern Shore',
+    date: "2024-01-16",
+    water: "Lake Rotorua",
+    location: "Eastern Shore",
     hours: 3,
-    companions: 'Jane Smith',
-    notes: 'Windy conditions',
+    companions: "Jane Smith",
+    notes: "Windy conditions",
   },
 ];
 
@@ -27,22 +27,22 @@ export const mockWeatherStore: WeatherLog[] = [
   {
     id: 1,
     tripId: 1,
-    timeOfDay: 'Morning',
-    sky: 'Clear',
-    windCondition: 'Light',
-    windDirection: 'NE',
-    waterTemp: '18°C',
-    airTemp: '22°C',
+    timeOfDay: "Morning",
+    sky: "Clear",
+    windCondition: "Light",
+    windDirection: "NE",
+    waterTemp: "18°C",
+    airTemp: "22°C",
   },
   {
     id: 2,
     tripId: 2,
-    timeOfDay: 'Afternoon',
-    sky: 'Cloudy',
-    windCondition: 'Strong',
-    windDirection: 'SW',
-    waterTemp: '16°C',
-    airTemp: '19°C',
+    timeOfDay: "Afternoon",
+    sky: "Cloudy",
+    windCondition: "Strong",
+    windDirection: "SW",
+    waterTemp: "16°C",
+    airTemp: "19°C",
   },
 ];
 
@@ -50,22 +50,22 @@ export const mockFishStore: FishCaught[] = [
   {
     id: 1,
     tripId: 1,
-    species: 'Rainbow Trout',
-    length: '45cm',
-    weight: '2.5kg',
-    time: '10:30',
-    gear: ['Spinner', 'Light Rod'],
-    details: 'Caught near the rocks',
+    species: "Rainbow Trout",
+    length: "45cm",
+    weight: "2.5kg",
+    time: "10:30",
+    gear: ["Spinner", "Light Rod"],
+    details: "Caught near the rocks",
   },
   {
     id: 2,
     tripId: 1,
-    species: 'Brown Trout',
-    length: '38cm',
-    weight: '1.8kg',
-    time: '14:15',
-    gear: ['Fly', 'Fly Rod'],
-    details: 'Beautiful fish',
+    species: "Brown Trout",
+    length: "38cm",
+    weight: "1.8kg",
+    time: "14:15",
+    gear: ["Fly", "Fly Rod"],
+    details: "Beautiful fish",
   },
 ];
 
@@ -125,7 +125,9 @@ export const createIndexedDBMock = () => {
     put: vi.fn((data: any) => {
       const request = mockRequest();
       setTimeout(() => {
-        const index = stores[storeName].findIndex((item: any) => item.id === data.id);
+        const index = stores[storeName].findIndex(
+          (item: any) => item.id === data.id,
+        );
         if (index !== -1) {
           stores[storeName][index] = data;
         }
@@ -138,7 +140,9 @@ export const createIndexedDBMock = () => {
     delete: vi.fn((id: number) => {
       const request = mockRequest();
       setTimeout(() => {
-        const index = stores[storeName].findIndex((item: any) => item.id === id);
+        const index = stores[storeName].findIndex(
+          (item: any) => item.id === id,
+        );
         if (index !== -1) {
           stores[storeName].splice(index, 1);
         }
@@ -161,15 +165,15 @@ export const createIndexedDBMock = () => {
         const request = mockRequest();
         setTimeout(() => {
           let results = [...stores[storeName]];
-          
+
           if (value !== undefined) {
-            if (indexName === 'date') {
+            if (indexName === "date") {
               results = results.filter((item: any) => item.date === value);
-            } else if (indexName === 'tripId') {
+            } else if (indexName === "tripId") {
               results = results.filter((item: any) => item.tripId === value);
             }
           }
-          
+
           request.result = results;
           if (request.onsuccess) request.onsuccess();
         }, 0);
@@ -181,19 +185,27 @@ export const createIndexedDBMock = () => {
   });
 
   const mockTransaction = {
-    objectStore: vi.fn((storeName: string) => mockObjectStore(storeName as keyof typeof stores)),
+    objectStore: vi.fn((storeName: string) =>
+      mockObjectStore(storeName as keyof typeof stores),
+    ),
     oncomplete: null as any,
     onerror: null as any,
     error: null,
   };
 
   const mockDatabase = {
-    transaction: vi.fn((storeNames: string | string[], mode?: string) => mockTransaction),
+    transaction: vi.fn(
+      (storeNames: string | string[], mode?: string) => mockTransaction,
+    ),
     close: vi.fn(),
     objectStoreNames: {
-      contains: vi.fn((name: string) => ['trips', 'weather_logs', 'fish_caught'].includes(name)),
+      contains: vi.fn((name: string) =>
+        ["trips", "weather_logs", "fish_caught"].includes(name),
+      ),
     },
-    createObjectStore: vi.fn((name: string, options?: any) => mockObjectStore(name as keyof typeof stores)),
+    createObjectStore: vi.fn((name: string, options?: any) =>
+      mockObjectStore(name as keyof typeof stores),
+    ),
     deleteObjectStore: vi.fn(),
   };
 
@@ -227,22 +239,22 @@ export const resetMockData = () => {
   mockTripsStore.push(
     {
       id: 1,
-      date: '2024-01-15',
-      water: 'Lake Taupo',
-      location: 'Western Bay',
+      date: "2024-01-15",
+      water: "Lake Taupo",
+      location: "Western Bay",
       hours: 4,
-      companions: 'John Doe',
-      notes: 'Great fishing day',
+      companions: "John Doe",
+      notes: "Great fishing day",
     },
     {
       id: 2,
-      date: '2024-01-16',
-      water: 'Lake Rotorua',
-      location: 'Eastern Shore',
+      date: "2024-01-16",
+      water: "Lake Rotorua",
+      location: "Eastern Shore",
       hours: 3,
-      companions: 'Jane Smith',
-      notes: 'Windy conditions',
-    }
+      companions: "Jane Smith",
+      notes: "Windy conditions",
+    },
   );
 
   mockWeatherStore.length = 0;
@@ -250,23 +262,23 @@ export const resetMockData = () => {
     {
       id: 1,
       tripId: 1,
-      timeOfDay: 'Morning',
-      sky: 'Clear',
-      windCondition: 'Light',
-      windDirection: 'NE',
-      waterTemp: '18°C',
-      airTemp: '22°C',
+      timeOfDay: "Morning",
+      sky: "Clear",
+      windCondition: "Light",
+      windDirection: "NE",
+      waterTemp: "18°C",
+      airTemp: "22°C",
     },
     {
       id: 2,
       tripId: 2,
-      timeOfDay: 'Afternoon',
-      sky: 'Cloudy',
-      windCondition: 'Strong',
-      windDirection: 'SW',
-      waterTemp: '16°C',
-      airTemp: '19°C',
-    }
+      timeOfDay: "Afternoon",
+      sky: "Cloudy",
+      windCondition: "Strong",
+      windDirection: "SW",
+      waterTemp: "16°C",
+      airTemp: "19°C",
+    },
   );
 
   mockFishStore.length = 0;
@@ -274,22 +286,22 @@ export const resetMockData = () => {
     {
       id: 1,
       tripId: 1,
-      species: 'Rainbow Trout',
-      length: '45cm',
-      weight: '2.5kg',
-      time: '10:30',
-      gear: ['Spinner', 'Light Rod'],
-      details: 'Caught near the rocks',
+      species: "Rainbow Trout",
+      length: "45cm",
+      weight: "2.5kg",
+      time: "10:30",
+      gear: ["Spinner", "Light Rod"],
+      details: "Caught near the rocks",
     },
     {
       id: 2,
       tripId: 1,
-      species: 'Brown Trout',
-      length: '38cm',
-      weight: '1.8kg',
-      time: '14:15',
-      gear: ['Fly', 'Fly Rod'],
-      details: 'Beautiful fish',
-    }
+      species: "Brown Trout",
+      length: "38cm",
+      weight: "1.8kg",
+      time: "14:15",
+      gear: ["Fly", "Fly Rod"],
+      details: "Beautiful fish",
+    },
   );
 };
