@@ -1,13 +1,16 @@
-import { useState, useEffect } from 'react';
-import { useLocationContext } from '../../contexts';
-import { getCurrentMoonInfo, getSunMoonTimes } from '../../services/lunarService';
-import type { LunarPhase, UserLocation } from '../../types';
+import { useState, useEffect } from "react";
+import { useLocationContext } from "../../contexts";
+import {
+  getCurrentMoonInfo,
+  getSunMoonTimes,
+} from "../../services/lunarService";
+import type { LunarPhase, UserLocation } from "../../types";
 
 interface CurrentMoonInfoProps {
   className?: string;
 }
 
-export function CurrentMoonInfo({ className = '' }: CurrentMoonInfoProps) {
+export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
   const { userLocation, setLocation, requestLocation } = useLocationContext();
   const [moonInfo, setMoonInfo] = useState<{
     phase: LunarPhase;
@@ -62,7 +65,9 @@ export function CurrentMoonInfo({ className = '' }: CurrentMoonInfoProps) {
     try {
       await requestLocation();
     } catch (error) {
-      setLocationError(error instanceof Error ? error.message : 'Failed to get location');
+      setLocationError(
+        error instanceof Error ? error.message : "Failed to get location",
+      );
     } finally {
       setIsRequestingLocation(false);
     }
@@ -78,55 +83,57 @@ export function CurrentMoonInfo({ className = '' }: CurrentMoonInfoProps) {
   const getMoonPhaseIcon = (phaseName: string): string => {
     // Map Māori phase names to moon phase icons
     const phaseIconMap: Record<string, string> = {
-      'Whiro': '🌑', // New moon
-      'Tirea': '🌒', // Waxing crescent
-      'Hoata': '🌒', // Waxing crescent
-      'Oue': '🌓', // First quarter
-      'Okoro': '🌓', // First quarter
-      'Tamatea-a-hotu': '🌔', // Waxing gibbous
-      'Tamatea-a-ngana': '🌔', // Waxing gibbous
-      'Tamatea-whakapau': '🌔', // Waxing gibbous
-      'Huna': '🌕', // Full moon
-      'Ari': '🌕', // Full moon
-      'Hotu': '🌕', // Full moon
-      'Mawharu': '🌕', // Full moon
-      'Atua': '🌖', // Waning gibbous
-      'Ohua': '🌖', // Waning gibbous
-      'Oanui': '🌕', // Full moon
-      'Oturu': '🌖', // Waning gibbous
-      'Rakau-nui': '🌖', // Waning gibbous
-      'Rakau-matohi': '🌖', // Waning gibbous
-      'Takirau': '🌗', // Last quarter
-      'Oike': '🌗', // Last quarter
-      'Korekore-te-whiwhia': '🌘', // Waning crescent
-      'Korekore-te-rawea': '🌘', // Waning crescent
-      'Korekore-whakapau': '🌘', // Waning crescent
-      'Tangaroa-a-mua': '🌘', // Waning crescent
-      'Tangaroa-a-roto': '🌘', // Waning crescent
-      'Tangaroa-kiokio': '🌘', // Waning crescent
-      'Otane': '🌘', // Waning crescent
-      'Orongonui': '🌘', // Waning crescent
-      'Mauri': '🌘', // Waning crescent
-      'Mutuwhenua': '🌑' // New moon
+      Whiro: "🌑", // New moon
+      Tirea: "🌒", // Waxing crescent
+      Hoata: "🌒", // Waxing crescent
+      Oue: "🌓", // First quarter
+      Okoro: "🌓", // First quarter
+      "Tamatea-a-hotu": "🌔", // Waxing gibbous
+      "Tamatea-a-ngana": "🌔", // Waxing gibbous
+      "Tamatea-whakapau": "🌔", // Waxing gibbous
+      Huna: "🌕", // Full moon
+      Ari: "🌕", // Full moon
+      Hotu: "🌕", // Full moon
+      Mawharu: "🌕", // Full moon
+      Atua: "🌖", // Waning gibbous
+      Ohua: "🌖", // Waning gibbous
+      Oanui: "🌕", // Full moon
+      Oturu: "🌖", // Waning gibbous
+      "Rakau-nui": "🌖", // Waning gibbous
+      "Rakau-matohi": "🌖", // Waning gibbous
+      Takirau: "🌗", // Last quarter
+      Oike: "🌗", // Last quarter
+      "Korekore-te-whiwhia": "🌘", // Waning crescent
+      "Korekore-te-rawea": "🌘", // Waning crescent
+      "Korekore-whakapau": "🌘", // Waning crescent
+      "Tangaroa-a-mua": "🌘", // Waning crescent
+      "Tangaroa-a-roto": "🌘", // Waning crescent
+      "Tangaroa-kiokio": "🌘", // Waning crescent
+      Otane: "🌘", // Waning crescent
+      Orongonui: "🌘", // Waning crescent
+      Mauri: "🌘", // Waning crescent
+      Mutuwhenua: "🌑", // New moon
     };
 
-    return phaseIconMap[phaseName] || '🌙';
+    return phaseIconMap[phaseName] || "🌙";
   };
 
   // Get quality color class
   const getQualityColor = (quality: string): string => {
     const colorMap: Record<string, string> = {
-      'Excellent': 'text-green-600 dark:text-green-400',
-      'Good': 'text-blue-600 dark:text-blue-400',
-      'Average': 'text-yellow-600 dark:text-yellow-400',
-      'Poor': 'text-red-600 dark:text-red-400'
+      Excellent: "text-green-600 dark:text-green-400",
+      Good: "text-blue-600 dark:text-blue-400",
+      Average: "text-yellow-600 dark:text-yellow-400",
+      Poor: "text-red-600 dark:text-red-400",
     };
-    return colorMap[quality] || 'text-gray-600 dark:text-gray-400';
+    return colorMap[quality] || "text-gray-600 dark:text-gray-400";
   };
 
   if (!moonInfo) {
     return (
-      <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 ${className}`}>
+      <div
+        className={`bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 ${className}`}
+      >
         <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">
           Current Moon Info
         </h3>
@@ -139,7 +146,9 @@ export function CurrentMoonInfo({ className = '' }: CurrentMoonInfoProps) {
   }
 
   return (
-    <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 ${className}`}>
+    <div
+      className={`bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 ${className}`}
+    >
       <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">
         Current Moon Info
       </h3>
@@ -153,7 +162,9 @@ export function CurrentMoonInfo({ className = '' }: CurrentMoonInfoProps) {
           <h4 className="font-semibold text-gray-800 dark:text-gray-100">
             {moonInfo.phase.name}
           </h4>
-          <p className={`text-sm font-medium ${getQualityColor(moonInfo.phase.quality)}`}>
+          <p
+            className={`text-sm font-medium ${getQualityColor(moonInfo.phase.quality)}`}
+          >
             {moonInfo.phase.quality} Fishing
           </p>
         </div>
@@ -245,7 +256,7 @@ export function CurrentMoonInfo({ className = '' }: CurrentMoonInfoProps) {
             )}
 
             <button
-              onClick={() => setLocation({ lat: 0, lon: 0, name: '' })}
+              onClick={() => setLocation(null)}
               className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 mt-2"
             >
               <i className="fas fa-times mr-1"></i>
@@ -257,7 +268,7 @@ export function CurrentMoonInfo({ className = '' }: CurrentMoonInfoProps) {
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
               Set your location to see sun and moon times
             </p>
-            
+
             {locationError && (
               <p className="text-xs text-red-500 mb-2">
                 <i className="fas fa-exclamation-triangle mr-1"></i>
@@ -272,7 +283,7 @@ export function CurrentMoonInfo({ className = '' }: CurrentMoonInfoProps) {
                 placeholder="Location name"
                 className="w-full text-xs px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100"
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
+                  if (e.key === "Enter") {
                     const target = e.target as HTMLInputElement;
                     const name = target.value.trim();
                     if (name) {
@@ -280,9 +291,9 @@ export function CurrentMoonInfo({ className = '' }: CurrentMoonInfoProps) {
                       handleLocationChange({
                         lat: -36.8485, // Auckland, NZ default
                         lon: 174.7633,
-                        name: name
+                        name: name,
                       });
-                      target.value = '';
+                      target.value = "";
                     }
                   }
                 }}

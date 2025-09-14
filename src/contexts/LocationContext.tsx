@@ -20,7 +20,7 @@ export function LocationProvider({ children }: LocationProviderProps) {
 
   // Set location and persist to localStorage
   const setLocation = useCallback(
-    (location: UserLocation) => {
+    (location: UserLocation | null) => {
       setUserLocationStorage(location);
     },
     [setUserLocationStorage],
