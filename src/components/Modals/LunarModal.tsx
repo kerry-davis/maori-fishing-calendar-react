@@ -1,13 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Modal, ModalHeader, ModalBody } from "./Modal";
-import { useSingleModal } from "../../hooks/useModal";
 import { useLocationContext } from "../../contexts/LocationContext";
 import {
   getLunarPhase,
   getMoonPhaseData,
   calculateBiteTimes,
   getSunMoonTimes,
-  formatTime,
 } from "../../services/lunarService";
 import {
   fetchWeatherForLocation,
@@ -21,16 +19,14 @@ import type {
   BiteTime,
   UserLocation,
   WeatherData,
-  BITE_QUALITY_COLORS,
+  BiteQuality,
 } from "../../types";
+import { BITE_QUALITY_COLORS } from "../../types";
 
 export interface LunarModalProps {
-  selectedDate: Date;
-  onTripLogOpen?: (date: Date) => void;
-}
-
-interface LunarModalData {
-  selectedDate: Date;
+  isOpen: boolean;
+  onClose: () => void;
+  selectedDate: Date | null;
   onTripLogOpen?: (date: Date) => void;
 }
 
@@ -45,9 +41,13 @@ interface LunarModalData {
  * - Sun and moon rise/set times
  * - Trip log access button
  */
-export const LunarModal: React.FC = () => {
-  const { isOpen, data, close } = useSingleModal("lunar");
-  const { userLocation, setLocation, requestLocation } = useLocationContext();
+export const LunarModal: React.FC<LunarModalProps> = ({
+  isOpen,
+  onClose,
+  selectedDate,
+  onTripLogOpen,
+}) => {
+  const { userLocation, requestLocation } = useLocationContext();
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [weatherError, setWeatherError] = useState<string | null>(null);
@@ -55,17 +55,12 @@ export const LunarModal: React.FC = () => {
   const [locationInput, setLocationInput] = useState("");
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
 
-  // Extract data from modal state
-  const modalData = data as LunarModalData | undefined;
-  const selectedDate = modalData?.selectedDate || new Date();
-  const onTripLogOpen = modalData?.onTripLogOpen;
-
   // Update current date when modal opens or selectedDate changes
   useEffect(() => {
-    if (isOpen && modalData?.selectedDate) {
-      setCurrentDate(new Date(modalData.selectedDate));
+    if (isOpen && selectedDate) {
+      setCurrentDate(new Date(selectedDate));
     }
-  }, [isOpen, modalData?.selectedDate]);
+  }, [isOpen, selectedDate]);
 
   // Calculate lunar phase data for current date
   const lunarData = useMemo(() => {
@@ -220,11 +215,11 @@ export const LunarModal: React.FC = () => {
   if (!isOpen) return null;
 
   return (
-    <Modal isOpen={isOpen} onClose={close} maxWidth="lg" maxHeight="90vh">
+    <Modal isOpen={isOpen} onClose={onClose} maxWidth="lg" maxHeight="90vh">
       <ModalHeader
         title={lunarData.phase.name}
         subtitle={formatDate(currentDate)}
-        onClose={close}
+        onClose={onClose}
       >
         {/* Navigation buttons */}
         <button

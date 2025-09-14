@@ -281,7 +281,7 @@ export interface ThemeContextType {
 
 export interface LocationContextType {
   userLocation: UserLocation | null;
-  setLocation: (location: UserLocation) => void;
+  setLocation: (location: UserLocation | null) => void;
   requestLocation: () => Promise<void>;
 }
 
