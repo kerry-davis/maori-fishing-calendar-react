@@ -1,59 +1,74 @@
-import { useState, useCallback } from 'react';
-import { AppProviders, useThemeContext, useLocationContext, useDatabaseContext } from './contexts';
-import ErrorBoundary from './components/ErrorBoundary';
-import { Header, Footer } from './components/Layout';
-import { Calendar } from './components/Calendar';
-import { CurrentMoonInfo } from './components/MoonInfo';
-import { Legend } from './components/Legend';
-import { TackleBoxModal, AnalyticsModal, SettingsModal, SearchModal, GalleryModal } from './components/Modals';
-import { PWAInstallPrompt, PWAUpdateNotification, OfflineIndicator } from './components/PWA';
+import { useState, useCallback } from "react";
+import {
+  AppProviders,
+  useThemeContext,
+  useLocationContext,
+  useDatabaseContext,
+} from "./contexts";
+import ErrorBoundary from "./components/ErrorBoundary";
+import { Header, Footer } from "./components/Layout";
+import { Calendar } from "./components/Calendar";
+import { CurrentMoonInfo } from "./components/MoonInfo";
+import { Legend } from "./components/Legend";
+import {
+  TackleBoxModal,
+  AnalyticsModal,
+  SettingsModal,
+  SearchModal,
+  GalleryModal,
+} from "./components/Modals";
+import {
+  PWAInstallPrompt,
+  PWAUpdateNotification,
+  OfflineIndicator,
+} from "./components/PWA";
 
 // Modal state type for routing different modal views
-type ModalState = 
-  | 'none'
-  | 'lunar'
-  | 'tripLog'
-  | 'tripDetails'
-  | 'tackleBox'
-  | 'analytics'
-  | 'settings'
-  | 'search'
-  | 'gallery';
+type ModalState =
+  | "none"
+  | "lunar"
+  | "tripLog"
+  | "tripDetails"
+  | "tackleBox"
+  | "analytics"
+  | "settings"
+  | "search"
+  | "gallery";
 
 function AppContent() {
   const { isDark } = useThemeContext();
   const { userLocation } = useLocationContext();
   const { isReady, error } = useDatabaseContext();
-  
+
   // Modal state management for routing between different views
-  const [currentModal, setCurrentModal] = useState<ModalState>('none');
+  const [currentModal, setCurrentModal] = useState<ModalState>("none");
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
   // Modal handlers
   const handleSearchClick = useCallback(() => {
-    setCurrentModal('search');
+    setCurrentModal("search");
   }, []);
 
   const handleAnalyticsClick = useCallback(() => {
-    setCurrentModal('analytics');
+    setCurrentModal("analytics");
   }, []);
 
   const handleSettingsClick = useCallback(() => {
-    setCurrentModal('settings');
+    setCurrentModal("settings");
   }, []);
 
   const handleTackleBoxClick = useCallback(() => {
-    setCurrentModal('tackleBox');
+    setCurrentModal("tackleBox");
   }, []);
 
   const handleGalleryClick = useCallback(() => {
-    setCurrentModal('gallery');
+    setCurrentModal("gallery");
   }, []);
 
   // Calendar handlers
   const handleDateSelect = useCallback((date: Date) => {
     setSelectedDate(date);
-    setCurrentModal('lunar');
+    setCurrentModal("lunar");
   }, []);
 
   // These handlers will be implemented when modal components are fixed
@@ -72,7 +87,7 @@ function AppContent() {
   // }, []);
 
   const handleCloseModal = useCallback(() => {
-    setCurrentModal('none');
+    setCurrentModal("none");
     setSelectedDate(null);
   }, []);
 
@@ -82,7 +97,9 @@ function AppContent() {
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">Initializing application...</p>
+          <p className="text-gray-600 dark:text-gray-400">
+            Initializing application...
+          </p>
         </div>
       </div>
     );
@@ -116,114 +133,99 @@ function AppContent() {
   }
 
   return (
-    <div className={`min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200`}>
+    <div
+      className={`min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200`}
+    >
       <div className="responsive-container container mx-auto px-4 py-8 max-w-6xl">
-      <Header
-        onSearchClick={handleSearchClick}
-        onAnalyticsClick={handleAnalyticsClick}
-        onSettingsClick={handleSettingsClick}
-        onTackleBoxClick={handleTackleBoxClick}
-        onGalleryClick={handleGalleryClick}
-      />
+        <Header
+          onSearchClick={handleSearchClick}
+          onAnalyticsClick={handleAnalyticsClick}
+          onSettingsClick={handleSettingsClick}
+          onTackleBoxClick={handleTackleBoxClick}
+          onGalleryClick={handleGalleryClick}
+        />
 
-      <main>
-        {/* Calendar Component */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
-          <Calendar onDateSelect={handleDateSelect} />
-        </div>
-
-        {/* Legend Component */}
-        <Legend />
-
-        {/* Current Moon Info */}
-        <CurrentMoonInfo />
-
-        {/* Status indicator for development */}
-        <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 mb-6">
-          <h2 className="text-lg font-semibold text-green-800 dark:text-green-100 mb-2">
-            Implementation Status - Final Integration Complete
-          </h2>
-          <div className="space-y-1 text-sm text-green-700 dark:text-green-300">
-            <p>✅ Calendar Components - Fully Integrated</p>
-            <p>✅ Theme Context: {isDark ? 'Dark' : 'Light'} mode active</p>
-            <p>✅ Location Context: {userLocation ? `${userLocation.name}` : 'No location set'}</p>
-            <p>✅ Database Context: Ready</p>
-            <p>✅ Current Moon Info Component - Integrated</p>
-            <p>✅ Legend Component - Integrated</p>
-            <p>✅ All Modal Components - Fully Integrated</p>
-            <p>✅ PWA Components - Integrated</p>
-            <p>✅ Complete User Workflows - Available</p>
+        <main>
+          {/* Calendar Component */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+            <Calendar onDateSelect={handleDateSelect} />
           </div>
-        </div>
 
-        {/* Modal state indicator for development */}
-        {currentModal !== 'none' && (
-          <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-4 mb-6">
-            <p className="text-yellow-700 dark:text-yellow-300">
-              <i className="fas fa-eye mr-2"></i>
-              Modal State: {currentModal} 
-              {selectedDate && ` (Date: ${selectedDate.toDateString()})`}
-            </p>
-            <button
-              onClick={handleCloseModal}
-              className="mt-2 px-3 py-1 bg-yellow-500 text-white rounded text-sm hover:bg-yellow-600 transition"
-            >
-              Close Modal
-            </button>
+          {/* Legend Component */}
+          <Legend />
+
+          {/* Current Moon Info */}
+          <CurrentMoonInfo />
+
+          {/* Modal state indicator for development */}
+          {currentModal !== "none" && (
+            <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-4 mb-6">
+              <p className="text-yellow-700 dark:text-yellow-300">
+                <i className="fas fa-eye mr-2"></i>
+                Modal State: {currentModal}
+                {selectedDate && ` (Date: ${selectedDate.toDateString()})`}
+              </p>
+              <button
+                onClick={handleCloseModal}
+                className="mt-2 px-3 py-1 bg-yellow-500 text-white rounded text-sm hover:bg-yellow-600 transition"
+              >
+                Close Modal
+              </button>
+            </div>
+          )}
+        </main>
+
+        <Footer />
+
+        {/* Modal components - Basic integration for UAT */}
+        <TackleBoxModal
+          isOpen={currentModal === "tackleBox"}
+          onClose={handleCloseModal}
+        />
+
+        <AnalyticsModal
+          isOpen={currentModal === "analytics"}
+          onClose={handleCloseModal}
+        />
+
+        <SettingsModal
+          isOpen={currentModal === "settings"}
+          onClose={handleCloseModal}
+        />
+
+        <SearchModal
+          isOpen={currentModal === "search"}
+          onClose={handleCloseModal}
+        />
+
+        <GalleryModal
+          isOpen={currentModal === "gallery"}
+          onClose={handleCloseModal}
+        />
+
+        {/* Lunar, Trip Log, and Trip Details modals temporarily disabled due to type issues */}
+        {currentModal === "lunar" && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+              <h2 className="text-xl font-semibold mb-4">Lunar Information</h2>
+              <p className="text-gray-600 dark:text-gray-400 mb-4">
+                Lunar modal temporarily disabled for UAT. Selected date:{" "}
+                {selectedDate?.toDateString()}
+              </p>
+              <button
+                onClick={handleCloseModal}
+                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+              >
+                Close
+              </button>
+            </div>
           </div>
         )}
-      </main>
 
-      <Footer />
-
-      {/* Modal components - Basic integration for UAT */}
-      <TackleBoxModal 
-        isOpen={currentModal === 'tackleBox'} 
-        onClose={handleCloseModal} 
-      />
-      
-      <AnalyticsModal 
-        isOpen={currentModal === 'analytics'} 
-        onClose={handleCloseModal} 
-      />
-      
-      <SettingsModal 
-        isOpen={currentModal === 'settings'} 
-        onClose={handleCloseModal} 
-      />
-      
-      <SearchModal 
-        isOpen={currentModal === 'search'} 
-        onClose={handleCloseModal} 
-      />
-      
-      <GalleryModal 
-        isOpen={currentModal === 'gallery'} 
-        onClose={handleCloseModal} 
-      />
-      
-      {/* Lunar, Trip Log, and Trip Details modals temporarily disabled due to type issues */}
-      {currentModal === 'lunar' && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
-            <h2 className="text-xl font-semibold mb-4">Lunar Information</h2>
-            <p className="text-gray-600 dark:text-gray-400 mb-4">
-              Lunar modal temporarily disabled for UAT. Selected date: {selectedDate?.toDateString()}
-            </p>
-            <button
-              onClick={handleCloseModal}
-              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* PWA Components */}
-      <OfflineIndicator />
-      <PWAInstallPrompt />
-      <PWAUpdateNotification />
+        {/* PWA Components */}
+        <OfflineIndicator />
+        <PWAInstallPrompt />
+        <PWAUpdateNotification />
       </div>
     </div>
   );
