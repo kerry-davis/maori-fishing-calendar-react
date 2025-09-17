@@ -17,6 +17,7 @@ import {
   SearchModal,
   GalleryModal,
   LunarModal,
+  TripLogModal,
 } from "./components/Modals";
 import {
   PWAInstallPrompt,
@@ -73,12 +74,12 @@ function AppContent() {
   }, []);
 
   // These handlers will be implemented when modal components are fixed
-  // const handleTripLogOpen = useCallback((date?: Date) => {
-  //   if (date) {
-  //     setSelectedDate(date);
-  //   }
-  //   setCurrentModal('tripLog');
-  // }, []);
+  const handleTripLogOpen = useCallback((date?: Date) => {
+    if (date) {
+      setSelectedDate(date);
+    }
+    setCurrentModal("tripLog");
+  }, []);
 
   // const handleTripDetailsOpen = useCallback((date?: Date) => {
   //   if (date) {
@@ -206,6 +207,13 @@ function AppContent() {
 
         <LunarModal
           isOpen={currentModal === "lunar"}
+          onClose={handleCloseModal}
+          selectedDate={selectedDate}
+          onTripLogOpen={handleTripLogOpen}
+        />
+
+        <TripLogModal
+          isOpen={currentModal === "tripLog"}
           onClose={handleCloseModal}
           selectedDate={selectedDate}
         />
