@@ -1,7 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Modal, ModalHeader, ModalBody } from './Modal';
-import { Trip, FishCaught, ModalProps, GallerySortOrder } from '../../types';
-import { databaseService } from '../../services/databaseService';
+import React, { useState, useEffect, useMemo } from "react";
+import { Modal, ModalHeader, ModalBody } from "./Modal";
+import type {
+  ModalProps,
+  GallerySortOrder,
+} from "../../types";
+import { databaseService } from "../../services/databaseService";
 
 interface PhotoItem {
   id: string;
@@ -25,7 +28,7 @@ interface GalleryModalProps extends ModalProps {
 
 /**
  * GalleryModal component for displaying fish photos
- * 
+ *
  * Features:
  * - Month-based photo organization
  * - Photo grid display with modal view
@@ -37,15 +40,19 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
   onClose,
   selectedMonth,
   selectedYear,
-  onPhotoSelect
+  onPhotoSelect,
 }) => {
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoItem | null>(null);
-  const [sortOrder, setSortOrder] = useState<GallerySortOrder>('desc');
-  const [filterMonth, setFilterMonth] = useState<number | null>(selectedMonth || null);
-  const [filterYear, setFilterYear] = useState<number | null>(selectedYear || null);
+  const [sortOrder, setSortOrder] = useState<GallerySortOrder>("desc");
+  const [filterMonth, setFilterMonth] = useState<number | null>(
+    selectedMonth || null,
+  );
+  const [filterYear, setFilterYear] = useState<number | null>(
+    selectedYear || null,
+  );
 
   // Load photos when modal opens
   useEffect(() => {
@@ -65,19 +72,19 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
   const loadPhotos = async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
       const [trips, fishCaught] = await Promise.all([
         databaseService.getAllTrips(),
-        databaseService.getAllFishCaught()
+        databaseService.getAllFishCaught(),
       ]);
 
       // Create photo items from fish catches that have photos
       const photoItems: PhotoItem[] = [];
-      
-      fishCaught.forEach(fish => {
+
+      fishCaught.forEach((fish) => {
         if (fish.photo) {
-          const trip = trips.find(t => t.id === fish.tripId);
+          const trip = trips.find((t) => t.id === fish.tripId);
           if (trip) {
             photoItems.push({
               id: `${fish.id}-${fish.tripId}`,
@@ -90,7 +97,7 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
               date: trip.date,
               location: trip.location,
               water: trip.water,
-              time: fish.time
+              time: fish.time,
             });
           }
         }
@@ -98,8 +105,8 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
 
       setPhotos(photoItems);
     } catch (err) {
-      console.error('Error loading photos:', err);
-      setError('Failed to load photos');
+      console.error("Error loading photos:", err);
+      setError("Failed to load photos");
     } finally {
       setLoading(false);
     }
@@ -111,7 +118,7 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
 
     // Filter by month and year if specified
     if (filterMonth !== null || filterYear !== null) {
-      filtered = filtered.filter(photo => {
+      filtered = filtered.filter((photo) => {
         const photoDate = new Date(photo.date);
         const photoMonth = photoDate.getMonth();
         const photoYear = photoDate.getFullYear();
@@ -130,7 +137,7 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
     filtered.sort((a, b) => {
       const dateA = new Date(a.date).getTime();
       const dateB = new Date(b.date).getTime();
-      return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+      return sortOrder === "desc" ? dateB - dateA : dateA - dateB;
     });
 
     return filtered;
@@ -139,15 +146,11 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
   // Group photos by month for organization
   const photosByMonth = useMemo(() => {
     const groups: Record<string, PhotoItem[]> = {};
-    
-    filteredAndSortedPhotos.forEach(photo => {
+
+    filteredAndSortedPhotos.forEach((photo) => {
       const date = new Date(photo.date);
       const monthKey = `${date.getFullYear()}-${date.getMonth()}`;
-      const monthLabel = date.toLocaleDateString('en-NZ', { 
-        year: 'numeric', 
-        month: 'long' 
-      });
-      
+
       if (!groups[monthKey]) {
         groups[monthKey] = [];
       }
@@ -158,15 +161,15 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
     return Object.entries(groups)
       .map(([key, photos]) => ({
         key,
-        label: new Date(photos[0].date).toLocaleDateString('en-NZ', { 
-          year: 'numeric', 
-          month: 'long' 
+        label: new Date(photos[0].date).toLocaleDateString("en-NZ", {
+          year: "numeric",
+          month: "long",
         }),
         photos,
-        date: new Date(photos[0].date)
+        date: new Date(photos[0].date),
       }))
       .sort((a, b) => {
-        return sortOrder === 'desc' 
+        return sortOrder === "desc"
           ? b.date.getTime() - a.date.getTime()
           : a.date.getTime() - b.date.getTime();
       });
@@ -181,26 +184,32 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
 
   const handlePreviousPhoto = () => {
     if (!selectedPhoto) return;
-    
-    const currentIndex = filteredAndSortedPhotos.findIndex(p => p.id === selectedPhoto.id);
-    const previousIndex = currentIndex > 0 ? currentIndex - 1 : filteredAndSortedPhotos.length - 1;
+
+    const currentIndex = filteredAndSortedPhotos.findIndex(
+      (p) => p.id === selectedPhoto.id,
+    );
+    const previousIndex =
+      currentIndex > 0 ? currentIndex - 1 : filteredAndSortedPhotos.length - 1;
     setSelectedPhoto(filteredAndSortedPhotos[previousIndex]);
   };
 
   const handleNextPhoto = () => {
     if (!selectedPhoto) return;
-    
-    const currentIndex = filteredAndSortedPhotos.findIndex(p => p.id === selectedPhoto.id);
-    const nextIndex = currentIndex < filteredAndSortedPhotos.length - 1 ? currentIndex + 1 : 0;
+
+    const currentIndex = filteredAndSortedPhotos.findIndex(
+      (p) => p.id === selectedPhoto.id,
+    );
+    const nextIndex =
+      currentIndex < filteredAndSortedPhotos.length - 1 ? currentIndex + 1 : 0;
     setSelectedPhoto(filteredAndSortedPhotos[nextIndex]);
   };
 
   const formatDate = (dateString: string) => {
     try {
-      return new Date(dateString).toLocaleDateString('en-NZ', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
+      return new Date(dateString).toLocaleDateString("en-NZ", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
       });
     } catch {
       return dateString;
@@ -209,23 +218,23 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
 
   const getAvailableMonths = () => {
     const months = new Set<string>();
-    photos.forEach(photo => {
+    photos.forEach((photo) => {
       const date = new Date(photo.date);
       const monthKey = `${date.getFullYear()}-${date.getMonth()}`;
       months.add(monthKey);
     });
-    
+
     return Array.from(months)
-      .map(key => {
-        const [year, month] = key.split('-').map(Number);
+      .map((key) => {
+        const [year, month] = key.split("-").map(Number);
         return {
           key,
-          label: new Date(year, month).toLocaleDateString('en-NZ', { 
-            year: 'numeric', 
-            month: 'long' 
+          label: new Date(year, month).toLocaleDateString("en-NZ", {
+            year: "numeric",
+            month: "long",
           }),
           year,
-          month
+          month,
         };
       })
       .sort((a, b) => b.year - a.year || b.month - a.month);
@@ -236,20 +245,24 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
       <Modal isOpen={isOpen} onClose={onClose} maxWidth="3xl">
         <ModalHeader
           title="Photo Gallery"
-          subtitle={`${filteredAndSortedPhotos.length} photo${filteredAndSortedPhotos.length !== 1 ? 's' : ''}`}
+          subtitle={`${filteredAndSortedPhotos.length} photo${filteredAndSortedPhotos.length !== 1 ? "s" : ""}`}
           onClose={onClose}
         />
-        
+
         <ModalBody className="space-y-4">
           {/* Controls */}
           <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b dark:border-gray-700">
             <div className="flex items-center space-x-4">
               {/* Month Filter */}
               <select
-                value={filterMonth !== null && filterYear !== null ? `${filterYear}-${filterMonth}` : ''}
+                value={
+                  filterMonth !== null && filterYear !== null
+                    ? `${filterYear}-${filterMonth}`
+                    : ""
+                }
                 onChange={(e) => {
                   if (e.target.value) {
-                    const [year, month] = e.target.value.split('-').map(Number);
+                    const [year, month] = e.target.value.split("-").map(Number);
                     setFilterYear(year);
                     setFilterMonth(month);
                   } else {
@@ -262,7 +275,7 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
                          focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="">All Months</option>
-                {getAvailableMonths().map(month => (
+                {getAvailableMonths().map((month) => (
                   <option key={month.key} value={month.key}>
                     {month.label}
                   </option>
@@ -272,7 +285,9 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
               {/* Sort Order */}
               <select
                 value={sortOrder}
-                onChange={(e) => setSortOrder(e.target.value as GallerySortOrder)}
+                onChange={(e) =>
+                  setSortOrder(e.target.value as GallerySortOrder)
+                }
                 className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
                          bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100
                          focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -291,7 +306,9 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
           {loading && (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-              <span className="ml-3 text-gray-600 dark:text-gray-400">Loading photos...</span>
+              <span className="ml-3 text-gray-600 dark:text-gray-400">
+                Loading photos...
+              </span>
             </div>
           )}
 
@@ -313,24 +330,24 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
                   <i className="fas fa-camera text-4xl mb-4 opacity-50"></i>
                   <p>No photos found</p>
                   <p className="text-sm mt-2">
-                    {filterMonth !== null || filterYear !== null 
-                      ? 'Try selecting a different month or clear the filter'
-                      : 'Add photos to your fish catches to see them here'
-                    }
+                    {filterMonth !== null || filterYear !== null
+                      ? "Try selecting a different month or clear the filter"
+                      : "Add photos to your fish catches to see them here"}
                   </p>
                 </div>
               ) : (
-                photosByMonth.map(monthGroup => (
+                photosByMonth.map((monthGroup) => (
                   <div key={monthGroup.key} className="space-y-3">
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 border-b pb-2">
                       {monthGroup.label}
                       <span className="text-sm font-normal text-gray-500 dark:text-gray-400 ml-2">
-                        ({monthGroup.photos.length} photo{monthGroup.photos.length !== 1 ? 's' : ''})
+                        ({monthGroup.photos.length} photo
+                        {monthGroup.photos.length !== 1 ? "s" : ""})
                       </span>
                     </h3>
-                    
+
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                      {monthGroup.photos.map(photo => (
+                      {monthGroup.photos.map((photo) => (
                         <div
                           key={photo.id}
                           onClick={() => handlePhotoClick(photo)}
@@ -344,14 +361,22 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                             loading="lazy"
                           />
-                          
+
                           {/* Overlay with info */}
-                          <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 
-                                        transition-all duration-200 flex items-end">
+                          <div
+                            className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50
+                                        transition-all duration-200 flex items-end"
+                          >
                             <div className="p-3 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                              <p className="text-sm font-semibold">{photo.species}</p>
-                              <p className="text-xs">{photo.length} • {photo.weight}</p>
-                              <p className="text-xs">{formatDate(photo.date)}</p>
+                              <p className="text-sm font-semibold">
+                                {photo.species}
+                              </p>
+                              <p className="text-xs">
+                                {photo.length} • {photo.weight}
+                              </p>
+                              <p className="text-xs">
+                                {formatDate(photo.date)}
+                              </p>
                             </div>
                           </div>
                         </div>
@@ -367,8 +392,8 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
 
       {/* Full-size Photo Modal */}
       {selectedPhoto && (
-        <Modal 
-          isOpen={true} 
+        <Modal
+          isOpen={true}
           onClose={() => setSelectedPhoto(null)}
           maxWidth="3xl"
           className="bg-black"
@@ -385,7 +410,7 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
                 >
                   <i className="fas fa-chevron-left"></i>
                 </button>
-                
+
                 <button
                   onClick={handleNextPhoto}
                   className="absolute right-4 top-1/2 transform -translate-y-1/2 z-10
@@ -420,18 +445,38 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
             <div className="bg-black bg-opacity-75 text-white p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <h3 className="text-xl font-bold mb-2">{selectedPhoto.species}</h3>
+                  <h3 className="text-xl font-bold mb-2">
+                    {selectedPhoto.species}
+                  </h3>
                   <div className="space-y-1 text-sm">
-                    <p><span className="text-gray-300">Length:</span> {selectedPhoto.length}</p>
-                    <p><span className="text-gray-300">Weight:</span> {selectedPhoto.weight}</p>
-                    <p><span className="text-gray-300">Time:</span> {selectedPhoto.time}</p>
+                    <p>
+                      <span className="text-gray-300">Length:</span>{" "}
+                      {selectedPhoto.length}
+                    </p>
+                    <p>
+                      <span className="text-gray-300">Weight:</span>{" "}
+                      {selectedPhoto.weight}
+                    </p>
+                    <p>
+                      <span className="text-gray-300">Time:</span>{" "}
+                      {selectedPhoto.time}
+                    </p>
                   </div>
                 </div>
                 <div>
                   <div className="space-y-1 text-sm">
-                    <p><span className="text-gray-300">Date:</span> {formatDate(selectedPhoto.date)}</p>
-                    <p><span className="text-gray-300">Location:</span> {selectedPhoto.location}</p>
-                    <p><span className="text-gray-300">Water:</span> {selectedPhoto.water}</p>
+                    <p>
+                      <span className="text-gray-300">Date:</span>{" "}
+                      {formatDate(selectedPhoto.date)}
+                    </p>
+                    <p>
+                      <span className="text-gray-300">Location:</span>{" "}
+                      {selectedPhoto.location}
+                    </p>
+                    <p>
+                      <span className="text-gray-300">Water:</span>{" "}
+                      {selectedPhoto.water}
+                    </p>
                   </div>
                 </div>
               </div>

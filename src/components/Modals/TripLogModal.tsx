@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Modal, ModalHeader, ModalBody, ModalFooter } from './Modal';
-import { useIndexedDB } from '../../hooks/useIndexedDB';
-import type { Trip, DateModalProps } from '../../types';
+import React, { useState, useEffect, useCallback } from "react";
+import { Modal, ModalHeader, ModalBody, ModalFooter } from "./Modal";
+import { useIndexedDB } from "../../hooks/useIndexedDB";
+import type { Trip, DateModalProps } from "../../types";
 
 export interface TripLogModalProps extends DateModalProps {
   onEditTrip?: (tripId: number) => void;
@@ -21,7 +21,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
   onClose,
   selectedDate,
   onEditTrip,
-  onNewTrip
+  onNewTrip,
 }) => {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -30,21 +30,21 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
 
   // Format date for display and database queries
   const formatDateForDisplay = (date: Date): string => {
-    return date.toLocaleDateString('en-NZ', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
+    return date.toLocaleDateString("en-NZ", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
     });
   };
 
   const formatDateForDB = (date: Date): string => {
-    return date.toISOString().split('T')[0];
+    return date.toISOString().split("T")[0];
   };
 
   // Load trips for the selected date
   const loadTrips = useCallback(async () => {
-    if (!isOpen || !db.isReady) return;
+    if (!isOpen || !db.isReady || !selectedDate) return;
 
     setIsLoading(true);
     setError(null);
@@ -54,8 +54,8 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
       const tripsData = await db.trips.getByDate(dateStr);
       setTrips(tripsData);
     } catch (err) {
-      console.error('Error loading trips:', err);
-      setError('Failed to load trips. Please try again.');
+      console.error("Error loading trips:", err);
+      setError("Failed to load trips. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -68,7 +68,11 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
 
   // Handle trip deletion
   const handleDeleteTrip = async (tripId: number) => {
-    if (!confirm('Are you sure you want to delete this trip? This will also delete all associated weather logs and fish catches.')) {
+    if (
+      !confirm(
+        "Are you sure you want to delete this trip? This will also delete all associated weather logs and fish catches.",
+      )
+    ) {
       return;
     }
 
@@ -77,8 +81,8 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
       // Reload trips after deletion
       await loadTrips();
     } catch (err) {
-      console.error('Error deleting trip:', err);
-      setError('Failed to delete trip. Please try again.');
+      console.error("Error deleting trip:", err);
+      setError("Failed to delete trip. Please try again.");
     }
   };
 
@@ -96,12 +100,6 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
     }
   };
 
-  // Format hours display
-  const formatHours = (hours: number): string => {
-    if (hours === 1) return '1 hour';
-    return `${hours} hours`;
-  };
-
   return (
     <Modal
       isOpen={isOpen}
@@ -111,7 +109,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
     >
       <ModalHeader
         title="Trip Log"
-        subtitle={formatDateForDisplay(selectedDate)}
+        subtitle={selectedDate ? formatDateForDisplay(selectedDate) : ""}
         onClose={onClose}
       />
 
@@ -130,7 +128,9 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
         {isLoading && (
           <div className="flex items-center justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-            <span className="ml-3 text-gray-600 dark:text-gray-400">Loading trips...</span>
+            <span className="ml-3 text-gray-600 dark:text-gray-400">
+              Loading trips...
+            </span>
           </div>
         )}
 
@@ -142,7 +142,8 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
               No trips logged for this date
             </h3>
             <p className="text-gray-500 dark:text-gray-500 mb-6">
-              Start by creating your first trip log for {formatDateForDisplay(selectedDate)}
+              Start by creating your first trip log for{" "}
+              {selectedDate ? formatDateForDisplay(selectedDate) : "this date"}
             </p>
           </div>
         )}
@@ -171,7 +172,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
             <i className="fas fa-plus mr-2"></i>
             New Trip
           </button>
-          
+
           <button
             onClick={onClose}
             className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors"
@@ -193,7 +194,7 @@ interface TripCardProps {
 
 const TripCard: React.FC<TripCardProps> = ({ trip, onEdit, onDelete }) => {
   const formatHours = (hours: number): string => {
-    if (hours === 1) return '1 hour';
+    if (hours === 1) return "1 hour";
     return `${hours} hours`;
   };
 
@@ -208,7 +209,7 @@ const TripCard: React.FC<TripCardProps> = ({ trip, onEdit, onDelete }) => {
             {trip.location}
           </p>
         </div>
-        
+
         <div className="flex space-x-2">
           <button
             onClick={onEdit}
@@ -234,10 +235,12 @@ const TripCard: React.FC<TripCardProps> = ({ trip, onEdit, onDelete }) => {
             {formatHours(trip.hours)}
           </span>
         </div>
-        
+
         {trip.companions && (
           <div>
-            <span className="text-gray-500 dark:text-gray-400">Companions:</span>
+            <span className="text-gray-500 dark:text-gray-400">
+              Companions:
+            </span>
             <span className="ml-2 text-gray-700 dark:text-gray-300">
               {trip.companions}
             </span>

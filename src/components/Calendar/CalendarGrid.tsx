@@ -1,6 +1,6 @@
-import React from 'react';
-import { DAY_NAMES } from '../../types';
-import { CalendarDay } from './CalendarDay';
+import React from "react";
+import { DAY_NAMES } from "../../types";
+import { CalendarDay } from "./CalendarDay";
 // import { useIndexedDB } from '../../hooks/useIndexedDB';
 
 interface CalendarGridProps {
@@ -12,7 +12,7 @@ interface CalendarGridProps {
 export const CalendarGrid: React.FC<CalendarGridProps> = ({
   currentMonth,
   currentYear,
-  onDateSelect
+  onDateSelect,
 }) => {
   // Note: getTripsForMonth will be used in future enhancements for performance optimization
 
@@ -20,7 +20,7 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
   const firstDayOfMonth = new Date(currentYear, currentMonth, 1);
   const lastDayOfMonth = new Date(currentYear, currentMonth + 1, 0);
   const daysInMonth = lastDayOfMonth.getDate();
-  const startingDayOfWeek = firstDayOfMonth.getDay(); // 0 = Sunday, 1 = Monday, etc.
+  const startingDayOfWeek = (firstDayOfMonth.getDay() + 6) % 7; // 0 = Monday, 1 = Tuesday, etc.
 
   // Get days from previous month to fill the grid
   const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
@@ -44,7 +44,7 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
     calendarDays.push({
       date: new Date(prevYear, prevMonth, day),
       isCurrentMonth: false,
-      dayNumber: day
+      dayNumber: day,
     });
   }
 
@@ -53,7 +53,7 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
     calendarDays.push({
       date: new Date(currentYear, currentMonth, day),
       isCurrentMonth: true,
-      dayNumber: day
+      dayNumber: day,
     });
   }
 
@@ -62,7 +62,7 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
     calendarDays.push({
       date: new Date(nextYear, nextMonth, day),
       isCurrentMonth: false,
-      dayNumber: day
+      dayNumber: day,
     });
   }
 
@@ -81,10 +81,7 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
       </div>
 
       {/* Calendar days grid */}
-      <div 
-        id="calendarDays"
-        className="grid grid-cols-7 gap-1"
-      >
+      <div id="calendarDays" className="grid grid-cols-7 gap-1">
         {calendarDays.map((dayData) => (
           <CalendarDay
             key={`${dayData.date.getFullYear()}-${dayData.date.getMonth()}-${dayData.date.getDate()}`}

@@ -44,12 +44,6 @@ export const FishCaughtDisplay: React.FC<FishCaughtDisplayProps> = ({
     return weight ? `${weight} kg` : 'Not recorded';
   };
 
-  // Format gear list
-  const formatGear = (gear: string[]): string => {
-    if (!gear || gear.length === 0) return 'Not specified';
-    return gear.join(', ');
-  };
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -79,7 +73,6 @@ export const FishCaughtDisplay: React.FC<FishCaughtDisplayProps> = ({
           formatTime={formatTime}
           formatLength={formatLength}
           formatWeight={formatWeight}
-          formatGear={formatGear}
         />
       ))}
     </div>
@@ -94,7 +87,6 @@ interface FishCaughtCardProps {
   formatTime: (time: string) => string;
   formatLength: (length: string) => string;
   formatWeight: (weight: string) => string;
-  formatGear: (gear: string[]) => string;
 }
 
 const FishCaughtCard: React.FC<FishCaughtCardProps> = ({
@@ -103,8 +95,7 @@ const FishCaughtCard: React.FC<FishCaughtCardProps> = ({
   onDelete,
   formatTime,
   formatLength,
-  formatWeight,
-  formatGear
+  formatWeight
 }) => {
   return (
     <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-600">

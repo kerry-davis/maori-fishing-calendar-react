@@ -20,8 +20,7 @@ import {
   LocationChart,
   GearChart,
   WeatherChart,
-  PersonalBestsDisplay,
-  type PersonalBest
+  PersonalBestsDisplay
 } from '../Charts';
 
 // Register Chart.js components
