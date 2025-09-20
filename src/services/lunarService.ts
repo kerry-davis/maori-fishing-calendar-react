@@ -1,17 +1,16 @@
-import * as SunCalc from 'suncalc';
-import { 
-  LUNAR_PHASES, 
-  BiteTime, 
-  MoonPhaseData, 
-  MoonTransit, 
+import * as SunCalc from "suncalc";
+import type {
+  BiteTime,
+  MoonPhaseData,
   MoonTransitData,
   LunarPhase,
-  UserLocation
-} from '../types';
+  UserLocation,
+} from "../types";
+import { LUNAR_PHASES } from "../types";
 
 /**
  * Lunar Service Module
- * 
+ *
  * This service provides lunar calculations using the SunCalc library,
  * maintaining compatibility with the existing vanilla JavaScript implementation.
  * It handles moon phase calculations, bite time calculations, and sun/moon rise/set times.
@@ -27,11 +26,11 @@ export function getMoonPhaseData(date: Date): MoonPhaseData {
   const moonAge = moonIllumination.phase * 29.53;
   let phaseIndex = Math.floor(moonAge);
   phaseIndex = Math.min(phaseIndex, LUNAR_PHASES.length - 1);
-  
+
   return {
     phaseIndex,
     moonAge,
-    illumination: moonIllumination.fraction
+    illumination: moonIllumination.fraction,
   };
 }
 
@@ -53,7 +52,11 @@ export function getLunarPhase(date: Date): LunarPhase {
  * @param lng - Longitude
  * @returns Moon transit data with times and overhead status
  */
-export function getMoonTransitTimes(date: Date, lat: number, lng: number): MoonTransitData {
+export function getMoonTransitTimes(
+  date: Date,
+  lat: number,
+  lng: number,
+): MoonTransitData {
   const rc: MoonTransitData = { transits: [] };
   let sign = 1;
   let i: number, j: number;
@@ -66,7 +69,7 @@ export function getMoonTransitTimes(date: Date, lat: number, lng: number): MoonT
     date2.setSeconds(0);
     date2.setMilliseconds(0);
     const moontimes = SunCalc.getMoonPosition(date2, lat, lng);
-    
+
     if (i === 0) {
       sign = Math.sign(moontimes.azimuth);
     }
@@ -84,16 +87,16 @@ export function getMoonTransitTimes(date: Date, lat: number, lng: number): MoonT
     date3.setSeconds(0);
     date3.setMilliseconds(0);
     const moontimes = SunCalc.getMoonPosition(date3, lat, lng);
-    
+
     if (j === 0) {
       if (moontimes.azimuth < 0) {
         signBool = false;
       }
     }
-    if (signBool !== (moontimes.azimuth > 0)) {
-      rc.transits.push({ 
-        time: date3, 
-        overhead: (Math.sign(moontimes.altitude) > 0) 
+    if (signBool !== moontimes.azimuth > 0) {
+      rc.transits.push({
+        time: date3,
+        overhead: Math.sign(moontimes.altitude) > 0,
       });
       break;
     }
@@ -108,7 +111,7 @@ export function getMoonTransitTimes(date: Date, lat: number, lng: number): MoonT
     date2.setSeconds(0);
     date2.setMilliseconds(0);
     const moontimes = SunCalc.getMoonPosition(date2, lat, lng);
-    
+
     if (i === start) {
       sign = Math.sign(moontimes.azimuth);
     }
@@ -127,16 +130,16 @@ export function getMoonTransitTimes(date: Date, lat: number, lng: number): MoonT
       date3.setSeconds(0);
       date3.setMilliseconds(0);
       const moontimes = SunCalc.getMoonPosition(date3, lat, lng);
-      
+
       if (j === 0) {
         if (moontimes.azimuth < 0) {
           signBool = false;
         }
       }
-      if (signBool !== (moontimes.azimuth > 0)) {
-        rc.transits.push({ 
-          time: date3, 
-          overhead: (Math.sign(moontimes.altitude) > 0) 
+      if (signBool !== moontimes.azimuth > 0) {
+        rc.transits.push({
+          time: date3,
+          overhead: Math.sign(moontimes.altitude) > 0,
         });
         break;
       }
@@ -153,41 +156,53 @@ export function getMoonTransitTimes(date: Date, lat: number, lng: number): MoonT
  * @param lon - Longitude
  * @returns Object containing major and minor bite times
  */
-export function calculateBiteTimes(date: Date, lat: number, lon: number): { major: BiteTime[]; minor: BiteTime[] } {
+export function calculateBiteTimes(
+  date: Date,
+  lat: number,
+  lon: number,
+): { major: BiteTime[]; minor: BiteTime[] } {
   const moonTimes = SunCalc.getMoonTimes(date, lat, lon);
   const moonTransits = getMoonTransitTimes(date, lat, lon).transits;
   const lunarDay = getLunarPhase(date);
   const qualities = lunarDay.biteQualities;
 
   const formatBite = (start: Date, end: Date, quality: string): BiteTime => ({
-    start: start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
-    end: end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
-    quality: quality as any // Type assertion since we know the quality comes from biteQualities
+    start: start.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }),
+    end: end.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }),
+    quality: quality as any, // Type assertion since we know the quality comes from biteQualities
   });
 
   // Major bite times (moon transits) - 2 hour windows
   const majorBites = moonTransits.map((transit, index) => {
     const start = new Date(transit.time.getTime() - 1 * 60 * 60 * 1000); // 1 hour before
-    const end = new Date(transit.time.getTime() + 1 * 60 * 60 * 1000);   // 1 hour after
-    return formatBite(start, end, qualities[index] || 'poor');
+    const end = new Date(transit.time.getTime() + 1 * 60 * 60 * 1000); // 1 hour after
+    return formatBite(start, end, qualities[index] || "poor");
   });
 
   // Minor bite times (moonrise/moonset) - 1 hour windows
   const minorBites: BiteTime[] = [];
   if (moonTimes.rise) {
     const start = new Date(moonTimes.rise.getTime() - 0.5 * 60 * 60 * 1000); // 30 min before
-    const end = new Date(moonTimes.rise.getTime() + 0.5 * 60 * 60 * 1000);   // 30 min after
-    minorBites.push(formatBite(start, end, qualities[2] || 'poor'));
+    const end = new Date(moonTimes.rise.getTime() + 0.5 * 60 * 60 * 1000); // 30 min after
+    minorBites.push(formatBite(start, end, qualities[2] || "poor"));
   }
   if (moonTimes.set) {
     const start = new Date(moonTimes.set.getTime() - 0.5 * 60 * 60 * 1000); // 30 min before
-    const end = new Date(moonTimes.set.getTime() + 0.5 * 60 * 60 * 1000);   // 30 min after
-    minorBites.push(formatBite(start, end, qualities[3] || 'poor'));
+    const end = new Date(moonTimes.set.getTime() + 0.5 * 60 * 60 * 1000); // 30 min after
+    minorBites.push(formatBite(start, end, qualities[3] || "poor"));
   }
 
   return {
     major: majorBites,
-    minor: minorBites
+    minor: minorBites,
   };
 }
 
@@ -198,11 +213,15 @@ export function calculateBiteTimes(date: Date, lat: number, lon: number): { majo
  * @param lon - Longitude
  * @returns Object with sunrise and sunset times
  */
-export function getSunTimes(date: Date, lat: number, lon: number): { sunrise: Date | null; sunset: Date | null } {
+export function getSunTimes(
+  date: Date,
+  lat: number,
+  lon: number,
+): { sunrise: Date | null; sunset: Date | null } {
   const sunTimes = SunCalc.getTimes(date, lat, lon);
   return {
     sunrise: sunTimes.sunrise || null,
-    sunset: sunTimes.sunset || null
+    sunset: sunTimes.sunset || null,
   };
 }
 
@@ -214,7 +233,11 @@ export function getSunTimes(date: Date, lat: number, lon: number): { sunrise: Da
  * @param lon - Longitude
  * @returns Object with moonrise and moonset times
  */
-export function getMoonTimes(date: Date, lat: number, lon: number): { moonrise: Date | null; moonset: Date | null } {
+export function getMoonTimes(
+  date: Date,
+  lat: number,
+  lon: number,
+): { moonrise: Date | null; moonset: Date | null } {
   const today = new Date(date);
   today.setHours(0, 0, 0, 0);
   const tomorrow = new Date(today);
@@ -226,22 +249,22 @@ export function getMoonTimes(date: Date, lat: number, lon: number): { moonrise: 
   const riseTimes = [
     SunCalc.getMoonTimes(yesterday, lat, lon).rise,
     SunCalc.getMoonTimes(today, lat, lon).rise,
-    SunCalc.getMoonTimes(tomorrow, lat, lon).rise
+    SunCalc.getMoonTimes(tomorrow, lat, lon).rise,
   ].filter(Boolean);
 
   const setTimes = [
     SunCalc.getMoonTimes(yesterday, lat, lon).set,
     SunCalc.getMoonTimes(today, lat, lon).set,
-    SunCalc.getMoonTimes(tomorrow, lat, lon).set
+    SunCalc.getMoonTimes(tomorrow, lat, lon).set,
   ].filter(Boolean);
 
   // Find the rise and set times that occur on the target date
-  const moonriseDate = riseTimes.find(r => r && r > today && r < tomorrow);
-  const moonsetDate = setTimes.find(s => s && s > today && s < tomorrow);
+  const moonriseDate = riseTimes.find((r) => r && r > today && r < tomorrow);
+  const moonsetDate = setTimes.find((s) => s && s > today && s < tomorrow);
 
   return {
     moonrise: moonriseDate || null,
-    moonset: moonsetDate || null
+    moonset: moonsetDate || null,
   };
 }
 
@@ -251,8 +274,12 @@ export function getMoonTimes(date: Date, lat: number, lon: number): { moonrise: 
  * @returns Formatted time string or 'N/A' if invalid
  */
 export function formatTime(dateObj: Date | null): string {
-  if (!dateObj || isNaN(dateObj.getTime())) return 'N/A';
-  return dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  if (!dateObj || isNaN(dateObj.getTime())) return "N/A";
+  return dateObj.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 }
 
 /**
@@ -261,7 +288,10 @@ export function formatTime(dateObj: Date | null): string {
  * @param location - User location with lat/lon
  * @returns Object with all sun and moon times formatted as strings
  */
-export function getSunMoonTimes(date: Date, location: UserLocation): {
+export function getSunMoonTimes(
+  date: Date,
+  location: UserLocation,
+): {
   sunrise: string;
   sunset: string;
   moonrise: string;
@@ -274,7 +304,7 @@ export function getSunMoonTimes(date: Date, location: UserLocation): {
     sunrise: formatTime(sunTimes.sunrise),
     sunset: formatTime(sunTimes.sunset),
     moonrise: formatTime(moonTimes.moonrise),
-    moonset: formatTime(moonTimes.moonset)
+    moonset: formatTime(moonTimes.moonset),
   };
 }
 
@@ -287,7 +317,7 @@ export function minutesToTime(minutes: number): string {
   minutes = (minutes + 1440) % 1440;
   const hours = Math.floor(minutes / 60);
   const mins = Math.round(minutes % 60);
-  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+  return `${hours.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}`;
 }
 
 /**
@@ -310,6 +340,6 @@ export function getCurrentMoonInfo(): {
     moonAge: phaseData.moonAge,
     illumination: phaseData.illumination,
     formattedAge: phaseData.moonAge.toFixed(1),
-    formattedIllumination: `${Math.round(phaseData.illumination * 100)}%`
+    formattedIllumination: `${Math.round(phaseData.illumination * 100)}%`,
   };
 }
