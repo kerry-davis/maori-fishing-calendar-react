@@ -38,8 +38,6 @@ type ModalState =
   | "gallery";
 
 function AppContent() {
-  const { isDark } = useThemeContext();
-  const { userLocation } = useLocationContext();
   const { isReady, error } = useDatabaseContext();
 
   // Modal state management for routing between different views
