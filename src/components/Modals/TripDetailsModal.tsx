@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './Modal';
 import { useIndexedDB } from '../../hooks/useIndexedDB';
 import type { Trip, TripModalProps, FormValidation } from '../../types';

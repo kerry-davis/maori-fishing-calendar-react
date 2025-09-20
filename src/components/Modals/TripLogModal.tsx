@@ -100,12 +100,6 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
     }
   };
 
-  // Format hours display
-  const formatHours = (hours: number): string => {
-    if (hours === 1) return "1 hour";
-    return `${hours} hours`;
-  };
-
   return (
     <Modal
       isOpen={isOpen}

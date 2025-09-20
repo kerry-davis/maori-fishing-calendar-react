@@ -1,4 +1,4 @@
-import type { Trip, WeatherLog, FishCaught, TackleItem } from "../types";
+import type { FishCaught } from "../types";
 import { databaseService } from "./databaseService";
 import JSZip from "jszip";
 import Papa from "papaparse";
@@ -127,7 +127,7 @@ export class DataExportService {
 
           // Handle gear array - convert to string
           if (Array.isArray(fishCopy.gear)) {
-            fishCopy.gear = fishCopy.gear.join(", ");
+            (fishCopy as any).gear = fishCopy.gear.join(", ");
           }
 
           // Handle photos
@@ -219,7 +219,7 @@ export class DataExportService {
         const photosFolder = zip.folder("photos");
 
         if (photosFolder) {
-          photosFolder.forEach((relativePath, file) => {
+          photosFolder.forEach((_relativePath, file) => {
             const promise = file.async("base64").then((base64) => {
               const fileExtension =
                 file.name.split(".").pop()?.toLowerCase() || "jpg";
@@ -264,7 +264,14 @@ export class DataExportService {
    * Import data from CSV files in ZIP
    */
   private async importFromCsvZip(zip: JSZip, filename: string): Promise<void> {
-    const data = {
+    const data: {
+      indexedDB: {
+        trips: any[];
+        weather_logs: any[];
+        fish_caught: any[];
+      };
+      localStorage: {};
+    } = {
       indexedDB: { trips: [], weather_logs: [], fish_caught: [] },
       localStorage: {},
     };
@@ -321,7 +328,7 @@ export class DataExportService {
 
         // Convert gear string back to array
         if (typeof fish.gear === "string") {
-          fish.gear = fish.gear.split(", ").filter((g) => g.trim());
+          fish.gear = fish.gear.split(", ").filter((g: string) => g.trim());
         }
       });
     }

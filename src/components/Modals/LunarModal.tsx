@@ -13,13 +13,10 @@ import {
   formatTemperatureRange,
   formatWindInfo,
   isWeatherAvailable,
+  type WeatherData,
 } from "../../services/weatherService";
 import type {
-  LunarPhase,
   BiteTime,
-  UserLocation,
-  WeatherData,
-  BiteQuality,
 } from "../../types";
 import { BITE_QUALITY_COLORS } from "../../types";
 

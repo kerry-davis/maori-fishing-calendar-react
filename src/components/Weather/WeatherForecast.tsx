@@ -12,7 +12,7 @@ import {
   type WeatherData,
   type WeatherError 
 } from '../../services/weatherService';
-import { useLocation } from '../../contexts/LocationContext';
+import { useLocationContext } from '../../contexts/LocationContext';
 
 interface WeatherForecastProps {
   date: Date;
@@ -25,7 +25,7 @@ export const WeatherForecast: React.FC<WeatherForecastProps> = ({
   className = '',
   onWeatherLoad
 }) => {
-  const { userLocation } = useLocation();
+  const { userLocation } = useLocationContext();
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
