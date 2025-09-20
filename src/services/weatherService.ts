@@ -3,7 +3,7 @@
  * Provides weather forecast fetching and data formatting utilities
  */
 
-import type { WeatherForecast, UserLocation } from "../types";
+import type { UserLocation } from "../types";
 
 // Open-Meteo API base URL
 const OPEN_METEO_BASE_URL = "https://api.open-meteo.com/v1/forecast";

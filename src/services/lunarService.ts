@@ -2,7 +2,6 @@ import * as SunCalc from "suncalc";
 import type {
   BiteTime,
   MoonPhaseData,
-  MoonTransit,
   MoonTransitData,
   LunarPhase,
   UserLocation,

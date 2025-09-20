@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { WeatherData } from '../../services/weatherService';
+import type { WeatherData } from '../../services/weatherService';
 import { formatTemperatureRange, formatWindInfo } from '../../services/weatherService';
 
 interface WeatherDisplayProps {

@@ -1,8 +1,6 @@
 import { useState, useCallback } from "react";
 import {
   AppProviders,
-  useThemeContext,
-  useLocationContext,
   useDatabaseContext,
 } from "./contexts";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -213,7 +211,7 @@ function AppContent() {
         <TripLogModal
           isOpen={currentModal === "tripLog"}
           onClose={handleCloseModal}
-          selectedDate={selectedDate}
+          selectedDate={selectedDate!}
         />
 
         {/* PWA Components */}

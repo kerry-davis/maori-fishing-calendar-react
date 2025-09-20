@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Modal, ModalHeader, ModalBody } from "./Modal";
 import type {
-  Trip,
-  FishCaught,
   ModalProps,
   GallerySortOrder,
 } from "../../types";
@@ -152,10 +150,6 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
     filteredAndSortedPhotos.forEach((photo) => {
       const date = new Date(photo.date);
       const monthKey = `${date.getFullYear()}-${date.getMonth()}`;
-      const monthLabel = date.toLocaleDateString("en-NZ", {
-        year: "numeric",
-        month: "long",
-      });
 
       if (!groups[monthKey]) {
         groups[monthKey] = [];
