@@ -169,6 +169,47 @@ export function LocationProvider({ children }: LocationProviderProps) {
     }
   }, [setLocation]);
 
+  // Search for location suggestions (for autocomplete) without setting location
+  const searchLocationSuggestions = useCallback(async (locationName: string): Promise<UserLocation[]> => {
+    if (!locationName.trim()) {
+      return [];
+    }
+
+    setIsRequestingLocation(true);
+
+    try {
+      // Use OpenStreetMap Nominatim API for geocoding with higher limit for suggestions
+      const searchResponse = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationName)}&limit=5&addressdetails=1`,
+        {
+          headers: {
+            'User-Agent': 'Maori-Fishing-Calendar/1.0'
+          }
+        }
+      );
+
+      if (!searchResponse.ok) {
+        throw new Error(`Geocoding service failed with status ${searchResponse.status}`);
+      }
+
+      const searchResults = await searchResponse.json();
+
+      // Convert results to UserLocation objects
+      const suggestions: UserLocation[] = searchResults.map((result: any) => ({
+        lat: parseFloat(result.lat),
+        lon: parseFloat(result.lon),
+        name: result.display_name || locationName,
+      }));
+
+      return suggestions;
+    } catch (error) {
+      console.error("Location suggestions search error:", error);
+      return [];
+    } finally {
+      setIsRequestingLocation(false);
+    }
+  }, []);
+
   // Log storage errors but don't throw - graceful degradation
   if (storageError) {
     console.error("Location storage error:", storageError);
@@ -179,6 +220,7 @@ export function LocationProvider({ children }: LocationProviderProps) {
     setLocation,
     requestLocation,
     searchLocation,
+    searchLocationSuggestions,
   };
 
   return (

@@ -284,6 +284,7 @@ export interface LocationContextType {
   setLocation: (location: UserLocation | null) => void;
   requestLocation: () => Promise<void>;
   searchLocation: (locationName: string) => Promise<void>;
+  searchLocationSuggestions: (locationName: string) => Promise<UserLocation[]>;
 }
 
 export interface DatabaseContextType {
