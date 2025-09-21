@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocationContext } from "../../contexts";
 import {
   getCurrentMoonInfo,
@@ -11,7 +11,7 @@ interface CurrentMoonInfoProps {
 }
 
 export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
-  const { userLocation, setLocation, requestLocation } = useLocationContext();
+  const { userLocation, setLocation, requestLocation, searchLocation, searchLocationSuggestions } = useLocationContext();
   const [moonInfo, setMoonInfo] = useState<{
     phase: LunarPhase;
     moonAge: number;
@@ -27,6 +27,15 @@ export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
   } | null>(null);
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [locationInput, setLocationInput] = useState("");
+  const [isSearchingLocation, setIsSearchingLocation] = useState(false);
+  const [locationSuggestions, setLocationSuggestions] = useState<UserLocation[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+
+  // Debounced search timeout ref
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Update moon info every minute
   useEffect(() => {
@@ -55,6 +64,15 @@ export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
     }
   }, [userLocation]);
 
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, []);
+
   // Handle location request
   const handleLocationRequest = async () => {
     if (isRequestingLocation) return;
@@ -76,6 +94,99 @@ export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
   // Handle manual location input
   const handleLocationChange = (location: UserLocation) => {
     setLocation(location);
+    setLocationError(null);
+  };
+
+  // Handle location search
+  const handleLocationSearch = async () => {
+    if (!locationInput.trim()) {
+      return; // Don't search for empty input
+    }
+
+    setIsSearchingLocation(true);
+
+    try {
+      await searchLocation(locationInput.trim());
+      setLocationInput(""); // Clear the input after successful search
+    } catch (error) {
+      setLocationError(
+        error instanceof Error ? error.message : "Failed to search location",
+      );
+    } finally {
+      setIsSearchingLocation(false);
+    }
+  };
+
+  // Handle Enter key press in location input
+  const handleLocationInputKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !isSearchingLocation) {
+      if (showSuggestions && locationSuggestions.length > 0) {
+        // Select the highlighted suggestion
+        const selectedSuggestion = locationSuggestions[selectedSuggestionIndex >= 0 ? selectedSuggestionIndex : 0];
+        handleSuggestionSelect(selectedSuggestion);
+      } else {
+        handleLocationSearch();
+      }
+    } else if (e.key === 'Escape') {
+      setShowSuggestions(false);
+      setSelectedSuggestionIndex(-1);
+    } else if (e.key === 'ArrowDown' && showSuggestions) {
+      e.preventDefault();
+      setSelectedSuggestionIndex(prev =>
+        prev < locationSuggestions.length - 1 ? prev + 1 : 0
+      );
+    } else if (e.key === 'ArrowUp' && showSuggestions) {
+      e.preventDefault();
+      setSelectedSuggestionIndex(prev =>
+        prev > 0 ? prev - 1 : locationSuggestions.length - 1
+      );
+    }
+  };
+
+  // Handle location input change with debounced search
+  const handleLocationInputChange = (value: string) => {
+    setLocationInput(value);
+
+    // Clear previous timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    if (value.trim().length < 2) {
+      setLocationSuggestions([]);
+      setShowSuggestions(false);
+      setSelectedSuggestionIndex(-1);
+      setIsLoadingSuggestions(false);
+      return;
+    }
+
+    // Set loading state
+    setIsLoadingSuggestions(true);
+
+    // Debounce the search by 300ms
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const suggestions = await searchLocationSuggestions(value.trim());
+        setLocationSuggestions(suggestions);
+        setShowSuggestions(suggestions.length > 0);
+        setSelectedSuggestionIndex(-1);
+      } catch (error) {
+        console.error("Location suggestions error:", error);
+        setLocationSuggestions([]);
+        setShowSuggestions(false);
+      } finally {
+        setIsLoadingSuggestions(false);
+      }
+    }, 300);
+  };
+
+  // Handle suggestion selection
+  const handleSuggestionSelect = (suggestion: UserLocation) => {
+    setLocation(suggestion);
+    setLocationInput("");
+    setLocationSuggestions([]);
+    setShowSuggestions(false);
+    setSelectedSuggestionIndex(-1);
     setLocationError(null);
   };
 
@@ -276,30 +387,65 @@ export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
               </p>
             )}
 
-            {/* Manual Location Input */}
+            {/* Location Search Input */}
             <div className="space-y-2">
-              <input
-                type="text"
-                placeholder="Location name"
-                className="w-full text-xs px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    const target = e.target as HTMLInputElement;
-                    const name = target.value.trim();
-                    if (name) {
-                      // For now, use default coordinates - this could be enhanced with geocoding
-                      handleLocationChange({
-                        lat: -36.8485, // Auckland, NZ default
-                        lon: 174.7633,
-                        name: name,
-                      });
-                      target.value = "";
-                    }
-                  }
-                }}
-              />
+              <div className="flex items-center space-x-1">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    value={locationInput}
+                    onChange={(e) => handleLocationInputChange(e.target.value)}
+                    onKeyDown={handleLocationInputKeyPress}
+                    onFocus={() => locationInput.trim().length >= 2 && setShowSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                    placeholder="Enter a location"
+                    className="w-full text-xs px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-l bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+
+                  {/* Location Suggestions Dropdown */}
+                  {showSuggestions && (
+                    <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                      {isLoadingSuggestions ? (
+                        <div className="px-2 py-1 text-xs text-gray-500 dark:text-gray-400">
+                          <i className="fas fa-spinner fa-spin mr-1"></i>
+                          Searching locations...
+                        </div>
+                      ) : locationSuggestions.length > 0 ? (
+                        locationSuggestions.map((suggestion, index) => (
+                          <div
+                            key={`${suggestion.lat}-${suggestion.lon}`}
+                            onClick={() => handleSuggestionSelect(suggestion)}
+                            className={`px-2 py-1 cursor-pointer text-xs hover:bg-gray-100 dark:hover:bg-gray-700 ${
+                              index === selectedSuggestionIndex ? 'bg-blue-50 dark:bg-blue-900' : ''
+                            }`}
+                          >
+                            <div className="font-medium text-gray-900 dark:text-gray-100">
+                              {suggestion.name}
+                            </div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                              {suggestion.lat.toFixed(4)}, {suggestion.lon.toFixed(4)}
+                            </div>
+                          </div>
+                        ))
+                      ) : locationInput.trim().length >= 2 ? (
+                        <div className="px-2 py-1 text-xs text-gray-500 dark:text-gray-400">
+                          No locations found
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={handleLocationSearch}
+                  disabled={isSearchingLocation}
+                  className="px-2 py-1 bg-gray-500 text-white hover:bg-gray-600 transition disabled:opacity-50 disabled:cursor-not-allowed rounded-r"
+                  title="Search location"
+                >
+                  <i className={`fas ${isSearchingLocation ? "fa-spinner fa-spin" : "fa-search"} text-xs`}></i>
+                </button>
+              </div>
               <p className="text-xs text-gray-400 dark:text-gray-500">
-                Press Enter to set location (uses Auckland coordinates)
+                Start typing to see location suggestions
               </p>
             </div>
           </div>
