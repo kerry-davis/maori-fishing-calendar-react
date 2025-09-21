@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState } from "react";
+import { useRegisterSW } from "virtual:pwa-register/react";
 
 // PWA register hook with fallback for testing
 interface PWARegisterHook {
@@ -8,11 +9,10 @@ interface PWARegisterHook {
 }
 
 export const usePWARegister = (): PWARegisterHook => {
-  const [needRefresh, setNeedRefresh] = useState(false);
-  const [offlineReady, setOfflineReady] = useState(false);
-
   // Check if we're in a test environment
-  if (typeof window === 'undefined' || process.env.NODE_ENV === 'test') {
+  if (typeof window === "undefined" || process.env.NODE_ENV === "test") {
+    const [needRefresh, setNeedRefresh] = useState(false);
+    const [offlineReady, setOfflineReady] = useState(false);
     return {
       needRefresh: [needRefresh, setNeedRefresh],
       offlineReady: [offlineReady, setOfflineReady],
@@ -20,28 +20,12 @@ export const usePWARegister = (): PWARegisterHook => {
     };
   }
 
-  try {
-    // Try to use the actual PWA register hook in production
-    // This will be handled by Vite's virtual module system
-    const { useRegisterSW } = eval('require')('virtual:pwa-register/react');
-    return useRegisterSW({
-      onRegistered(r: any) {
-        console.log('SW Registered: ' + r);
-      },
-      onRegisterError(error: any) {
-        console.log('SW registration error', error);
-      },
-    });
-  } catch (error) {
-    // Fallback implementation for development/testing
-    return {
-      needRefresh: [needRefresh, setNeedRefresh],
-      offlineReady: [offlineReady, setOfflineReady],
-      updateServiceWorker: async (reloadPage?: boolean) => {
-        if (reloadPage) {
-          window.location.reload();
-        }
-      },
-    };
-  }
+  return useRegisterSW({
+    onRegistered(r: any) {
+      console.log("SW Registered: " + r);
+    },
+    onRegisterError(error: any) {
+      console.log("SW registration error", error);
+    },
+  });
 };
