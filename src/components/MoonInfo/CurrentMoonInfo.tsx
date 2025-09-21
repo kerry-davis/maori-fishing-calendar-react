@@ -91,12 +91,6 @@ export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
     }
   };
 
-  // Handle manual location input
-  const handleLocationChange = (location: UserLocation) => {
-    setLocation(location);
-    setLocationError(null);
-  };
-
   // Handle location search
   const handleLocationSearch = async () => {
     if (!locationInput.trim()) {
