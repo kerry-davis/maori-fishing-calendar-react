@@ -44,13 +44,14 @@ export const LunarModal: React.FC<LunarModalProps> = ({
   selectedDate,
   onTripLogOpen,
 }) => {
-  const { userLocation, requestLocation } = useLocationContext();
+  const { userLocation, requestLocation, searchLocation } = useLocationContext();
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [weatherError, setWeatherError] = useState<string | null>(null);
   const [weatherLoading, setWeatherLoading] = useState(false);
   const [locationInput, setLocationInput] = useState("");
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
+  const [isSearchingLocation, setIsSearchingLocation] = useState(false);
 
   // Update current date when modal opens or selectedDate changes
   useEffect(() => {
@@ -154,11 +155,30 @@ export const LunarModal: React.FC<LunarModalProps> = ({
     }
   }, [requestLocation]);
 
-  const handleLocationSearch = useCallback(() => {
-    // This would integrate with a geocoding service
-    // For now, just a placeholder
-    console.log("Location search not implemented yet:", locationInput);
-  }, [locationInput]);
+  const handleLocationSearch = useCallback(async () => {
+    if (!locationInput.trim()) {
+      return; // Don't search for empty input
+    }
+
+    setIsSearchingLocation(true);
+
+    try {
+      await searchLocation(locationInput.trim());
+      setLocationInput(""); // Clear the input after successful search
+    } catch (error) {
+      console.error("Location search failed:", error);
+      // Error handling could be improved with user feedback
+    } finally {
+      setIsSearchingLocation(false);
+    }
+  }, [locationInput, searchLocation]);
+
+  // Handle Enter key press in location input
+  const handleLocationInputKeyPress = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !isSearchingLocation) {
+      handleLocationSearch();
+    }
+  }, [handleLocationSearch, isSearchingLocation]);
 
   // Trip log handler
   const handleTripLogOpen = useCallback(() => {
@@ -287,15 +307,17 @@ export const LunarModal: React.FC<LunarModalProps> = ({
                 id="location-input"
                 value={locationInput}
                 onChange={(e) => setLocationInput(e.target.value)}
+                onKeyPress={handleLocationInputKeyPress}
                 placeholder="Enter a location"
                 className="w-full px-3 py-2 border border-gray-300 rounded-l-md dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <button
                 onClick={handleLocationSearch}
-                className="px-3 py-2 bg-gray-500 text-white hover:bg-gray-600 transition"
+                disabled={isSearchingLocation}
+                className="px-3 py-2 bg-gray-500 text-white hover:bg-gray-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Search location"
               >
-                <i className="fas fa-search"></i>
+                <i className={`fas ${isSearchingLocation ? "fa-spinner fa-spin" : "fa-search"}`}></i>
               </button>
               <button
                 onClick={handleLocationRequest}
