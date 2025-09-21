@@ -197,15 +197,15 @@ export const LunarModal: React.FC<LunarModalProps> = ({
   const renderBiteTime = (bite: BiteTime, index: number) => (
     <div
       key={index}
-      className="bite-time-item flex items-center justify-between py-1"
+      className="bite-time-item flex items-center py-1"
     >
+      <i
+        className="fas fa-fish mr-2"
+        style={{ color: BITE_QUALITY_COLORS[bite.quality] }}
+      ></i>
       <span className="text-sm">
         {bite.start} - {bite.end}
       </span>
-      <i
-        className="fas fa-fish ml-2"
-        style={{ color: BITE_QUALITY_COLORS[bite.quality] }}
-      ></i>
     </div>
   );
 
