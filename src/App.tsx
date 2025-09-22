@@ -15,6 +15,7 @@ import {
   SettingsModal,
   SearchModal,
   GalleryModal,
+  PhotosModal,
   LunarModal,
   TripLogModal,
   TripFormModal,
@@ -41,6 +42,7 @@ type ModalState =
   | "settings"
   | "search"
   | "gallery"
+  | "photos"
   | "weatherLog"
   | "fishCatch";
 
@@ -72,7 +74,7 @@ function AppContent() {
   }, []);
 
   const handleGalleryClick = useCallback(() => {
-    setCurrentModal("gallery");
+    setCurrentModal("photos");
   }, []);
 
   // Calendar handlers
@@ -255,6 +257,11 @@ function AppContent() {
 
         <GalleryModal
           isOpen={currentModal === "gallery"}
+          onClose={handleCloseModal}
+        />
+
+        <PhotosModal
+          isOpen={currentModal === "photos"}
           onClose={handleCloseModal}
         />
 
