@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "./Modal";
-import { useLocalStorage } from "../../hooks/useLocalStorage";
+import { useFirebaseTackleBox, useFirebaseGearTypes } from "../../hooks/useFirebaseTackleBox";
 import type { TackleItem } from "../../types";
 
 export interface GearSelectionModalProps {
@@ -24,8 +24,8 @@ export const GearSelectionModal: React.FC<GearSelectionModalProps> = ({
   selectedGear,
   onGearSelected,
 }) => {
-  const [tackleBox, _setTackleBox] = useLocalStorage<TackleItem[]>("tacklebox", []);
-  const [gearTypes, _setGearTypes] = useLocalStorage<string[]>("gearTypes", ["Lure", "Rod", "Reel", "Line"]);
+  const [tackleBox, , , tackleBoxError, tackleBoxLoading] = useFirebaseTackleBox();
+  const [gearTypes, , , gearTypesError, gearTypesLoading] = useFirebaseGearTypes();
   const [customGear, setCustomGear] = useState("");
   const [selectedGearItems, setSelectedGearItems] = useState<string[]>(selectedGear);
   const [activeTab, setActiveTab] = useState("tacklebox");
