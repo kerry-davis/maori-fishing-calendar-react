@@ -3,6 +3,7 @@ import {
   AppProviders,
   useDatabaseContext,
 } from "./contexts";
+import { useIndexedDB } from "./hooks/useIndexedDB";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { Header, Footer } from "./components/Layout";
 import { Calendar } from "./components/Calendar";
@@ -16,6 +17,10 @@ import {
   GalleryModal,
   LunarModal,
   TripLogModal,
+  TripFormModal,
+  TripDetailsModal,
+  WeatherLogModal,
+  FishCatchModal,
 } from "./components/Modals";
 import {
   PWAInstallPrompt,
@@ -29,19 +34,25 @@ type ModalState =
   | "none"
   | "lunar"
   | "tripLog"
+  | "tripForm"
   | "tripDetails"
   | "tackleBox"
   | "analytics"
   | "settings"
   | "search"
-  | "gallery";
+  | "gallery"
+  | "weatherLog"
+  | "fishCatch";
 
 function AppContent() {
   const { isReady, error } = useDatabaseContext();
+  const db = useIndexedDB();
 
   // Modal state management for routing between different views
   const [currentModal, setCurrentModal] = useState<ModalState>("none");
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [editingTripId, setEditingTripId] = useState<number | null>(null);
+  const [editingWeatherId, setEditingWeatherId] = useState<number | null>(null);
 
   // Modal handlers
   const handleSearchClick = useCallback(() => {
@@ -71,10 +82,67 @@ function AppContent() {
   }, []);
 
   // These handlers will be implemented when modal components are fixed
-  const handleTripLogOpen = useCallback((date?: Date) => {
+  const handleTripLogOpen = useCallback(async (date?: Date) => {
     if (date) {
       setSelectedDate(date);
     }
+
+    // Check if trips exist for this date
+    if (date && db?.isReady) {
+      try {
+        const dateStr = date.toLocaleDateString("en-CA");
+        const trips = await db.trips.getByDate(dateStr);
+
+        if (trips.length === 0) {
+          // No trips exist, open trip form directly
+          setCurrentModal("tripForm");
+          return;
+        }
+      } catch (err) {
+        console.error("Error checking trips:", err);
+      }
+    }
+
+    // Trips exist or error occurred, show trip log
+    setCurrentModal("tripLog");
+  }, [db?.isReady, db?.trips]);
+
+  const handleNewTrip = useCallback(() => {
+    setCurrentModal("tripForm");
+  }, []);
+
+  const handleEditTrip = useCallback((tripId: number) => {
+    // Store the trip ID for editing and open the trip form modal
+    setEditingTripId(tripId);
+    setCurrentModal("tripDetails");
+  }, []);
+
+
+  const handleTripCreated = useCallback((trip: any) => {
+    console.log('App.tsx: handleTripCreated called with trip:', trip);
+    console.log('App.tsx: Current modal before:', currentModal);
+    // Close the trip form modal and refresh the trip log
+    setCurrentModal("tripLog");
+    console.log('App.tsx: Set currentModal to tripLog');
+  }, [currentModal]);
+
+  const handleWeatherLogged = useCallback((_weatherLog: any) => {
+    // Close the weather modal and refresh the trip log to show updated weather
+    setCurrentModal("tripLog");
+  }, []);
+
+  const handleFishCaught = useCallback((_fish: any) => {
+    // Close the fish catch modal and refresh the trip log to show new catch
+    setCurrentModal("tripLog");
+  }, []);
+
+  const handleTripUpdated = useCallback(() => {
+    // Navigate back to the trip log modal after trip is updated
+    setCurrentModal("tripLog");
+  }, []);
+
+  const handleCancelEditTrip = useCallback(() => {
+    // Navigate back to the trip log modal when canceling trip edit
     setCurrentModal("tripLog");
   }, []);
 
@@ -86,9 +154,13 @@ function AppContent() {
   // }, []);
 
   const handleCloseModal = useCallback(() => {
+    console.log('App.tsx: handleCloseModal called, current modal:', currentModal);
     setCurrentModal("none");
     setSelectedDate(null);
-  }, []);
+    setEditingTripId(null);
+    setEditingWeatherId(null);
+    console.log('App.tsx: Modal closed, set to none');
+  }, [currentModal]);
 
   // Show loading state while database is initializing
   if (!isReady && !error) {
@@ -197,6 +269,39 @@ function AppContent() {
           isOpen={currentModal === "tripLog"}
           onClose={handleCloseModal}
           selectedDate={selectedDate!}
+          onNewTrip={handleNewTrip}
+          onEditTrip={handleEditTrip}
+        />
+
+        <TripFormModal
+          isOpen={currentModal === "tripForm"}
+          onClose={handleCloseModal}
+          selectedDate={selectedDate!}
+          onTripCreated={handleTripCreated}
+        />
+
+        <TripDetailsModal
+          isOpen={currentModal === "tripDetails"}
+          onClose={handleCloseModal}
+          tripId={editingTripId || undefined}
+          selectedDate={selectedDate!}
+          onTripUpdated={handleTripUpdated}
+          onCancelEdit={handleCancelEditTrip}
+        />
+
+        <WeatherLogModal
+          isOpen={currentModal === "weatherLog"}
+          onClose={handleCloseModal}
+          tripId={editingTripId || 1} // Use the stored trip ID
+          weatherId={editingWeatherId || undefined}
+          onWeatherLogged={handleWeatherLogged}
+        />
+
+        <FishCatchModal
+          isOpen={currentModal === "fishCatch"}
+          onClose={handleCloseModal}
+          tripId={editingTripId || 1}
+          onFishCaught={handleFishCaught}
         />
 
         {/* PWA Components */}
