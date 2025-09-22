@@ -4,11 +4,16 @@ import type { ModalProps } from '../../types';
 import { PhotoUpload, PhotoGallery } from '../Photos';
 
 export const PhotosModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const handleUploadSuccess = () => {
     // Trigger gallery refresh
-    setRefreshKey(prev => prev + 1);
+    setRefreshTrigger(prev => prev + 1);
+  };
+
+  const handlePhotoDeleted = () => {
+    // Trigger gallery refresh after deletion
+    setRefreshTrigger(prev => prev + 1);
   };
 
   return (
@@ -22,9 +27,10 @@ export const PhotosModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
         </div>
 
         {/* Gallery Section */}
-        <div key={refreshKey}>
-          <PhotoGallery />
-        </div>
+        <PhotoGallery
+          refreshTrigger={refreshTrigger}
+          onPhotoDeleted={handlePhotoDeleted}
+        />
       </ModalBody>
     </Modal>
   );
