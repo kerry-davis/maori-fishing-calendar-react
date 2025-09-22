@@ -47,13 +47,19 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
   };
 
   const handleGoogleSignIn = async () => {
+    console.log('Google sign-in button clicked');
+    console.log('isFirebaseConfigured:', isFirebaseConfigured);
+
     setError('');
     setLoading(true);
 
     try {
+      console.log('Attempting Google sign-in...');
       await signInWithGoogle();
+      console.log('Google sign-in successful');
       onClose(); // Close modal on successful Google sign-in
     } catch (err) {
+      console.error('Google sign-in error:', err);
       setError(err instanceof Error ? err.message : 'Google sign-in failed');
     } finally {
       setLoading(false);

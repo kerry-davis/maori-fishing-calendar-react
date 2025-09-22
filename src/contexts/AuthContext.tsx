@@ -84,15 +84,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signInWithGoogle = async () => {
+    console.log('signInWithGoogle called');
+    console.log('auth available:', !!auth);
+
     if (!auth) {
-      throw new Error('Firebase authentication is not configured. Please set up your Firebase environment variables.');
+      const errorMsg = 'Firebase authentication is not configured. Please set up your Firebase environment variables.';
+      console.error('Auth not available:', errorMsg);
+      throw new Error(errorMsg);
     }
     try {
       setError(null);
+      console.log('Creating GoogleAuthProvider...');
       const provider = new GoogleAuthProvider();
+      console.log('Calling signInWithPopup...');
       await signInWithPopup(auth, provider);
+      console.log('signInWithPopup successful');
       setSuccessMessage('Successfully signed in with Google!');
     } catch (err) {
+      console.error('signInWithGoogle error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Google sign-in failed';
       setError(errorMessage);
       throw new Error(errorMessage);
