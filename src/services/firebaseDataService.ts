@@ -611,11 +611,13 @@ export class FirebaseDataService {
 
     console.log('Processing sync queue...', this.syncQueue.length, 'operations');
 
+    let syncedCount = 0;
     for (const operation of this.syncQueue) {
       try {
         await this.executeQueuedOperation(operation);
         // Remove from queue on success
         this.syncQueue = this.syncQueue.filter(op => op.id !== operation.id);
+        syncedCount++;
       } catch (error) {
         console.error('Failed to sync operation:', operation, error);
         // Keep in queue for retry
@@ -623,6 +625,11 @@ export class FirebaseDataService {
     }
 
     this.saveSyncQueue();
+
+    // Mark sync as complete if we successfully synced operations
+    if (syncedCount > 0 && this.userId) {
+      localStorage.setItem(`lastSync_${this.userId}`, new Date().toISOString());
+    }
   }
 
   private async executeQueuedOperation(operation: any): Promise<void> {
