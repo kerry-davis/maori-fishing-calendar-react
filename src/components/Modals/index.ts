@@ -20,6 +20,5 @@ export { default as AnalyticsModal } from './AnalyticsModal';
 export type { AnalyticsModalProps } from './AnalyticsModal';
 export { default as SearchModal } from './SearchModal';
 export { default as GalleryModal } from './GalleryModal';
-export { PhotosModal } from './PhotosModal';
 export { DataMigrationModal } from './DataMigrationModal';
 export { SettingsModal } from './SettingsModal';
