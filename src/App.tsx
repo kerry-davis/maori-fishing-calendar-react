@@ -145,12 +145,12 @@ function AppContent() {
     console.log('App.tsx: Set currentModal to tripLog');
   }, [currentModal]);
 
-  const handleWeatherLogged = useCallback((weatherLog: any) => {
+  const handleWeatherLogged = useCallback((_weatherLog: any) => {
     // Close the weather modal and refresh the trip log to show updated weather
     setCurrentModal("tripLog");
   }, []);
 
-  const handleFishCaught = useCallback((fish: any) => {
+  const handleFishCaught = useCallback((_fish: any) => {
     // Close the fish catch modal and refresh the trip log to show new catch
     setCurrentModal("tripLog");
   }, []);
@@ -290,7 +290,6 @@ function AppContent() {
           selectedDate={selectedDate!}
           onNewTrip={handleNewTrip}
           onEditTrip={handleEditTrip}
-          onEditWeather={handleEditWeather}
         />
 
         <TripFormModal
