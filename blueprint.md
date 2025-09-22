@@ -4,57 +4,77 @@
 
 ### 1.1. Overview
 
-This application is a client-side Progressive Web App (PWA). There is no proprietary backend server. All application logic, data processing, and rendering occur directly within the user's web browser. User data is stored exclusively on the user's device, ensuring data privacy and offline accessibility for core features.
+This application is a client-side Progressive Web App (PWA) with cloud synchronization capabilities. The core application logic, data processing, and rendering occur directly within the user's web browser. User data is stored both locally on the user's device and optionally synchronized to Firebase for cross-device access.
 
-The system can be broken down into four main parts:
-1.  **UI Layer**: The user interface, responsible for displaying the calendar, modals, forms, and analytics.
+The system can be broken down into five main parts:
+1.  **UI Layer**: The user interface, responsible for displaying the calendar, modals, forms, analytics, and sync status.
 2.  **Application Logic Layer**: The core JavaScript code that manages state, handles user input, performs calculations (e.g., bite times), and orchestrates data flow.
-3.  **Storage Layer**: The persistence layer, which uses browser storage technologies (`IndexedDB` for structured data like trips and catches, and `localStorage` for simpler data like user settings and the tackle box).
-4.  **External Services**: Third-party APIs that provide supplemental data, such as weather forecasts and geolocation services.
+3.  **Storage Layer**: A hybrid persistence layer using Firebase as the primary cloud store with IndexedDB/localStorage as local cache and offline fallback.
+4.  **Synchronization Layer**: Manages offline/online transitions, data queuing, and conflict resolution.
+5.  **External Services**: Third-party APIs (weather, geolocation) and Firebase services (authentication, database, storage).
 
 ### 1.2. Architecture Diagram
 
 ```mermaid
 graph TD
-    User --> PWA[Progressive Web App]
+     User --> PWA[Progressive Web App]
 
-    PWA --> AppLogic[Application Logic JS]
-    AppLogic --> UILayer[UI Layer HTML/CSS]
-    AppLogic --> StorageLayer[Browser Storage]
+     PWA --> AppLogic[Application Logic JS]
+     AppLogic --> UILayer[UI Layer HTML/CSS]
+     AppLogic --> SyncLayer[Synchronization Layer]
+     SyncLayer --> StorageLayer[Hybrid Storage]
 
-    StorageLayer --> IndexedDB[IndexedDB: Trips, Catches, Weather]
-    StorageLayer --> LocalStorage[localStorage: Settings, Tackle Box]
+     StorageLayer --> Firebase[(Firebase Cloud)
+     Firestore: Trips, Catches, Weather, Tackle Box
+     Storage: Photos]
+     StorageLayer --> LocalCache[(Local Cache)
+     IndexedDB: Offline Fallback
+     localStorage: Settings]
 
-    AppLogic --> WeatherAPI[Open-Meteo API]
-    AppLogic --> GeoAPI[Nominatim API]
+     SyncLayer --> QueueSystem[Offline Queue System]
+     QueueSystem --> AutoSync[Auto-sync when online]
 
-    subgraph Application
-        PWA
-        AppLogic
-        UILayer
-    end
+     AppLogic --> WeatherAPI[Open-Meteo API]
+     AppLogic --> GeoAPI[Nominatim API]
+     AppLogic --> FirebaseAuth[Firebase Auth]
 
-    subgraph Storage
-        StorageLayer
-        IndexedDB
-        LocalStorage
-    end
+     subgraph Application
+         PWA
+         AppLogic
+         UILayer
+         SyncLayer
+     end
 
-    subgraph "External APIs"
-        WeatherAPI
-        GeoAPI
-    end
+     subgraph "Storage (Cloud-first)"
+         Firebase
+         LocalCache
+     end
+
+     subgraph "External Services"
+         WeatherAPI
+         GeoAPI
+         FirebaseAuth
+         QueueSystem
+     end
 ```
 
 ### 1.3. Core Principles
 
-*   **Client-Centric**: All core logic runs on the client. The application is fully functional without a persistent internet connection, with the exception of fetching new weather or location data.
-*   **Data Privacy by Design**: No user-generated data (trip logs, catches, photos, gear) is ever transmitted to a server. It remains under the user's control within their browser's storage.
-*   **Offline First**: The use of a Service Worker and client-side storage ensures that the application shell and all previously saved user data are accessible offline.
+*   **Cloud-First with Offline Fallback**: Firebase serves as the primary data store with automatic synchronization. All core functionality works offline with local caching and queued operations.
+*   **Data Privacy and Security**: User data is encrypted in transit and at rest. Firebase security rules ensure users can only access their own data. Authentication is required for cloud features.
+*   **Offline First**: The application functions fully offline using local storage. Changes sync automatically when connectivity returns. Service Worker enables PWA functionality.
+*   **Cross-Device Synchronization**: Authenticated users can access their data across multiple devices and browsers.
+*   **Progressive Enhancement**: Core features work without authentication, cloud features enhance the experience for logged-in users.
 
 ### 1.4. External Dependencies
 
-#### APIs
+#### Firebase Services
+*   **Authentication**: Firebase Auth - User authentication with Google OAuth and email/password
+*   **Database**: Cloud Firestore - Primary cloud database for structured data (trips, catches, weather, tackle box)
+*   **Storage**: Firebase Storage - Cloud storage for user-uploaded photos
+*   **Security Rules**: User-scoped data access control
+
+#### Third-Party APIs
 *   **Weather Forecast**: `api.open-meteo.com` - Used to fetch daily weather forecasts for a specific latitude and longitude.
 *   **Geolocation**: `nominatim.openstreetmap.org` - Used for both forward geocoding (searching for a location name) and reverse geocoding (finding a location name from GPS coordinates).
 
@@ -66,11 +86,35 @@ graph TD
 
 ## 2. Data Models
 
-The application uses a combination of `IndexedDB` for structured, relational data and `localStorage` for simpler data structures and user settings. Additionally, it uses a hardcoded data structure for the lunar calendar information.
+The application uses a **cloud-first hybrid storage approach**:
 
-### 2.1. Entity-Relationship Diagram (ERD)
+- **Primary**: Firebase (Firestore for structured data, Storage for files)
+- **Offline Fallback**: IndexedDB for structured data, localStorage for settings
+- **Synchronization**: Automatic sync with conflict resolution and offline queuing
 
-This diagram illustrates the relationships between the main data entities stored in `IndexedDB`.
+The original local storage is maintained as a fallback for offline functionality and data migration.
+
+### 2.1. Firebase Data Models
+
+All user data is now stored in Firebase with user-scoped security rules. The data structure remains the same but is distributed across Firestore collections and Storage buckets.
+
+#### Firestore Collections:
+- **trips**: User fishing trips with location, date, and metadata
+- **fishCaught**: Individual fish catches linked to trips
+- **weatherLogs**: Weather observations linked to trips
+- **tackleItems**: User's fishing gear inventory
+- **gearTypes**: Available gear type categories
+- **userSettings**: User preferences and configuration
+- **photos**: Photo metadata (actual files in Storage)
+
+#### Firebase Storage Structure:
+```
+users/{userId}/photos/{filename}
+```
+
+### 2.2. Local Fallback Data Models
+
+The original IndexedDB and localStorage structures are maintained as offline fallbacks and for data migration.
 
 ```mermaid
 erDiagram
@@ -157,29 +201,20 @@ These entities are stored in `IndexedDB` as it is well-suited for storing large 
 | `waterTemp`     | Number  | The temperature of the water.                                                 | `15`              |
 | `airTemp`       | Number  | The ambient air temperature.                                                  | `18`              |
 
-### 2.3. localStorage Entities
+### 2.3. Local Storage (Fallback & Migration)
 
-These entities are stored in `localStorage`, which is suitable for simpler key-value storage of non-critical or less structured data.
+These entities are maintained in localStorage/IndexedDB for offline functionality and data migration. **Note**: Tackle box data has been migrated to Firebase for cross-device sync.
 
-#### Object: `TackleItem`
-**Storage**: `localStorage`, key: `tacklebox`. Stored as an array of `TackleItem` objects.
+#### Legacy localStorage Entities (Maintained for compatibility):
+- **userLocation**: User's GPS coordinates and display name
+- **theme**: User's light/dark theme preference
+- **migrationComplete_{userId}**: Migration status tracking
+- **syncQueue_{userId}**: Offline operation queue
+- **idMapping_***: Firebase ID to local ID mappings
 
-| Attribute | Type    | Description                               | Example             |
-|-----------|---------|-------------------------------------------|---------------------|
-| `id` (PK) | Integer | Unique identifier (timestamp-based).      | `1678887000000`     |
-| `name`    | String  | The name of the gear item.                | `"Z-Man GrubZ"`     |
-| `brand`   | String  | The brand of the gear.                    | `"Z-Man"`           |
-| `type`    | String  | The type of gear (links to `GearType`).   | `"Lure"`            |
-| `colour`  | String  | The colour of the gear.                   | `"Motor Oil"`       |
-
-#### Object: `GearType`
-**Storage**: `localStorage`, key: `gearTypes`. Stored as an array of strings.
-
-| Value  | Type   | Description           |
-|--------|--------|-----------------------|
-| String | String | A type of fishing gear. |
-
-*Example Value*: `["Lure", "Rod", "Reel", "Line"]`
+#### Migrated to Firebase:
+- **tacklebox** → Firestore `tackleItems` collection
+- **gearTypes** → Firestore `gearTypes` collection
 
 #### Object: `UserLocation`
 **Storage**: `localStorage`, key: `userLocation`. Stored as a single JSON object.
@@ -190,12 +225,32 @@ These entities are stored in `localStorage`, which is suitable for simpler key-v
 | `lon`     | Number | Longitude of the user's location.    | `176.0702`           |
 | `name`    | String | The display name of the location.    | `"Taupo, New Zealand"` |
 
-### 2.4. Application Data
+### 2.4. Synchronization & Offline Support
+
+The application implements a **cloud-first architecture** with robust offline capabilities:
+
+#### Synchronization Features:
+- **Real-time Sync**: Changes sync automatically when online
+- **Offline Queue**: Operations performed offline are queued and executed when connectivity returns
+- **Conflict Resolution**: Last-write-wins strategy for conflicting changes
+- **Cross-device Sync**: Authenticated users access data across all devices
+
+#### Offline Indicators:
+- **Connection Status**: Visual indicators for online/offline state
+- **Sync Status**: Shows pending operations and last sync time
+- **Queue Management**: Displays number of queued operations
+
+#### Data Integrity:
+- **Fallback Storage**: Local IndexedDB/localStorage maintains offline functionality
+- **Migration Support**: One-click migration of existing local data to cloud
+- **Export/Import**: Works with both Firebase and local data sources
+
+### 2.5. Application Data
 
 This data is hardcoded within the application logic and is not stored in browser storage.
 
 #### Object: `MaramatakaPhase`
-**Storage**: Hardcoded in `script.js`. An array of 30 `MaramatakaPhase` objects.
+**Storage**: Hardcoded in application logic. An array of 30 `MaramatakaPhase` objects.
 
 | Attribute       | Type          | Description                                                              | Example                                  |
 |-----------------|---------------|--------------------------------------------------------------------------|------------------------------------------|
@@ -276,15 +331,16 @@ This section details the application's features, breaking them down into individ
 **Behaviors**:
 1.  **Opening**: Accessed by clicking the trip log button in the **Daily Detail Modal**.
 2.  **Display**:
-    *   Lists all trips logged for the selected date.
+    *   Lists all trips logged for the selected date from Firebase.
     *   For each trip, it displays the water body, location, hours fished, companions, and notes.
     *   Each trip card has buttons to "Edit Trip" and "Delete Trip".
     *   Each trip card contains dedicated sections for associated **Weather Logs** and **Fish Catches**, with buttons to add new ones.
 3.  **Interaction**:
     *   Clicking "Log a New Trip" opens the **Trip Details Modal** in "add" mode.
     *   Clicking "Edit Trip" opens the **Trip Details Modal** in "edit" mode, pre-filled with that trip's data.
-    *   Clicking "Delete Trip" prompts for confirmation and then deletes the trip and all its associated weather and fish data from `IndexedDB`.
+    *   Clicking "Delete Trip" prompts for confirmation and then deletes the trip and all its associated weather and fish data from Firebase.
     *   Clicking "Add Weather" or "Add Fish" opens their respective modals.
+    *   **Offline Support**: Operations queue when offline and sync when connection returns.
 
 #### 3.3.2. Trip Details Modal (Add/Edit Trip)
 
@@ -295,8 +351,9 @@ This section details the application's features, breaking them down into individ
 
 **Behaviors**:
 1.  **Data Entry**: User fills in the details for their trip. The "Save" button is disabled until at least one field has content.
-2.  **Saving**: On save, the data is written to the `trips` object store in `IndexedDB`. If it's a new trip, a new record is created. If it's an edit, the existing record is updated.
+2.  **Saving**: On save, the data is written to the `trips` collection in Firebase. If it's a new trip, a new document is created. If it's an edit, the existing document is updated.
 3.  **Closing**: The modal closes upon saving, and the **Trip Log Summary Modal** refreshes to show the new/updated information.
+4.  **Offline Support**: If offline, the operation is queued and executed when connection returns.
 
 #### 3.3.3. Weather Log Modal (Add/Edit Weather)
 
@@ -308,8 +365,9 @@ This section details the application's features, breaking them down into individ
 
 **Behaviors**:
 1.  **Context**: This modal is always associated with a specific trip.
-2.  **Saving**: On save, the weather data is written to the `weather_logs` object store in `IndexedDB`, linked by `tripId`.
+2.  **Saving**: On save, the weather data is written to the `weatherLogs` collection in Firebase, linked by `tripId`.
 3.  **Closing**: The modal closes, and the weather list on the parent trip card is refreshed.
+4.  **Offline Support**: Operations queue when offline and sync when connection returns.
 
 #### 3.3.4. Fish Catch Modal (Add/Edit Fish)
 
@@ -322,10 +380,11 @@ This section details the application's features, breaking them down into individ
 
 **Behaviors**:
 1.  **Context**: Always associated with a specific trip.
-2.  **Gear Selection**: Users can select gear from their pre-defined Tackle Box or enter custom bait/lures.
-3.  **Photo Upload**: Users can attach a photo to the catch. The photo is read by the `FileReader` API and stored as a Base64 string in `IndexedDB`.
-4.  **Saving**: On save, the fish data is written to the `fish_caught` object store in `IndexedDB`, linked by `tripId`.
+2.  **Gear Selection**: Users can select gear from their pre-defined Tackle Box (stored in Firebase) or enter custom bait/lures.
+3.  **Photo Upload**: Users can attach a photo to the catch. Photos are uploaded to Firebase Storage and metadata stored in Firestore.
+4.  **Saving**: On save, the fish data is written to the `fishCaught` collection in Firebase, linked by `tripId`.
 5.  **Closing**: The modal closes, and the fish list on the parent trip card is refreshed. The total fish count for the trip is also updated.
+6.  **Offline Support**: Operations queue when offline and sync when connection returns.
 
 ### 3.4. Tackle Box Management
 
@@ -341,17 +400,19 @@ This section details the application's features, breaking them down into individ
 
 **Behaviors**:
 1.  **Opening**: The user clicks the "Tackle Box" icon in the header to open the modal.
-2.  **Data Storage**: All data is stored in `localStorage`. Gear items are in a `tacklebox` array, and gear types are in a `gearTypes` array.
+2.  **Data Storage**: All data is stored in Firebase for cross-device synchronization. Gear items are in the `tackleItems` collection, and gear types are in the `gearTypes` collection.
 3.  **CRUD for Gear Items**:
-    *   **Create**: Users click "Add New Gear", fill out the form, and save. A new object is added to the `tacklebox` array.
+    *   **Create**: Users click "Add New Gear", fill out the form, and save. A new document is added to the `tackleItems` collection.
     *   **Read**: Users select a gear item from the dropdown to view its details in the form.
-    *   **Update**: After selecting an item, users can modify its details and save the changes. The corresponding object in the `tacklebox` array is updated.
-    *   **Delete**: After selecting an item, a "Delete" button appears. Clicking it (with confirmation) removes the item from the `tacklebox` array.
+    *   **Update**: After selecting an item, users can modify its details and save the changes. The corresponding document in the `tackleItems` collection is updated.
+    *   **Delete**: After selecting an item, a "Delete" button appears. Clicking it (with confirmation) removes the document from the `tackleItems` collection.
 4.  **CRUD for Gear Types**:
-    *   **Create**: Users click "Add New Type", provide a name, and save. The new name is added to the `gearTypes` array.
+    *   **Create**: Users click "Add New Type", provide a name, and save. A new document is added to the `gearTypes` collection.
     *   **Read**: Users select a type from the dropdown to view it in the form.
-    *   **Update**: After selecting a type, users can rename it. This action updates the string in the `gearTypes` array AND updates the `type` property of all associated gear items in the `tacklebox` array.
-    *   **Delete**: After selecting a type, a "Delete" button appears. Clicking it (with confirmation) removes the type from the `gearTypes` array AND removes all gear items of that type from the `tacklebox` array.
+    *   **Update**: After selecting a type, users can rename it. This action updates the document in the `gearTypes` collection AND updates the `type` property of all associated gear items.
+    *   **Delete**: After selecting a type, a "Delete" button appears. Clicking it (with confirmation) removes the document from the `gearTypes` collection AND removes all gear items of that type.
+5.  **Cross-Device Sync**: All tackle box changes sync automatically across authenticated user's devices.
+6.  **Offline Support**: Operations queue when offline and sync when connection returns.
 
 ### 3.5. Analytics Dashboard
 
@@ -368,7 +429,7 @@ This section details the application's features, breaking them down into individ
 
 **Behaviors**:
 1.  **Opening**: The user clicks the "Analytics" icon in the header. If no fish have been logged, an alert is shown and the modal does not open.
-2.  **Data Aggregation**: On open, the application reads all data from the `trips`, `fish_caught`, and `weather_logs` object stores in `IndexedDB`.
+2.  **Data Aggregation**: On open, the application reads all data from the `trips`, `fishCaught`, and `weatherLogs` collections in Firebase.
 3.  **Chart Rendering**: The aggregated data is used to render several charts using `Chart.js`:
     *   **Performance by Moon Phase**: A bar chart showing the number of fish caught during each Maramataka phase.
     *   **Catch Breakdown (Pies/Bars)**: Charts showing the distribution of catches by species, location, gear, and weather conditions.
@@ -377,6 +438,7 @@ This section details the application's features, breaking them down into individ
     *   **General Insights**: Text-based insights are generated, such as the most successful moon phase or weather condition.
     *   **Personal Bests**: Displays the heaviest fish, longest fish, and most fish caught in a single trip.
     *   **Top Gear Performance**: An interactive section where users can filter by a target species and gear type to see a ranked list of their most successful individual gear items.
+5.  **Cross-Device Analytics**: Analytics reflect data from all user's devices since data is stored in Firebase.
 
 ### 3.6. Data Management (Import/Export)
 
@@ -392,11 +454,11 @@ This section details the application's features, breaking them down into individ
 1.  **Opening**: Accessed via the "Settings" icon in the header.
 2.  **Export**:
     *   User clicks an export button.
-    *   The application reads all data from `IndexedDB` (`trips`, `fish_caught`, `weather_logs`) and `localStorage` (`tacklebox`, `gearTypes`).
-    *   For exports including photos, the Base64 photo data is extracted.
+    *   The application reads all data from Firebase collections (`trips`, `fishCaught`, `weatherLogs`, `tackleItems`) and local cache.
+    *   For exports including photos, Firebase Storage URLs are included (photos themselves are not downloaded for export).
     *   The data is packaged into a `.zip` archive using `JSZip`.
-        *   For JSON export, the zip contains `data.json` and a `photos/` folder.
-        *   For CSV export, the zip contains `trips.csv`, `fish.csv`, `weather.csv`, and a `photos/` folder. `PapaParse` is used for CSV creation.
+        *   For JSON export, the zip contains `data.json` with Firebase data structure.
+        *   For CSV export, the zip contains `trips.csv`, `fish.csv`, `weather.csv`, and `tackle.csv`. `PapaParse` is used for CSV creation.
     *   The zip file is then triggered for download in the user's browser.
 3.  **Import**:
     *   User clicks the "Import Data" button and selects a `.zip` or `.json` file.
@@ -404,30 +466,34 @@ This section details the application's features, breaking them down into individ
     *   If confirmed, the application logic proceeds:
         *   The selected file is read. If it's a zip, it's unzipped.
         *   The contained data (`data.json` or CSV files) is parsed.
-        *   The application completely clears all existing data from the relevant `IndexedDB` object stores and `localStorage` keys.
-        *   The parsed data is then inserted into the now-empty stores.
+        *   The application completely clears all existing data from Firebase collections and local cache.
+        *   The parsed data is then inserted into Firebase and local cache.
         *   The page reloads to reflect the newly imported state.
+4.  **Migration**: One-click migration of existing local data to Firebase for new users.
 
-### 3.7. Photo Gallery
+### 3.7. Photo Management
 
-**Purpose**: To provide a visually appealing way for users to browse all photos from their catches.
+**Purpose**: To provide secure photo upload, storage, and gallery browsing with Firebase integration.
 
 **UI Components**:
-*   Gallery Button (in main header)
-*   Modal container (`#galleryModal`)
-*   A grid for displaying photos (`#gallery-grid`)
-*   Sort button (`#gallery-sort-btn`)
-*   Catch Detail Modal (`#catchDetailModal`) for viewing a single photo and its details.
+*   Photos Button (in main header) - Opens unified photo management modal
+*   Photo Upload Section - File selection, title/notes input, upload progress
+*   Photo Gallery - Grid display of user's uploaded photos
+*   Photo Detail Modal - Full-size photo viewing with metadata
 
 **Behaviors**:
-1.  **Opening**: The user clicks the "Gallery" icon in the header.
-2.  **Data Fetching**: The application fetches all `FishCatch` records that contain a `photo`.
-3.  **Display**:
-    *   Photos are grouped by month and year (e.g., "August 2023").
-    *   Within each month, photos are displayed in a grid.
-    *   Hovering over a photo shows an overlay with the fish species name.
-4.  **Sorting**: The user can toggle sorting the month groups between newest-first (descending) and oldest-first (ascending).
-5.  **Interaction**: Clicking on any photo in the grid opens the **Catch Detail Modal**. This modal shows a larger version of the photo along with key details about the catch (species, size, date, location, etc.).
+1.  **Opening**: The user clicks the "Photos" icon in the header to access upload and gallery.
+2.  **Photo Upload**:
+    *   Users select image files with validation (type, size limits)
+    *   Enter title and optional notes
+    *   Photos uploaded to Firebase Storage under `users/{userId}/photos/`
+    *   Metadata stored in Firestore with user isolation
+3.  **Gallery Display**:
+    *   Fetches photos from Firestore for authenticated user
+    *   Displays as responsive grid with title, notes, and upload date
+    *   Lazy loading for performance
+4.  **Security**: All photos are user-scoped with Firebase security rules
+5.  **Offline**: Uploads queue when offline, sync when connection returns
 
 ### 3.8. Catch Search
 
