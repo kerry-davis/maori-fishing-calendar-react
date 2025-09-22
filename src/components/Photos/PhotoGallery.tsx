@@ -1,61 +1,103 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { firestore } from '../../services/firebase';
-import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { firestore, storage } from '../../services/firebase';
+import { collection, query, where, orderBy, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { ref, deleteObject } from 'firebase/storage';
 
 interface Photo {
   id: string;
   title: string;
   notes: string;
   downloadURL: string;
+  storagePath: string;
   createdAt: any; // Firestore timestamp
 }
 
-export const PhotoGallery: React.FC = () => {
+interface PhotoGalleryProps {
+  refreshTrigger?: number;
+  onPhotoDeleted?: () => void;
+}
+
+export const PhotoGallery: React.FC<PhotoGalleryProps> = ({ refreshTrigger, onPhotoDeleted }) => {
   const { user } = useAuth();
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const fetchPhotos = async () => {
+    if (!user) {
+      setPhotos([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const q = query(
+        collection(firestore, 'photos'),
+        where('userId', '==', user.uid),
+        orderBy('createdAt', 'desc')
+      );
+
+      const querySnapshot = await getDocs(q);
+      const fetchedPhotos: Photo[] = [];
+
+      querySnapshot.forEach((doc) => {
+        fetchedPhotos.push({
+          id: doc.id,
+          ...doc.data(),
+        } as Photo);
+      });
+
+      setPhotos(fetchedPhotos);
+    } catch (err) {
+      console.error('Failed to fetch photos:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load photos.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchPhotos = async () => {
-      if (!user) {
-        setPhotos([]);
-        setLoading(false);
-        return;
-      }
-
-      setLoading(true);
-      setError(null);
-
-      try {
-        const q = query(
-          collection(firestore, 'photos'),
-          where('userId', '==', user.uid),
-          orderBy('createdAt', 'desc')
-        );
-
-        const querySnapshot = await getDocs(q);
-        const fetchedPhotos: Photo[] = [];
-
-        querySnapshot.forEach((doc) => {
-          fetchedPhotos.push({
-            id: doc.id,
-            ...doc.data(),
-          } as Photo);
-        });
-
-        setPhotos(fetchedPhotos);
-      } catch (err) {
-        console.error('Failed to fetch photos:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load photos.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchPhotos();
   }, [user]);
+
+  useEffect(() => {
+    if (refreshTrigger !== undefined) {
+      fetchPhotos();
+    }
+  }, [refreshTrigger]);
+
+  const handleDeletePhoto = async (photo: Photo) => {
+    if (!user || !window.confirm(`Are you sure you want to delete "${photo.title}"?`)) {
+      return;
+    }
+
+    setDeletingId(photo.id);
+
+    try {
+      // Delete from Firestore
+      await deleteDoc(doc(firestore, 'photos', photo.id));
+
+      // Delete from Storage
+      const storageRef = ref(storage, photo.storagePath);
+      await deleteObject(storageRef);
+
+      // Remove from local state
+      setPhotos(prev => prev.filter(p => p.id !== photo.id));
+
+      // Notify parent
+      onPhotoDeleted?.();
+    } catch (err) {
+      console.error('Failed to delete photo:', err);
+      setError(err instanceof Error ? err.message : 'Failed to delete photo.');
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   if (!user) {
     return (
@@ -96,13 +138,32 @@ export const PhotoGallery: React.FC = () => {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         {photos.map((photo) => (
-          <div key={photo.id} className="bg-white rounded-lg shadow-md overflow-hidden">
+          <div key={photo.id} className="bg-white rounded-lg shadow-md overflow-hidden group relative">
             <img
               src={photo.downloadURL}
               alt={photo.title}
               className="w-full h-48 object-cover"
               loading="lazy"
+              onError={(e) => {
+                console.error('Failed to load image:', photo.downloadURL);
+                e.currentTarget.src = '/placeholder-image.png'; // Fallback image
+              }}
             />
+
+            {/* Delete button - appears on hover */}
+            <button
+              onClick={() => handleDeletePhoto(photo)}
+              disabled={deletingId === photo.id}
+              className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-red-600 disabled:opacity-50"
+              title="Delete photo"
+            >
+              {deletingId === photo.id ? (
+                <i className="fas fa-spinner fa-spin text-sm"></i>
+              ) : (
+                <i className="fas fa-trash text-sm"></i>
+              )}
+            </button>
+
             <div className="p-4">
               <h3 className="font-semibold text-lg mb-2">{photo.title}</h3>
               {photo.notes && (
