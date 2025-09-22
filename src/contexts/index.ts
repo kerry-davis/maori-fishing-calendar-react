@@ -31,7 +31,8 @@ export {
 // Auth Context
 export {
   AuthProvider,
-  useAuth
+  useAuth,
+  AuthContext
 } from './AuthContext';
 
 // Combined provider component for easy setup
@@ -53,21 +54,25 @@ interface AppProvidersProps {
  */
 export function AppProviders({ children }: AppProvidersProps): React.ReactElement {
   return React.createElement(
-    ThemeProvider,
+    AuthProvider,
     null,
     React.createElement(
-      LocationProvider,
+      ThemeProvider,
       null,
       React.createElement(
-        DatabaseProvider,
+        LocationProvider,
         null,
         React.createElement(
-          PWAProvider,
+          DatabaseProvider,
           null,
           React.createElement(
-            AuthProvider,
+            PWAProvider,
             null,
-            children
+            React.createElement(
+              AuthProvider,
+              null,
+              children
+            )
           )
         )
       )
