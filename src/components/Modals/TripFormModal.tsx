@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from "react";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "./Modal";
-import { useIndexedDB } from "../../hooks/useIndexedDB";
+import { useDatabaseService } from "../../contexts/DatabaseContext";
 import type { Trip } from "../../types";
 
 export interface TripFormModalProps {
@@ -23,7 +23,7 @@ export const TripFormModal: React.FC<TripFormModalProps> = ({
   selectedDate,
   onTripCreated,
 }) => {
-  const db = useIndexedDB();
+  const db = useDatabaseService();
   const [formData, setFormData] = useState({
     water: "",
     location: "",
@@ -98,7 +98,7 @@ export const TripFormModal: React.FC<TripFormModalProps> = ({
         notes: formData.notes.trim(),
       };
 
-      const tripId = await db.trips.create(tripData);
+      const tripId = await db.createTrip(tripData);
 
       const newTrip: Trip = {
         id: tripId,

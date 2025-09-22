@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "./Modal";
-import { useIndexedDB } from "../../hooks/useIndexedDB";
+import { useDatabaseService } from "../../contexts/DatabaseContext";
 import { WeatherLogModal } from "./WeatherLogModal";
 import { FishCatchModal } from "./FishCatchModal";
 import type { Trip, WeatherLog, FishCaught, DateModalProps } from "../../types";
@@ -35,7 +35,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
   const [selectedTripId, setSelectedTripId] = useState<number | null>(null);
   const [editingWeatherId, setEditingWeatherId] = useState<number | null>(null);
   const [editingFishId, setEditingFishId] = useState<number | null>(null);
-  const db = useIndexedDB();
+  const db = useDatabaseService();
 
   // Format date for display and database queries
   const formatDateForDisplay = (date: Date): string => {
@@ -54,14 +54,14 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
 
   // Load trips for the selected date
   const loadTrips = useCallback(async () => {
-    if (!isOpen || !db.isReady || !selectedDate) return;
+    if (!isOpen || !selectedDate) return;
 
     setIsLoading(true);
     setError(null);
 
     try {
       const dateStr = formatDateForDB(selectedDate);
-      const tripsData = await db.trips.getByDate(dateStr);
+      const tripsData = await db.getTripsByDate(dateStr);
       setTrips(tripsData);
     } catch (err) {
       console.error("Error loading trips:", err);
@@ -69,23 +69,23 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [isOpen, selectedDate, db.isReady]);
+  }, [isOpen, selectedDate]);
 
   // Load all fish catches for the selected date
   const loadFishCatches = useCallback(async () => {
-    if (!isOpen || !db.isReady || !selectedDate) return;
+    if (!isOpen || !selectedDate) return;
 
     try {
-      // Get all fish catches from database
-      const allFishCatches = await db.fish.getAll();
+      // Get all fish catches - the Firebase service will handle filtering by user
+      const allFishCatches = await db.getAllFishCaught();
 
       // Filter fish catches for trips that exist on the selected date
       const dateStr = formatDateForDB(selectedDate);
-      const tripsOnDate = await db.trips.getByDate(dateStr);
+      const tripsOnDate = await db.getTripsByDate(dateStr);
 
       // Get fish catches only for trips on the selected date
-      const relevantFishCatches = allFishCatches.filter(fish =>
-        tripsOnDate.some(trip => trip.id === fish.tripId)
+      const relevantFishCatches = allFishCatches.filter((fish: FishCaught) =>
+        tripsOnDate.some((trip: Trip) => trip.id === fish.tripId)
       );
 
       setFishCatches(relevantFishCatches);
@@ -93,25 +93,25 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
       console.error("Error loading fish catches:", err);
       // Don't set error state for fish catches as it's not critical
     }
-  }, [isOpen, selectedDate, db.isReady]);
+  }, [isOpen, selectedDate]);
 
   // Load all weather logs for the selected date
   const loadWeatherLogs = useCallback(async () => {
-    if (!isOpen || !db.isReady || !selectedDate) return;
+    if (!isOpen || !selectedDate) return;
 
     try {
       // Get all weather logs from database
-      const allWeatherLogs = await db.weather.getAll();
+      const allWeatherLogs = await db.getAllWeatherLogs();
       console.log('All weather logs from database:', allWeatherLogs);
 
       // Filter weather logs for trips that exist on the selected date
       const dateStr = formatDateForDB(selectedDate);
-      const tripsOnDate = await db.trips.getByDate(dateStr);
+      const tripsOnDate = await db.getTripsByDate(dateStr);
       console.log('Trips on selected date:', tripsOnDate);
 
       // Get weather logs only for trips on the selected date
-      const relevantWeatherLogs = allWeatherLogs.filter(log =>
-        tripsOnDate.some(trip => trip.id === log.tripId)
+      const relevantWeatherLogs = allWeatherLogs.filter((log: WeatherLog) =>
+        tripsOnDate.some((trip: Trip) => trip.id === log.tripId)
       );
 
       console.log('Relevant weather logs for date:', relevantWeatherLogs);
@@ -120,7 +120,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
       console.error("Error loading weather logs:", err);
       // Don't set error state for weather logs as it's not critical
     }
-  }, [isOpen, selectedDate, db.isReady]);
+  }, [isOpen, selectedDate]);
 
   // Load trips when modal opens or date changes
   useEffect(() => {
@@ -129,12 +129,12 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
 
   // Also reload trips when modal reopens (for data refresh)
   useEffect(() => {
-    if (isOpen && db.isReady && selectedDate) {
+    if (isOpen && selectedDate) {
       loadTrips();
       loadFishCatches();
       loadWeatherLogs();
     }
-  }, [isOpen, db.isReady, selectedDate, loadFishCatches, loadWeatherLogs]);
+  }, [isOpen, selectedDate, loadFishCatches, loadWeatherLogs]);
 
   // Handle trip deletion
   const handleDeleteTrip = async (tripId: number) => {
@@ -147,7 +147,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
     }
 
     try {
-      await db.trips.delete(tripId);
+      await db.deleteTrip(tripId);
       // Reload trips after deletion
       await loadTrips();
     } catch (err) {
@@ -235,7 +235,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
     }
 
     try {
-      await db.fish.delete(fishId);
+      await db.deleteFishCaught(fishId);
       // Reload fish catches from database to ensure state consistency
       await loadFishCatches();
     } catch (err) {
@@ -262,7 +262,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
     }
 
     try {
-      await db.weather.delete(weatherId);
+      await db.deleteWeatherLog(weatherId);
       // Reload weather logs from database to ensure state consistency
       await loadWeatherLogs();
     } catch (err) {
