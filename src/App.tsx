@@ -117,25 +117,6 @@ function AppContent() {
     setCurrentModal("tripDetails");
   }, []);
 
-  const _handleEditWeather = useCallback(async (weatherId: number) => {
-    // Store the weather ID for editing and open the weather modal in edit mode
-    setEditingWeatherId(weatherId);
-
-    // TODO: We need the tripId to pass to WeatherLogModal
-    // For now, we'll need to look up the weather log to get the tripId
-    if (db?.isReady) {
-      try {
-        const weatherLog = await db.weather.getById(weatherId);
-        if (weatherLog) {
-          setEditingTripId(weatherLog.tripId); // Store tripId for the modal
-        }
-      } catch (err) {
-        console.error("Error loading weather log for editing:", err);
-      }
-    }
-
-    setCurrentModal("weatherLog");
-  }, [db?.isReady]);
 
   const handleTripCreated = useCallback((trip: any) => {
     console.log('App.tsx: handleTripCreated called with trip:', trip);
