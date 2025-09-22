@@ -75,7 +75,19 @@ export class FirebaseDataService {
   async createTrip(tripData: Omit<Trip, "id">): Promise<number> {
     if (!this.isReady()) throw new Error('Service not initialized');
 
-    const tripWithUser = { ...tripData, userId: this.userId };
+    // Data integrity checks
+    this.validateTripData(tripData);
+
+    // Sanitize string inputs
+    const sanitizedTripData = {
+      ...tripData,
+      water: this.sanitizeString(tripData.water),
+      location: this.sanitizeString(tripData.location),
+      companions: tripData.companions ? this.sanitizeString(tripData.companions) : tripData.companions,
+      notes: tripData.notes ? this.sanitizeString(tripData.notes) : tripData.notes,
+    };
+
+    const tripWithUser = { ...sanitizedTripData, userId: this.userId };
 
     if (this.isOnline) {
       try {
@@ -279,6 +291,9 @@ export class FirebaseDataService {
   async createWeatherLog(weatherData: Omit<WeatherLog, "id">): Promise<number> {
     if (!this.isReady()) throw new Error('Service not initialized');
 
+    // Data integrity checks
+    this.validateWeatherLogData(weatherData);
+
     const weatherWithUser = { ...weatherData, userId: this.userId };
 
     if (this.isOnline) {
@@ -420,7 +435,21 @@ export class FirebaseDataService {
   async createFishCaught(fishData: Omit<FishCaught, "id">): Promise<number> {
     if (!this.isReady()) throw new Error('Service not initialized');
 
-    const fishWithUser = { ...fishData, userId: this.userId };
+    // Data integrity checks
+    this.validateFishCatchData(fishData);
+
+    // Sanitize string inputs
+    const sanitizedFishData = {
+      ...fishData,
+      species: this.sanitizeString(fishData.species),
+      gear: fishData.gear ? fishData.gear.map(g => this.sanitizeString(g)) : fishData.gear,
+      length: fishData.length ? this.sanitizeString(fishData.length) : fishData.length,
+      weight: fishData.weight ? this.sanitizeString(fishData.weight) : fishData.weight,
+      time: fishData.time ? this.sanitizeString(fishData.time) : fishData.time,
+      details: fishData.details ? this.sanitizeString(fishData.details) : fishData.details,
+    };
+
+    const fishWithUser = { ...sanitizedFishData, userId: this.userId };
 
     if (this.isOnline) {
       try {
@@ -714,6 +743,182 @@ export class FirebaseDataService {
     };
   }
 
+  // TACKLE BOX METHODS
+
+  /**
+   * Get all tackle items from Firestore
+   */
+  async getAllTackleItems(): Promise<any[]> {
+    if (!this.isReady()) {
+      throw new Error('Service not initialized - user must be authenticated');
+    }
+
+    try {
+      const q = query(
+        collection(firestore, 'tackleItems'),
+        where('userId', '==', this.userId)
+      );
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (error) {
+      console.error('Error fetching tackle items:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a new tackle item in Firestore
+   */
+  async createTackleItem(item: any): Promise<string> {
+    if (!this.isReady()) {
+      throw new Error('Service not initialized - user must be authenticated');
+    }
+
+    // Data integrity checks
+    this.validateTackleItemData(item);
+
+    // Sanitize string inputs
+    const sanitizedItem = {
+      ...item,
+      name: this.sanitizeString(item.name),
+      type: this.sanitizeString(item.type),
+      brand: item.brand ? this.sanitizeString(item.brand) : item.brand,
+      colour: item.colour ? this.sanitizeString(item.colour) : item.colour,
+    };
+
+    try {
+      const itemData = {
+        ...sanitizedItem,
+        userId: this.userId,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+
+      const docRef = await addDoc(collection(firestore, 'tackleItems'), itemData);
+      return docRef.id;
+    } catch (error) {
+      console.error('Error creating tackle item:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update a tackle item in Firestore
+   */
+  async updateTackleItem(id: string, updates: any): Promise<void> {
+    if (!this.isReady()) {
+      throw new Error('Service not initialized - user must be authenticated');
+    }
+
+    try {
+      const itemRef = doc(firestore, 'tackleItems', id);
+      await updateDoc(itemRef, {
+        ...updates,
+        updatedAt: serverTimestamp()
+      });
+    } catch (error) {
+      console.error('Error updating tackle item:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a tackle item from Firestore
+   */
+  async deleteTackleItem(id: string): Promise<void> {
+    if (!this.isReady()) {
+      throw new Error('Service not initialized - user must be authenticated');
+    }
+
+    try {
+      await deleteDoc(doc(firestore, 'tackleItems', id));
+    } catch (error) {
+      console.error('Error deleting tackle item:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all gear types from Firestore
+   */
+  async getAllGearTypes(): Promise<string[]> {
+    if (!this.isReady()) {
+      throw new Error('Service not initialized - user must be authenticated');
+    }
+
+    try {
+      const q = query(
+        collection(firestore, 'gearTypes'),
+        where('userId', '==', this.userId)
+      );
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map(doc => doc.data().name);
+    } catch (error) {
+      console.error('Error fetching gear types:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a new gear type in Firestore
+   */
+  async createGearType(name: string): Promise<string> {
+    if (!this.isReady()) {
+      throw new Error('Service not initialized - user must be authenticated');
+    }
+
+    try {
+      const typeData = {
+        name,
+        userId: this.userId,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+
+      const docRef = await addDoc(collection(firestore, 'gearTypes'), typeData);
+      return docRef.id;
+    } catch (error) {
+      console.error('Error creating gear type:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update a gear type in Firestore
+   */
+  async updateGearType(id: string, newName: string): Promise<void> {
+    if (!this.isReady()) {
+      throw new Error('Service not initialized - user must be authenticated');
+    }
+
+    try {
+      const typeRef = doc(firestore, 'gearTypes', id);
+      await updateDoc(typeRef, {
+        name: newName,
+        updatedAt: serverTimestamp()
+      });
+    } catch (error) {
+      console.error('Error updating gear type:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a gear type from Firestore
+   */
+  async deleteGearType(id: string): Promise<void> {
+    if (!this.isReady()) {
+      throw new Error('Service not initialized - user must be authenticated');
+    }
+
+    try {
+      await deleteDoc(doc(firestore, 'gearTypes', id));
+    } catch (error) {
+      console.error('Error deleting gear type:', error);
+      throw error;
+    }
+  }
+
   // DATA MIGRATION METHODS
 
   /**
@@ -898,18 +1103,6 @@ export class FirebaseDataService {
     }
   }
 
-  private async createTackleItem(item: any): Promise<void> {
-    // Use the Firebase tackle box hook to create items
-    // This is a simplified version - in practice we'd need to integrate with the hook
-    const itemData = {
-      name: item.name,
-      type: item.type,
-      userId: this.userId,
-      createdAt: serverTimestamp()
-    };
-
-    await addDoc(collection(firestore, 'tackleItems'), itemData);
-  }
 
   private async markMigrationComplete(): Promise<void> {
     try {
@@ -925,6 +1118,129 @@ export class FirebaseDataService {
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
+  }
+
+  // DATA INTEGRITY VALIDATION METHODS
+
+  /**
+   * Validate trip data before saving
+   */
+  private validateTripData(tripData: Omit<Trip, "id">): void {
+    if (!tripData.date || typeof tripData.date !== 'string') {
+      throw new Error('Trip date is required and must be a string');
+    }
+
+    // Validate date format (YYYY-MM-DD)
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(tripData.date)) {
+      throw new Error('Trip date must be in YYYY-MM-DD format');
+    }
+
+    if (!tripData.water || typeof tripData.water !== 'string' || tripData.water.trim().length === 0) {
+      throw new Error('Trip water/body is required');
+    }
+
+    if (!tripData.location || typeof tripData.location !== 'string' || tripData.location.trim().length === 0) {
+      throw new Error('Trip location is required');
+    }
+
+    if (tripData.hours !== undefined && (typeof tripData.hours !== 'number' || tripData.hours < 0)) {
+      throw new Error('Trip hours must be a positive number');
+    }
+
+    // Sanitize string fields
+    if (tripData.companions && typeof tripData.companions !== 'string') {
+      throw new Error('Trip companions must be a string');
+    }
+
+    if (tripData.notes && typeof tripData.notes !== 'string') {
+      throw new Error('Trip notes must be a string');
+    }
+  }
+
+  /**
+   * Validate fish catch data before saving
+   */
+  private validateFishCatchData(fishData: Omit<FishCaught, "id">): void {
+    if (!fishData.tripId || typeof fishData.tripId !== 'number' || fishData.tripId <= 0) {
+      throw new Error('Valid trip ID is required for fish catch');
+    }
+
+    if (!fishData.species || typeof fishData.species !== 'string' || fishData.species.trim().length === 0) {
+      throw new Error('Fish species is required');
+    }
+
+    if (fishData.gear && !Array.isArray(fishData.gear)) {
+      throw new Error('Fish gear must be an array of strings');
+    }
+
+    if (fishData.length && typeof fishData.length !== 'string') {
+      throw new Error('Fish length must be a string');
+    }
+
+    if (fishData.weight && typeof fishData.weight !== 'string') {
+      throw new Error('Fish weight must be a string');
+    }
+
+    if (fishData.time && typeof fishData.time !== 'string') {
+      throw new Error('Fish catch time must be a string');
+    }
+
+    if (fishData.details && typeof fishData.details !== 'string') {
+      throw new Error('Fish details must be a string');
+    }
+  }
+
+  /**
+   * Validate weather log data before saving
+   */
+  private validateWeatherLogData(weatherData: Omit<WeatherLog, "id">): void {
+    if (!weatherData.tripId || typeof weatherData.tripId !== 'number' || weatherData.tripId <= 0) {
+      throw new Error('Valid trip ID is required for weather log');
+    }
+
+    if (!weatherData.timeOfDay || typeof weatherData.timeOfDay !== 'string') {
+      throw new Error('Time of day is required for weather log');
+    }
+
+    if (weatherData.waterTemp !== undefined && typeof weatherData.waterTemp !== 'number') {
+      throw new Error('Water temperature must be a number');
+    }
+
+    if (weatherData.airTemp !== undefined && typeof weatherData.airTemp !== 'number') {
+      throw new Error('Air temperature must be a number');
+    }
+  }
+
+  /**
+   * Validate tackle item data before saving
+   */
+  private validateTackleItemData(item: any): void {
+    if (!item.name || typeof item.name !== 'string' || item.name.trim().length === 0) {
+      throw new Error('Tackle item name is required');
+    }
+
+    if (!item.type || typeof item.type !== 'string' || item.type.trim().length === 0) {
+      throw new Error('Tackle item type is required');
+    }
+
+    // Optional fields validation
+    if (item.brand && typeof item.brand !== 'string') {
+      throw new Error('Tackle item brand must be a string');
+    }
+
+    if (item.colour && typeof item.colour !== 'string') {
+      throw new Error('Tackle item colour must be a string');
+    }
+  }
+
+  /**
+   * Sanitize string input to prevent injection attacks
+   */
+  private sanitizeString(input: string): string {
+    if (typeof input !== 'string') return '';
+    // Remove potentially dangerous characters and trim
+    return input.replace(/[<>\"'&]/g, '').trim();
   }
 }
 
