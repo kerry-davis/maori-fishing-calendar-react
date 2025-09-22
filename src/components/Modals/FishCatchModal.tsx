@@ -1,7 +1,10 @@
 import React, { useState, useCallback } from "react";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "./Modal";
 import { useDatabaseService } from "../../contexts/DatabaseContext";
+import { useAuth } from "../../contexts/AuthContext";
 import { GearSelectionModal } from "./GearSelectionModal";
+import { storage } from "../../services/firebase";
+import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import type { FishCaught } from "../../types";
 
 export interface FishCatchModalProps {
@@ -28,6 +31,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
   onFishCaught,
 }) => {
   const db = useDatabaseService();
+  const { user } = useAuth();
   const [formData, setFormData] = useState({
     species: "",
     length: "",
@@ -36,10 +40,12 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
     gear: [] as string[],
     details: "",
     photo: "",
+    photoPath: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showGearModal, setShowGearModal] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const isEditing = fishId !== undefined;
 
   // Load existing fish data when editing
@@ -57,6 +63,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
           gear: fish.gear,
           details: fish.details,
           photo: fish.photo || "",
+          photoPath: "",
         });
       } else {
         setError('Fish catch not found');
@@ -82,6 +89,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
           gear: [],
           details: "",
           photo: "",
+          photoPath: "",
         });
       }
       setError(null);
@@ -167,15 +175,49 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
     }
   };
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const base64 = event.target?.result as string;
-        handleInputChange("photo", base64);
-      };
-      reader.readAsDataURL(file);
+    if (!file || !user) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      setError('Please select a valid image file.');
+      return;
+    }
+
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      setError('File size must be less than 10MB.');
+      return;
+    }
+
+    setUploadingPhoto(true);
+    setError(null);
+
+    try {
+      // Create storage reference: users/{userId}/catches/{catchId}/{filename}
+      // For new catches, we'll use a temporary ID, for edits we'll use the existing catch ID
+      const catchId = fishId || `temp_${Date.now()}`;
+      const storagePath = `users/${user.uid}/catches/${catchId}/${file.name}`;
+      const storageRef = ref(storage, storagePath);
+
+      // Upload file
+      await uploadBytes(storageRef, file);
+
+      // Get download URL
+      const downloadURL = await getDownloadURL(storageRef);
+
+      // Update form data with the download URL
+      handleInputChange("photo", downloadURL);
+
+      // Store the storage path for potential cleanup
+      handleInputChange("photoPath", storagePath);
+
+    } catch (err) {
+      console.error('Photo upload failed:', err);
+      setError('Failed to upload photo. Please try again.');
+    } finally {
+      setUploadingPhoto(false);
     }
   };
 
@@ -323,7 +365,18 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                     />
                     <button
                       type="button"
-                      onClick={() => handleInputChange("photo", "")}
+                      onClick={async () => {
+                        if (formData.photoPath && user) {
+                          try {
+                            const storageRef = ref(storage, formData.photoPath);
+                            await deleteObject(storageRef);
+                          } catch (err) {
+                            console.warn('Failed to delete photo from storage:', err);
+                          }
+                        }
+                        handleInputChange("photo", "");
+                        handleInputChange("photoPath", "");
+                      }}
                       className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs font-medium transition-colors"
                     >
                       Delete Photo
@@ -367,7 +420,18 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                     </span>
                     <button
                       type="button"
-                      onClick={() => handleInputChange("photo", "")}
+                      onClick={async () => {
+                        if (formData.photoPath && user) {
+                          try {
+                            const storageRef = ref(storage, formData.photoPath);
+                            await deleteObject(storageRef);
+                          } catch (err) {
+                            console.warn('Failed to delete photo from storage:', err);
+                          }
+                        }
+                        handleInputChange("photo", "");
+                        handleInputChange("photoPath", "");
+                      }}
                       className="text-red-500 hover:text-red-700 text-sm"
                     >
                       <i className="fas fa-times"></i> Remove
