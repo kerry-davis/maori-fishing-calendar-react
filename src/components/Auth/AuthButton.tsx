@@ -3,7 +3,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { LoginModal } from './LoginModal';
 
 export const AuthButton: React.FC = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, isFirebaseConfigured } = useAuth();
   const [showLoginModal, setShowLoginModal] = useState(false);
 
   const handleLogout = async () => {
@@ -35,6 +35,19 @@ export const AuthButton: React.FC = () => {
           onClose={() => setShowLoginModal(false)}
         />
       </>
+    );
+  }
+
+  if (!isFirebaseConfigured) {
+    return (
+      <div className="flex items-center gap-2">
+        <div className="bg-yellow-200 dark:bg-yellow-800 text-yellow-800 dark:text-yellow-200 rounded-full w-10 h-10 flex items-center justify-center shadow-md">
+          <i className="fas fa-exclamation-triangle text-yellow-800 dark:text-yellow-200"></i>
+        </div>
+        <div className="hidden md:block text-sm text-gray-600 dark:text-gray-400">
+          Auth not configured
+        </div>
+      </div>
     );
   }
 
