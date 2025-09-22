@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from "react";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "./Modal";
-import { useIndexedDB } from "../../hooks/useIndexedDB";
+import { useDatabaseService } from "../../contexts/DatabaseContext";
 import type { WeatherLog } from "../../types";
 
 export interface WeatherLogModalProps {
@@ -25,7 +25,7 @@ export const WeatherLogModal: React.FC<WeatherLogModalProps> = ({
   weatherId,
   onWeatherLogged,
 }) => {
-  const db = useIndexedDB();
+  const db = useDatabaseService();
   const [formData, setFormData] = useState({
     timeOfDay: "AM",
     sky: "",
@@ -45,7 +45,7 @@ export const WeatherLogModal: React.FC<WeatherLogModalProps> = ({
     setError(null);
 
     try {
-      const weather = await db.weather.getById(id);
+      const weather = await db.getWeatherLogById(id);
       if (weather) {
         setFormData({
           timeOfDay: weather.timeOfDay,
@@ -128,7 +128,7 @@ export const WeatherLogModal: React.FC<WeatherLogModalProps> = ({
 
       if (isEditing && weatherId) {
         // Update existing weather log
-        await db.weather.update({
+        await db.updateWeatherLog({
           id: weatherId,
           ...weatherData
         });
@@ -143,7 +143,7 @@ export const WeatherLogModal: React.FC<WeatherLogModalProps> = ({
         }
       } else {
         // Create new weather log
-        const newWeatherId = await db.weather.create(weatherData);
+        const newWeatherId = await db.createWeatherLog(weatherData);
 
         const newWeatherLog: WeatherLog = {
           id: newWeatherId,
