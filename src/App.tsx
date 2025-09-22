@@ -156,22 +156,6 @@ function AppContent() {
           {/* Current Moon Info */}
           <CurrentMoonInfo />
 
-          {/* Modal state indicator for development */}
-          {currentModal !== "none" && (
-            <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-4 mb-6">
-              <p className="text-yellow-700 dark:text-yellow-300">
-                <i className="fas fa-eye mr-2"></i>
-                Modal State: {currentModal}
-                {selectedDate && ` (Date: ${selectedDate.toDateString()})`}
-              </p>
-              <button
-                onClick={handleCloseModal}
-                className="mt-2 px-3 py-1 bg-yellow-500 text-white rounded text-sm hover:bg-yellow-600 transition"
-              >
-                Close Modal
-              </button>
-            </div>
-          )}
         </main>
 
         <Footer />
@@ -220,7 +204,7 @@ function AppContent() {
         <PWAInstallPrompt />
         <PWAUpdateNotification />
 
-        {/* Authentication Components */}
+        {/* Authentication Success Toast */}
         <SuccessToast />
       </div>
     </div>

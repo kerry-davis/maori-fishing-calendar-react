@@ -16,6 +16,10 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
 }) => {
   // Note: getTripsForMonth will be used in future enhancements for performance optimization
 
+  // Get current date for highlighting today
+  const today = new Date();
+  const todayString = `${today.getFullYear()}-${today.getMonth()}-${today.getDate()}`;
+
   // Get the first day of the month and how many days are in the month
   const firstDayOfMonth = new Date(currentYear, currentMonth, 1);
   const lastDayOfMonth = new Date(currentYear, currentMonth + 1, 0);
@@ -50,10 +54,13 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
 
   // Add days from current month
   for (let day = 1; day <= daysInMonth; day++) {
+    const date = new Date(currentYear, currentMonth, day);
+    const dateString = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
     calendarDays.push({
-      date: new Date(currentYear, currentMonth, day),
+      date,
       isCurrentMonth: true,
       dayNumber: day,
+      isToday: dateString === todayString,
     });
   }
 
@@ -88,6 +95,7 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
             date={dayData.date}
             dayNumber={dayData.dayNumber}
             isCurrentMonth={dayData.isCurrentMonth}
+            isToday={dayData.isToday}
             onDateSelect={onDateSelect}
           />
         ))}
