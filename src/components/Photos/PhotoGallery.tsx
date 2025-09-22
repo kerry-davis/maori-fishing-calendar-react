@@ -79,12 +79,24 @@ export const PhotoGallery: React.FC<PhotoGalleryProps> = ({ refreshTrigger, onPh
     setDeletingId(photo.id);
 
     try {
-      // Delete from Firestore
+      // Always try to delete from Firestore first
       await deleteDoc(doc(firestore, 'photos', photo.id));
+      console.log('Deleted from Firestore successfully');
 
-      // Delete from Storage
-      const storageRef = ref(storage, photo.storagePath);
-      await deleteObject(storageRef);
+      // Try to delete from Storage, but don't fail if file doesn't exist
+      try {
+        const storageRef = ref(storage, photo.storagePath);
+        await deleteObject(storageRef);
+        console.log('Deleted from Storage successfully');
+      } catch (storageError: any) {
+        // If the file doesn't exist in Storage, that's okay - it might have been deleted already
+        if (storageError.code === 'storage/object-not-found') {
+          console.warn('Storage file not found (may have been deleted already):', photo.storagePath);
+        } else {
+          // Re-throw other storage errors
+          throw storageError;
+        }
+      }
 
       // Remove from local state
       setPhotos(prev => prev.filter(p => p.id !== photo.id));
