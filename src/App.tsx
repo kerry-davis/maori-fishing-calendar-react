@@ -117,7 +117,7 @@ function AppContent() {
     setCurrentModal("tripDetails");
   }, []);
 
-  const handleEditWeather = useCallback(async (weatherId: number) => {
+  const _handleEditWeather = useCallback(async (weatherId: number) => {
     // Store the weather ID for editing and open the weather modal in edit mode
     setEditingWeatherId(weatherId);
 
