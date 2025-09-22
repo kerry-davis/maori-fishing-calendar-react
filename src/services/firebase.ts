@@ -1,6 +1,8 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
+import { getStorage } from "firebase/storage";
+import { getFirestore } from "firebase/firestore";
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
 
@@ -36,11 +38,15 @@ export const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 // Initialize Firebase with error handling
 let app: any = null;
 let auth: any = null;
+let storage: any = null;
+let firestore: any = null;
 
 try {
   if (missingEnvVars.length === 0) {
     app = initializeApp(firebaseConfig);
     auth = getAuth(app);
+    storage = getStorage(app);
+    firestore = getFirestore(app);
     console.log('Firebase initialized successfully');
   } else {
     console.warn('Firebase not initialized due to missing environment variables');
@@ -51,4 +57,4 @@ try {
   console.warn('Please check your Firebase configuration and environment variables');
 }
 
-export { app, auth };
+export { app, auth, storage, firestore };
