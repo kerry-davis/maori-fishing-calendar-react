@@ -9,10 +9,11 @@ interface LoginModalProps {
 export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isRegister, setIsRegister] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const { login, loginWithGoogle, user } = useAuth();
+  const { login, register, signInWithGoogle, user } = useAuth();
 
   // Close modal when user becomes authenticated
   React.useEffect(() => {
@@ -32,20 +33,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
     setLoading(true);
 
     try {
-      await login(email, password);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleGoogleSignIn = async () => {
-    setError('');
-    setLoading(true);
-
-    try {
-      await loginWithGoogle();
+      if (isRegister) {
+        await register(email, password);
+      } else {
+        await login(email, password);
+      }
+      onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
@@ -62,7 +55,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
     >
       <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md">
         <h2 className="text-2xl font-bold mb-4 text-gray-800 dark:text-gray-100">
-          Sign In
+          {isRegister ? 'Create Account' : 'Sign In'}
         </h2>
 
         {error && (
@@ -74,7 +67,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
         {/* Google Sign-In Button */}
         <div className="mb-6">
           <button
-            onClick={handleGoogleSignIn}
+            onClick={signInWithGoogle}
             disabled={loading}
             className="w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 py-2 px-4 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 flex items-center justify-center gap-2"
           >
@@ -130,7 +123,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
               disabled={loading}
               className="flex-1 bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
             >
-              {loading ? 'Loading...' : 'Sign In'}
+              {loading ? 'Loading...' : (isRegister ? 'Create Account' : 'Sign In')}
             </button>
 
             <button
@@ -143,6 +136,15 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
           </div>
         </form>
 
+        <div className="mt-4 text-center">
+          <button
+            type="button"
+            onClick={() => setIsRegister(!isRegister)}
+            className="text-blue-500 dark:text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 text-sm"
+          >
+            {isRegister ? 'Already have an account? Sign in' : 'Need an account? Sign up'}
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Modal, ModalHeader, ModalBody } from "./Modal";
 import { useLocationContext } from "../../contexts/LocationContext";
 import {
@@ -17,6 +17,7 @@ import {
 } from "../../services/weatherService";
 import type {
   BiteTime,
+  UserLocation,
 } from "../../types";
 import { BITE_QUALITY_COLORS } from "../../types";
 
@@ -44,13 +45,22 @@ export const LunarModal: React.FC<LunarModalProps> = ({
   selectedDate,
   onTripLogOpen,
 }) => {
-  const { userLocation, requestLocation } = useLocationContext();
+  const { userLocation, setLocation, requestLocation, searchLocation, searchLocationSuggestions } = useLocationContext();
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [weatherError, setWeatherError] = useState<string | null>(null);
   const [weatherLoading, setWeatherLoading] = useState(false);
   const [locationInput, setLocationInput] = useState("");
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
+  const [isSearchingLocation, setIsSearchingLocation] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [locationSuggestions, setLocationSuggestions] = useState<UserLocation[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+
+  // Debounced search timeout ref
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Update current date when modal opens or selectedDate changes
   useEffect(() => {
@@ -58,6 +68,15 @@ export const LunarModal: React.FC<LunarModalProps> = ({
       setCurrentDate(new Date(selectedDate));
     }
   }, [isOpen, selectedDate]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Calculate lunar phase data for current date
   const lunarData = useMemo(() => {
@@ -154,11 +173,98 @@ export const LunarModal: React.FC<LunarModalProps> = ({
     }
   }, [requestLocation]);
 
-  const handleLocationSearch = useCallback(() => {
-    // This would integrate with a geocoding service
-    // For now, just a placeholder
-    console.log("Location search not implemented yet:", locationInput);
-  }, [locationInput]);
+  const handleLocationSearch = useCallback(async () => {
+    if (!locationInput.trim()) {
+      return; // Don't search for empty input
+    }
+
+    setIsSearchingLocation(true);
+    setLocationError(null); // Clear any previous errors
+
+    try {
+      await searchLocation(locationInput.trim());
+      setLocationInput(""); // Clear the input after successful search
+    } catch (error) {
+      setLocationError(
+        error instanceof Error ? error.message : "Failed to search location",
+      );
+    } finally {
+      setIsSearchingLocation(false);
+    }
+  }, [locationInput, searchLocation]);
+
+  // Handle Enter key press in location input
+  const handleLocationInputKeyPress = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !isSearchingLocation) {
+      if (showSuggestions && locationSuggestions.length > 0) {
+        // Select the highlighted suggestion
+        const selectedSuggestion = locationSuggestions[selectedSuggestionIndex >= 0 ? selectedSuggestionIndex : 0];
+        handleSuggestionSelect(selectedSuggestion);
+      } else {
+        handleLocationSearch();
+      }
+    } else if (e.key === 'Escape') {
+      setShowSuggestions(false);
+      setSelectedSuggestionIndex(-1);
+    } else if (e.key === 'ArrowDown' && showSuggestions) {
+      e.preventDefault();
+      setSelectedSuggestionIndex(prev =>
+        prev < locationSuggestions.length - 1 ? prev + 1 : 0
+      );
+    } else if (e.key === 'ArrowUp' && showSuggestions) {
+      e.preventDefault();
+      setSelectedSuggestionIndex(prev =>
+        prev > 0 ? prev - 1 : locationSuggestions.length - 1
+      );
+    }
+  }, [handleLocationSearch, isSearchingLocation, showSuggestions, locationSuggestions, selectedSuggestionIndex]);
+
+  // Handle location input change with debounced search
+  const handleLocationInputChange = useCallback((value: string) => {
+    setLocationInput(value);
+
+    // Clear previous timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    if (value.trim().length < 2) {
+      setLocationSuggestions([]);
+      setShowSuggestions(false);
+      setSelectedSuggestionIndex(-1);
+      setIsLoadingSuggestions(false);
+      return;
+    }
+
+    // Set loading state
+    setIsLoadingSuggestions(true);
+
+    // Debounce the search by 300ms
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const suggestions = await searchLocationSuggestions(value.trim());
+        setLocationSuggestions(suggestions);
+        setShowSuggestions(suggestions.length > 0);
+        setSelectedSuggestionIndex(-1);
+      } catch (error) {
+        console.error("Location suggestions error:", error);
+        setLocationSuggestions([]);
+        setShowSuggestions(false);
+      } finally {
+        setIsLoadingSuggestions(false);
+      }
+    }, 300);
+  }, [searchLocationSuggestions]);
+
+  // Handle suggestion selection
+  const handleSuggestionSelect = useCallback((suggestion: UserLocation) => {
+    setLocation(suggestion);
+    setLocationInput("");
+    setLocationSuggestions([]);
+    setShowSuggestions(false);
+    setSelectedSuggestionIndex(-1);
+    setLocationError(null);
+  }, [setLocation]);
 
   // Trip log handler
   const handleTripLogOpen = useCallback(() => {
@@ -197,15 +303,15 @@ export const LunarModal: React.FC<LunarModalProps> = ({
   const renderBiteTime = (bite: BiteTime, index: number) => (
     <div
       key={index}
-      className="bite-time-item flex items-center justify-between py-1"
+      className="bite-time-item flex items-center py-1"
     >
+      <i
+        className="fas fa-fish mr-2"
+        style={{ color: BITE_QUALITY_COLORS[bite.quality] }}
+      ></i>
       <span className="text-sm">
         {bite.start} - {bite.end}
       </span>
-      <i
-        className="fas fa-fish ml-2"
-        style={{ color: BITE_QUALITY_COLORS[bite.quality] }}
-      ></i>
     </div>
   );
 
@@ -282,20 +388,59 @@ export const LunarModal: React.FC<LunarModalProps> = ({
               Location
             </label>
             <div className="flex items-center space-x-1">
-              <input
-                type="text"
-                id="location-input"
-                value={locationInput}
-                onChange={(e) => setLocationInput(e.target.value)}
-                placeholder="Enter a location"
-                className="w-full px-3 py-2 border border-gray-300 rounded-l-md dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  id="location-input"
+                  value={locationInput}
+                  onChange={(e) => handleLocationInputChange(e.target.value)}
+                  onKeyDown={handleLocationInputKeyPress}
+                  onFocus={() => locationInput.trim().length >= 2 && setShowSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                  placeholder="Enter a location"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-l-md dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+
+                {/* Location Suggestions Dropdown */}
+                {showSuggestions && (
+                  <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                    {isLoadingSuggestions ? (
+                      <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
+                        <i className="fas fa-spinner fa-spin mr-2"></i>
+                        Searching locations...
+                      </div>
+                    ) : locationSuggestions.length > 0 ? (
+                      locationSuggestions.map((suggestion, index) => (
+                        <div
+                          key={`${suggestion.lat}-${suggestion.lon}`}
+                          onClick={() => handleSuggestionSelect(suggestion)}
+                          className={`px-3 py-2 cursor-pointer text-sm hover:bg-gray-100 dark:hover:bg-gray-700 ${
+                            index === selectedSuggestionIndex ? 'bg-blue-50 dark:bg-blue-900' : ''
+                          }`}
+                        >
+                          <div className="font-medium text-gray-900 dark:text-gray-100">
+                            {suggestion.name}
+                          </div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">
+                            {suggestion.lat.toFixed(4)}, {suggestion.lon.toFixed(4)}
+                          </div>
+                        </div>
+                      ))
+                    ) : locationInput.trim().length >= 2 ? (
+                      <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
+                        No locations found
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+              </div>
               <button
                 onClick={handleLocationSearch}
-                className="px-3 py-2 bg-gray-500 text-white hover:bg-gray-600 transition"
+                disabled={isSearchingLocation}
+                className="px-3 py-2 bg-gray-500 text-white hover:bg-gray-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Search location"
               >
-                <i className="fas fa-search"></i>
+                <i className={`fas ${isSearchingLocation ? "fa-spinner fa-spin" : "fa-search"}`}></i>
               </button>
               <button
                 onClick={handleLocationRequest}
@@ -308,6 +453,12 @@ export const LunarModal: React.FC<LunarModalProps> = ({
                 ></i>
               </button>
             </div>
+            {locationError && (
+              <p className="text-sm text-red-500 mt-1">
+                <i className="fas fa-exclamation-triangle mr-1"></i>
+                {locationError}
+              </p>
+            )}
             {userLocation && (
               <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                 Current: {userLocation.name}

@@ -68,7 +68,11 @@ export function AppProviders({ children }: AppProvidersProps): React.ReactElemen
           React.createElement(
             PWAProvider,
             null,
-            children
+            React.createElement(
+              AuthProvider,
+              null,
+              children
+            )
           )
         )
       )
