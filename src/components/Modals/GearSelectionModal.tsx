@@ -24,8 +24,8 @@ export const GearSelectionModal: React.FC<GearSelectionModalProps> = ({
   selectedGear,
   onGearSelected,
 }) => {
-  const [tackleBox, setTackleBox] = useLocalStorage<TackleItem[]>("tacklebox", []);
-  const [gearTypes, setGearTypes] = useLocalStorage<string[]>("gearTypes", ["Lure", "Rod", "Reel", "Line"]);
+  const [tackleBox, _setTackleBox] = useLocalStorage<TackleItem[]>("tacklebox", []);
+  const [gearTypes, _setGearTypes] = useLocalStorage<string[]>("gearTypes", ["Lure", "Rod", "Reel", "Line"]);
   const [customGear, setCustomGear] = useState("");
   const [selectedGearItems, setSelectedGearItems] = useState<string[]>(selectedGear);
   const [activeTab, setActiveTab] = useState("tacklebox");
