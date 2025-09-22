@@ -21,9 +21,9 @@ if (missingEnvVars.length > 0) {
 
 // Firebase configuration from environment variables
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'demo-api-key',
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'demo-project.firebaseapp.com',
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'demo-project',
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
@@ -44,9 +44,11 @@ try {
     console.log('Firebase initialized successfully');
   } else {
     console.warn('Firebase not initialized due to missing environment variables');
+    console.warn('Authentication features will be disabled until environment variables are configured');
   }
 } catch (error) {
   console.error('Failed to initialize Firebase:', error);
+  console.warn('Please check your Firebase configuration and environment variables');
 }
 
 export { app, auth };
