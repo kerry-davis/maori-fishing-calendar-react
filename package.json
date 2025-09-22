@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "chart.js": "^4.5.0",
+    "firebase": "^12.3.0",
     "jszip": "^3.10.1",
     "papaparse": "^5.5.3",
     "react": "^19.1.1",

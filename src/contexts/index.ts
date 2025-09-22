@@ -23,10 +23,16 @@ export {
 } from './DatabaseContext';
 
 // PWA Context
-export { 
-  PWAProvider, 
-  usePWA 
+export {
+  PWAProvider,
+  usePWA
 } from './PWAContext';
+
+// Auth Context
+export {
+  AuthProvider,
+  useAuth
+} from './AuthContext';
 
 // Combined provider component for easy setup
 import React from 'react';
@@ -35,6 +41,7 @@ import { ThemeProvider } from './ThemeContext';
 import { LocationProvider } from './LocationContext';
 import { DatabaseProvider } from './DatabaseContext';
 import { PWAProvider } from './PWAContext';
+import { AuthProvider } from './AuthContext';
 
 interface AppProvidersProps {
   children: ReactNode;
@@ -57,7 +64,11 @@ export function AppProviders({ children }: AppProvidersProps): React.ReactElemen
         React.createElement(
           PWAProvider,
           null,
-          children
+          React.createElement(
+            AuthProvider,
+            null,
+            children
+          )
         )
       )
     )
