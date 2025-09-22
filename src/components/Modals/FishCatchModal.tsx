@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from "react";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "./Modal";
-import { useIndexedDB } from "../../hooks/useIndexedDB";
+import { useDatabaseService } from "../../contexts/DatabaseContext";
 import { GearSelectionModal } from "./GearSelectionModal";
 import type { FishCaught } from "../../types";
 
@@ -27,7 +27,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
   fishId,
   onFishCaught,
 }) => {
-  const db = useIndexedDB();
+  const db = useDatabaseService();
   const [formData, setFormData] = useState({
     species: "",
     length: "",
@@ -47,7 +47,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
     setError(null);
 
     try {
-      const fish = await db.fish.getById(id);
+      const fish = await db.getFishCaughtById(id);
       if (fish) {
         setFormData({
           species: fish.species,
@@ -131,7 +131,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
 
       if (isEditing && fishId) {
         // Update existing fish catch
-        await db.fish.update({
+        await db.updateFishCaught({
           id: fishId,
           ...fishData
         });
@@ -146,7 +146,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
         }
       } else {
         // Create new fish catch
-        const newFishId = await db.fish.create(fishData);
+        const newFishId = await db.createFishCaught(fishData);
 
         const newFish: FishCaught = {
           id: newFishId,
