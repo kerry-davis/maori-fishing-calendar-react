@@ -1,5 +1,6 @@
 import type { FC } from 'react';
 import { useThemeContext } from '../../contexts';
+import { AuthButton } from '../Auth/AuthButton';
 
 interface HeaderProps {
   onSearchClick: () => void;
@@ -65,13 +66,14 @@ const Header: FC<HeaderProps> = ({
         >
           <i className="fas fa-images"></i>
         </button>
-        <button 
+        <button
           onClick={toggleTheme}
           className="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-full w-10 h-10 flex items-center justify-center shadow-md hover:bg-gray-300 dark:hover:bg-gray-600 transition"
           title="Toggle Theme"
         >
           <i className={`fas ${isDark ? 'fa-sun' : 'fa-moon'}`}></i>
         </button>
+        <AuthButton />
       </div>
     </div>
   );
