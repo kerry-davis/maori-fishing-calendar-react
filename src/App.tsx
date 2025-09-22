@@ -22,6 +22,7 @@ import {
   PWAUpdateNotification,
   OfflineIndicator,
 } from "./components/PWA";
+import { SuccessToast } from "./components/Auth";
 
 // Modal state type for routing different modal views
 type ModalState =
@@ -218,6 +219,9 @@ function AppContent() {
         <OfflineIndicator />
         <PWAInstallPrompt />
         <PWAUpdateNotification />
+
+        {/* Authentication Components */}
+        <SuccessToast />
       </div>
     </div>
   );
