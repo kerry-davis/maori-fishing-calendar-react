@@ -323,7 +323,9 @@ export type ModalType =
   | "search"
   | "gallery"
   | "weather"
-  | "gearSelection";
+  | "gearSelection"
+  | "weatherLog"
+  | "fishCatch";
 
 export interface ModalState {
   isOpen: boolean;
@@ -384,6 +386,8 @@ export interface DateModalProps extends ModalProps {
 export interface TripModalProps extends ModalProps {
   tripId?: number;
   selectedDate: Date;
+  onTripUpdated?: () => void;
+  onCancelEdit?: () => void; // Called when canceling edit to return to trip log
 }
 
 // Form validation types
