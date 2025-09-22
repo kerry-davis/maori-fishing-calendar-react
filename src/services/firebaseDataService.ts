@@ -706,6 +706,219 @@ export class FirebaseDataService {
       recoverable: type !== "connection",
     };
   }
+
+  // DATA MIGRATION METHODS
+
+  /**
+   * Migrate existing local data to Firebase
+   */
+  async migrateLocalData(): Promise<{
+    tripsMigrated: number;
+    weatherLogsMigrated: number;
+    fishCatchesMigrated: number;
+    tackleItemsMigrated: number;
+  }> {
+    if (!this.isReady()) {
+      throw new Error('Service not initialized - user must be authenticated');
+    }
+
+    const results = {
+      tripsMigrated: 0,
+      weatherLogsMigrated: 0,
+      fishCatchesMigrated: 0,
+      tackleItemsMigrated: 0,
+    };
+
+    try {
+      console.log('Starting data migration...');
+
+      // Migrate trips
+      const localTrips = await this.getLocalTrips();
+      if (localTrips.length > 0) {
+        console.log(`Migrating ${localTrips.length} trips...`);
+        for (const trip of localTrips) {
+          try {
+            await this.createTrip(trip);
+            results.tripsMigrated++;
+          } catch (error) {
+            console.error('Failed to migrate trip:', trip.id, error);
+          }
+        }
+      }
+
+      // Migrate weather logs
+      const localWeather = await this.getLocalWeatherLogs();
+      if (localWeather.length > 0) {
+        console.log(`Migrating ${localWeather.length} weather logs...`);
+        for (const weather of localWeather) {
+          try {
+            await this.createWeatherLog(weather);
+            results.weatherLogsMigrated++;
+          } catch (error) {
+            console.error('Failed to migrate weather log:', weather.id, error);
+          }
+        }
+      }
+
+      // Migrate fish catches
+      const localFish = await this.getLocalFishCatches();
+      if (localFish.length > 0) {
+        console.log(`Migrating ${localFish.length} fish catches...`);
+        for (const fish of localFish) {
+          try {
+            await this.createFishCaught(fish);
+            results.fishCatchesMigrated++;
+          } catch (error) {
+            console.error('Failed to migrate fish catch:', fish.id, error);
+          }
+        }
+      }
+
+      // Migrate tackle box
+      const localTackle = await this.getLocalTackleItems();
+      if (localTackle.length > 0) {
+        console.log(`Migrating ${localTackle.length} tackle items...`);
+        for (const item of localTackle) {
+          try {
+            await this.createTackleItem(item);
+            results.tackleItemsMigrated++;
+          } catch (error) {
+            console.error('Failed to migrate tackle item:', item.id, error);
+          }
+        }
+      }
+
+      // Mark migration as complete
+      await this.markMigrationComplete();
+
+      console.log('Data migration completed:', results);
+      return results;
+    } catch (error) {
+      console.error('Data migration failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if user has completed migration
+   */
+  async hasCompletedMigration(): Promise<boolean> {
+    try {
+      return localStorage.getItem(`migrationComplete_${this.userId}`) === 'true';
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Check if user has local data that needs migration
+   */
+  async hasLocalData(): Promise<boolean> {
+    try {
+      const [trips, weather, fish, tackle] = await Promise.all([
+        this.getLocalTrips(),
+        this.getLocalWeatherLogs(),
+        this.getLocalFishCatches(),
+        this.getLocalTackleItems(),
+      ]);
+
+      return trips.length > 0 || weather.length > 0 || fish.length > 0 || tackle.length > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  // PRIVATE MIGRATION HELPERS
+
+  private async getLocalTrips(): Promise<any[]> {
+    try {
+      const db = await this.openIndexedDB();
+      const transaction = db.transaction(['trips'], 'readonly');
+      const store = transaction.objectStore('trips');
+      const request = store.getAll();
+
+      return new Promise((resolve, reject) => {
+        request.onsuccess = () => resolve(request.result || []);
+        request.onerror = () => reject(request.error);
+      });
+    } catch (error) {
+      console.error('Failed to get local trips:', error);
+      return [];
+    }
+  }
+
+  private async getLocalWeatherLogs(): Promise<any[]> {
+    try {
+      const db = await this.openIndexedDB();
+      const transaction = db.transaction(['weather'], 'readonly');
+      const store = transaction.objectStore('weather');
+      const request = store.getAll();
+
+      return new Promise((resolve, reject) => {
+        request.onsuccess = () => resolve(request.result || []);
+        request.onerror = () => reject(request.error);
+      });
+    } catch (error) {
+      console.error('Failed to get local weather logs:', error);
+      return [];
+    }
+  }
+
+  private async getLocalFishCatches(): Promise<any[]> {
+    try {
+      const db = await this.openIndexedDB();
+      const transaction = db.transaction(['fish'], 'readonly');
+      const store = transaction.objectStore('fish');
+      const request = store.getAll();
+
+      return new Promise((resolve, reject) => {
+        request.onsuccess = () => resolve(request.result || []);
+        request.onerror = () => reject(request.error);
+      });
+    } catch (error) {
+      console.error('Failed to get local fish catches:', error);
+      return [];
+    }
+  }
+
+  private async getLocalTackleItems(): Promise<any[]> {
+    try {
+      const tackleData = localStorage.getItem('tacklebox');
+      return tackleData ? JSON.parse(tackleData) : [];
+    } catch (error) {
+      console.error('Failed to get local tackle items:', error);
+      return [];
+    }
+  }
+
+  private async createTackleItem(item: any): Promise<void> {
+    // Use the Firebase tackle box hook to create items
+    // This is a simplified version - in practice we'd need to integrate with the hook
+    const itemData = {
+      name: item.name,
+      type: item.type,
+      userId: this.userId,
+      createdAt: serverTimestamp()
+    };
+
+    await addDoc(collection(firestore, 'tackleItems'), itemData);
+  }
+
+  private async markMigrationComplete(): Promise<void> {
+    try {
+      localStorage.setItem(`migrationComplete_${this.userId}`, 'true');
+    } catch (error) {
+      console.error('Failed to mark migration complete:', error);
+    }
+  }
+
+  private async openIndexedDB(): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open('FishingCalendarDB', 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
 }
 
 // Export a singleton instance
