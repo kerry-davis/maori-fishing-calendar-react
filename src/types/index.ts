@@ -291,6 +291,25 @@ export interface DatabaseContextType {
   error: string | null;
 }
 
+export interface User {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  photoURL: string | null;
+  emailVerified: boolean;
+}
+
+export interface AuthContextType {
+  user: User | null;
+  loading: boolean;
+  error: string | null;
+  successMessage: string | null;
+  login: (email: string, password: string) => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
+  logout: () => Promise<void>;
+  clearSuccessMessage: () => void;
+}
+
 // Modal types
 export type ModalType =
   | "lunar"
