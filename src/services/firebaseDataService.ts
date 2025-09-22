@@ -1044,15 +1044,7 @@ export class FirebaseDataService {
 
   private async getLocalTrips(): Promise<any[]> {
     try {
-      const db = await this.openIndexedDB();
-      const transaction = db.transaction(['trips'], 'readonly');
-      const store = transaction.objectStore('trips');
-      const request = store.getAll();
-
-      return new Promise((resolve, reject) => {
-        request.onsuccess = () => resolve(request.result || []);
-        request.onerror = () => reject(request.error);
-      });
+      return await databaseService.getAllTrips();
     } catch (error) {
       console.error('Failed to get local trips:', error);
       return [];
@@ -1061,15 +1053,7 @@ export class FirebaseDataService {
 
   private async getLocalWeatherLogs(): Promise<any[]> {
     try {
-      const db = await this.openIndexedDB();
-      const transaction = db.transaction(['weather_logs'], 'readonly');
-      const store = transaction.objectStore('weather_logs');
-      const request = store.getAll();
-
-      return new Promise((resolve, reject) => {
-        request.onsuccess = () => resolve(request.result || []);
-        request.onerror = () => reject(request.error);
-      });
+      return await databaseService.getAllWeatherLogs();
     } catch (error) {
       console.error('Failed to get local weather logs:', error);
       return [];
@@ -1078,15 +1062,7 @@ export class FirebaseDataService {
 
   private async getLocalFishCatches(): Promise<any[]> {
     try {
-      const db = await this.openIndexedDB();
-      const transaction = db.transaction(['fish_caught'], 'readonly');
-      const store = transaction.objectStore('fish_caught');
-      const request = store.getAll();
-
-      return new Promise((resolve, reject) => {
-        request.onsuccess = () => resolve(request.result || []);
-        request.onerror = () => reject(request.error);
-      });
+      return await databaseService.getAllFishCaught();
     } catch (error) {
       console.error('Failed to get local fish catches:', error);
       return [];
@@ -1112,13 +1088,6 @@ export class FirebaseDataService {
     }
   }
 
-  private async openIndexedDB(): Promise<IDBDatabase> {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_CONFIG.NAME, DB_CONFIG.VERSION);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-  }
 
   // DATA INTEGRITY VALIDATION METHODS
 
