@@ -44,7 +44,6 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
 
   // Load existing fish data when editing
   const loadFishData = async (id: number) => {
-    let _isLoading = true;
     setError(null);
 
     try {
@@ -65,8 +64,6 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
     } catch (err) {
       console.error('Error loading fish catch:', err);
       setError('Failed to load fish catch data');
-    } finally {
-      _isLoading = false;
     }
   };
 
