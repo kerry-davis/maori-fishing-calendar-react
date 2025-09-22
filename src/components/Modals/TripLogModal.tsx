@@ -8,7 +8,6 @@ import type { Trip, WeatherLog, FishCaught, DateModalProps } from "../../types";
 export interface TripLogModalProps extends DateModalProps {
   onEditTrip?: (tripId: number) => void;
   onNewTrip?: () => void;
-  onEditWeather?: (weatherId: number) => void;
 }
 
 /**
@@ -25,7 +24,6 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
   selectedDate,
   onEditTrip,
   onNewTrip,
-  onEditWeather,
 }) => {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [isLoading, setIsLoading] = useState(false);
