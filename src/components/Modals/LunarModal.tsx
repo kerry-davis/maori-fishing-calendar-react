@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Modal, ModalHeader, ModalBody } from "./Modal";
 import { useLocationContext } from "../../contexts/LocationContext";
+import { useIndexedDB } from "../../hooks/useIndexedDB";
 import {
   getLunarPhase,
   getMoonPhaseData,
@@ -46,6 +47,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
   onTripLogOpen,
 }) => {
   const { userLocation, setLocation, requestLocation, searchLocation, searchLocationSuggestions } = useLocationContext();
+  const db = useIndexedDB();
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [weatherError, setWeatherError] = useState<string | null>(null);
@@ -58,6 +60,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+  const [hasTripsForDate, setHasTripsForDate] = useState<boolean>(false);
 
   // Debounced search timeout ref
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -68,6 +71,35 @@ export const LunarModal: React.FC<LunarModalProps> = ({
       setCurrentDate(new Date(selectedDate));
     }
   }, [isOpen, selectedDate]);
+
+  // Check for trips when date changes
+  useEffect(() => {
+    let isMounted = true;
+
+    const checkTripsForDate = async () => {
+      if (!db.isReady) return;
+
+      try {
+        // Use local date string to avoid timezone conversion issues
+        const dateStr = currentDate.toLocaleDateString("en-CA");
+        const hasTrips = await db.trips.hasTripsOnDate(dateStr);
+        if (isMounted) {
+          setHasTripsForDate(hasTrips);
+        }
+      } catch (error) {
+        console.error("Error checking trips for date:", error);
+        if (isMounted) {
+          setHasTripsForDate(false);
+        }
+      }
+    };
+
+    checkTripsForDate();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentDate, db.isReady, db.trips.hasTripsOnDate]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -372,7 +404,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
             style={{ backgroundColor: "#0AA689" }}
           >
             <i className="fas fa-book-open mr-2"></i>
-            View / Manage Trip Log
+            {hasTripsForDate ? "View / Manage Trip Log" : "Create Trip Log"}
           </button>
         </div>
 

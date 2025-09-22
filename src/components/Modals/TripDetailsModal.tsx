@@ -8,14 +8,15 @@ import type { Trip, TripModalProps, FormValidation } from '../../types';
  * Features:
  * - Trip creation/editing form with validation
  * - Form state management and data persistence
- * - Weather and fish catch sub-sections (placeholders for now)
- * - Gear selection integration with tackle box (placeholder for now)
+ * - Focus on core trip information (weather and fish catches managed separately)
  */
 export const TripDetailsModal: React.FC<TripModalProps> = ({
   isOpen,
   onClose,
   tripId,
-  selectedDate
+  selectedDate,
+  onTripUpdated,
+  onCancelEdit
 }) => {
   const [formData, setFormData] = useState<Omit<Trip, 'id'>>({
     date: '',
@@ -40,7 +41,8 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
 
   // Format date for input field (YYYY-MM-DD)
   const formatDateForInput = (date: Date): string => {
-    return date.toISOString().split('T')[0];
+    // Use local date string to avoid timezone conversion issues
+    return date.toLocaleDateString("en-CA");
   };
 
   // Initialize form data
@@ -163,8 +165,13 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
         await db.trips.create(formData);
       }
 
-      // Close modal on success
-      onClose();
+      // Call the trip updated callback and close modal on success
+      if (onTripUpdated) {
+        onTripUpdated();
+        // Don't call onClose() when callback is provided - let the callback handle navigation
+      } else {
+        onClose();
+      }
     } catch (err) {
       console.error('Error saving trip:', err);
       setError('Failed to save trip. Please try again.');
@@ -175,7 +182,13 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
 
   // Handle cancel
   const handleCancel = () => {
-    onClose();
+    if (isEditing && onCancelEdit) {
+      // When editing and canceling, return to trip log
+      onCancelEdit();
+    } else {
+      // When creating new trip and canceling, just close
+      onClose();
+    }
   };
 
   return (
@@ -331,34 +344,6 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
               />
             </div>
 
-            {/* Weather and Fish Catch Sections - Placeholders for future implementation */}
-            <div className="border-t pt-6 dark:border-gray-600">
-              <h4 className="text-lg font-medium text-gray-800 dark:text-gray-200 mb-4">
-                Additional Information
-              </h4>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                  <h5 className="font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    <i className="fas fa-cloud-sun mr-2"></i>
-                    Weather Conditions
-                  </h5>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Weather logging will be available in a future update
-                  </p>
-                </div>
-                
-                <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                  <h5 className="font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    <i className="fas fa-fish mr-2"></i>
-                    Fish Caught
-                  </h5>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Fish catch logging will be available in a future update
-                  </p>
-                </div>
-              </div>
-            </div>
           </form>
         )}
       </ModalBody>
