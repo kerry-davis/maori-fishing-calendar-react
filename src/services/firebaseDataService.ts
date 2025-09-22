@@ -1062,8 +1062,8 @@ export class FirebaseDataService {
   private async getLocalWeatherLogs(): Promise<any[]> {
     try {
       const db = await this.openIndexedDB();
-      const transaction = db.transaction(['weather'], 'readonly');
-      const store = transaction.objectStore('weather');
+      const transaction = db.transaction(['weather_logs'], 'readonly');
+      const store = transaction.objectStore('weather_logs');
       const request = store.getAll();
 
       return new Promise((resolve, reject) => {
@@ -1079,8 +1079,8 @@ export class FirebaseDataService {
   private async getLocalFishCatches(): Promise<any[]> {
     try {
       const db = await this.openIndexedDB();
-      const transaction = db.transaction(['fish'], 'readonly');
-      const store = transaction.objectStore('fish');
+      const transaction = db.transaction(['fish_caught'], 'readonly');
+      const store = transaction.objectStore('fish_caught');
       const request = store.getAll();
 
       return new Promise((resolve, reject) => {
@@ -1114,7 +1114,7 @@ export class FirebaseDataService {
 
   private async openIndexedDB(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
-      const request = indexedDB.open('FishingCalendarDB', 1);
+      const request = indexedDB.open(DB_CONFIG.NAME, DB_CONFIG.VERSION);
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
