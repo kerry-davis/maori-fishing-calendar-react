@@ -1,7 +1,8 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   AppProviders,
   useDatabaseContext,
+  useAuth,
 } from "./contexts";
 import { useIndexedDB } from "./hooks/useIndexedDB";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -16,6 +17,7 @@ import {
   SearchModal,
   GalleryModal,
   PhotosModal,
+  DataMigrationModal,
   LunarModal,
   TripLogModal,
   TripFormModal,
@@ -43,11 +45,13 @@ type ModalState =
   | "search"
   | "gallery"
   | "photos"
+  | "dataMigration"
   | "weatherLog"
   | "fishCatch";
 
 function AppContent() {
   const { isReady, error } = useDatabaseContext();
+  const { user } = useAuth();
   const db = useIndexedDB();
 
   // Modal state management for routing between different views
@@ -164,6 +168,31 @@ function AppContent() {
     console.log('App.tsx: Modal closed, set to none');
   }, [currentModal]);
 
+  // Check for data migration when user logs in
+  useEffect(() => {
+    const checkDataMigration = async () => {
+      if (user && isReady) {
+        try {
+          // Use the Firebase data service for migration checks
+          const firebaseDb = (await import('./services/firebaseDataService')).firebaseDataService;
+          const [hasLocalData, hasCompletedMigration] = await Promise.all([
+            firebaseDb.hasLocalData(),
+            firebaseDb.hasCompletedMigration()
+          ]);
+
+          if (hasLocalData && !hasCompletedMigration) {
+            // Show migration modal
+            setCurrentModal("dataMigration");
+          }
+        } catch (error) {
+          console.error('Error checking data migration:', error);
+        }
+      }
+    };
+
+    checkDataMigration();
+  }, [user, isReady]);
+
   // Show loading state while database is initializing
   if (!isReady && !error) {
     return (
@@ -262,6 +291,11 @@ function AppContent() {
 
         <PhotosModal
           isOpen={currentModal === "photos"}
+          onClose={handleCloseModal}
+        />
+
+        <DataMigrationModal
+          isOpen={currentModal === "dataMigration"}
           onClose={handleCloseModal}
         />
 
