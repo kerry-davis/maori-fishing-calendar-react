@@ -28,8 +28,8 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect }) => {
     }
 
     setLoadingTrips(true);
-    const maxRetries = 3;
-    const retryDelay = 500; // 500ms
+    const maxRetries = 5;
+    const retryDelay = 1000; // 1000ms
 
     try {
       // Try Firebase first
@@ -50,11 +50,12 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect }) => {
       // If Firebase service not initialized and we haven't exceeded retries, wait and retry
       if (error.message === 'Service not initialized' && retryCount < maxRetries) {
         console.log(`Firebase service not ready, retrying in ${retryDelay}ms (attempt ${retryCount + 1}/${maxRetries})`);
-        setTimeout(() => loadTripsForMonth(retryCount + 1), retryDelay);
-        return;
+        // Wait for the retry delay, then try again
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+        return loadTripsForMonth(retryCount + 1);
       }
 
-      console.error('Firebase trip loading failed, trying local fallback:', error);
+      console.error('Firebase trip loading failed after all retries, trying local fallback:', error);
       try {
         // Fallback to local IndexedDB
         const localTrips = await databaseService.getAllTrips();
