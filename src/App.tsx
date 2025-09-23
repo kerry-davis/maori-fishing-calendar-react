@@ -56,6 +56,7 @@ function AppContent() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [editingTripId, setEditingTripId] = useState<number | null>(null);
   const [editingWeatherId, setEditingWeatherId] = useState<number | null>(null);
+  const [tripLogRefreshTrigger, setTripLogRefreshTrigger] = useState(0);
 
   // Modal handlers
   const handleSearchClick = useCallback(() => {
@@ -128,22 +129,26 @@ function AppContent() {
     console.log('App.tsx: Current modal before:', currentModal);
     // Close the trip form modal and refresh the trip log
     setCurrentModal("tripLog");
+    setTripLogRefreshTrigger(prev => prev + 1); // Trigger refresh
     console.log('App.tsx: Set currentModal to tripLog');
   }, [currentModal]);
 
   const handleWeatherLogged = useCallback((_weatherLog: any) => {
     // Close the weather modal and refresh the trip log to show updated weather
     setCurrentModal("tripLog");
+    setTripLogRefreshTrigger(prev => prev + 1); // Trigger refresh
   }, []);
 
   const handleFishCaught = useCallback((_fish: any) => {
     // Close the fish catch modal and refresh the trip log to show new catch
     setCurrentModal("tripLog");
+    setTripLogRefreshTrigger(prev => prev + 1); // Trigger refresh
   }, []);
 
   const handleTripUpdated = useCallback(() => {
     // Navigate back to the trip log modal after trip is updated
     setCurrentModal("tripLog");
+    setTripLogRefreshTrigger(prev => prev + 1); // Trigger refresh
   }, []);
 
   const handleCancelEditTrip = useCallback(() => {
@@ -306,6 +311,7 @@ function AppContent() {
           selectedDate={selectedDate!}
           onNewTrip={handleNewTrip}
           onEditTrip={handleEditTrip}
+          refreshTrigger={tripLogRefreshTrigger}
         />
 
         <TripFormModal
