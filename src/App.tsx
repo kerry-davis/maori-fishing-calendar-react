@@ -57,6 +57,7 @@ function AppContent() {
   const [editingTripId, setEditingTripId] = useState<number | null>(null);
   const [editingWeatherId, setEditingWeatherId] = useState<number | null>(null);
   const [tripLogRefreshTrigger, setTripLogRefreshTrigger] = useState(0);
+  const [calendarRefreshTrigger, setCalendarRefreshTrigger] = useState(0);
 
   // Modal handlers
   const handleSearchClick = useCallback(() => {
@@ -127,11 +128,19 @@ function AppContent() {
   const handleTripCreated = useCallback((trip: any) => {
     console.log('App.tsx: handleTripCreated called with trip:', trip);
     console.log('App.tsx: Current modal before:', currentModal);
-    // Close the trip form modal and refresh the trip log
+    // Close the trip form modal and refresh both trip log and calendar
     setCurrentModal("tripLog");
-    setTripLogRefreshTrigger(prev => prev + 1); // Trigger refresh
-    console.log('App.tsx: Set currentModal to tripLog');
+    setTripLogRefreshTrigger(prev => prev + 1); // Trigger trip log refresh
+    setCalendarRefreshTrigger(prev => prev + 1); // Trigger calendar refresh
+    console.log('App.tsx: Set currentModal to tripLog and triggered calendar refresh');
   }, [currentModal]);
+
+  const handleTripDeleted = useCallback(() => {
+    console.log('App.tsx: handleTripDeleted called');
+    // Trigger calendar refresh when a trip is deleted
+    setCalendarRefreshTrigger(prev => prev + 1);
+    console.log('App.tsx: Triggered calendar refresh after trip deletion');
+  }, []);
 
   const handleWeatherLogged = useCallback((_weatherLog: any) => {
     // Close the weather modal and refresh the trip log to show updated weather
@@ -254,7 +263,7 @@ function AppContent() {
         <main>
           {/* Calendar Component */}
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
-            <Calendar onDateSelect={handleDateSelect} />
+            <Calendar onDateSelect={handleDateSelect} refreshTrigger={calendarRefreshTrigger} />
           </div>
 
           {/* Legend Component */}
@@ -312,6 +321,7 @@ function AppContent() {
           onNewTrip={handleNewTrip}
           onEditTrip={handleEditTrip}
           refreshTrigger={tripLogRefreshTrigger}
+          onTripDeleted={handleTripDeleted}
         />
 
         <TripFormModal
