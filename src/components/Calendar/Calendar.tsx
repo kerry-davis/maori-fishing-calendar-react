@@ -3,7 +3,7 @@ import { MONTH_NAMES } from "../../types";
 import type { Trip } from "../../types";
 import { CalendarGrid } from "./CalendarGrid";
 import { useAuth } from "../../contexts/AuthContext";
-import { firebaseDataService } from "../../services/firebaseDataService";
+import { useDatabaseService } from "../../contexts/DatabaseContext";
 import { databaseService } from "../../services/databaseService";
 
 interface CalendarProps {
@@ -13,28 +13,26 @@ interface CalendarProps {
 
 export const Calendar: React.FC<CalendarProps> = ({ onDateSelect, refreshTrigger = 0 }) => {
   const { user } = useAuth();
+  const db = useDatabaseService();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentMonth, setCurrentMonth] = useState(currentDate.getMonth());
   const [currentYear, setCurrentYear] = useState(currentDate.getFullYear());
   const [daysWithTrips, setDaysWithTrips] = useState<Set<string>>(new Set());
 
   // Load trips for the current month with robust error handling
-  const loadTripsForMonth = async (retryCount = 0) => {
+  const loadTripsForMonth = async () => {
     if (!user) {
       setDaysWithTrips(new Set());
       return;
     }
 
-    const maxRetries = 5;
-    const retryDelay = 1000; // 1000ms
-
     try {
       // Try Firebase first
-      const allTrips = await firebaseDataService.getAllTrips();
+      const allTrips = await db.getAllTrips();
 
       // Filter trips for the current month
       const daysWithTripsSet = new Set<string>();
-      allTrips.forEach(trip => {
+      allTrips.forEach((trip: Trip) => {
         const tripDate = new Date(trip.date);
         if (tripDate.getMonth() === currentMonth && tripDate.getFullYear() === currentYear) {
           const dayKey = `${tripDate.getFullYear()}-${tripDate.getMonth()}-${tripDate.getDate()}`;
@@ -44,15 +42,7 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect, refreshTrigger
 
       setDaysWithTrips(daysWithTripsSet);
     } catch (error: any) {
-      // If Firebase service not initialized and we haven't exceeded retries, wait and retry
-      if (error.message === 'Service not initialized' && retryCount < maxRetries) {
-        console.log(`Firebase service not ready, retrying in ${retryDelay}ms (attempt ${retryCount + 1}/${maxRetries})`);
-        // Wait for the retry delay, then try again
-        await new Promise(resolve => setTimeout(resolve, retryDelay));
-        return loadTripsForMonth(retryCount + 1);
-      }
-
-      console.error('Firebase trip loading failed after all retries, trying local fallback:', error);
+      console.error('Trip loading failed, trying local fallback:', error);
       try {
         // Fallback to local IndexedDB
         const localTrips = await databaseService.getAllTrips();
