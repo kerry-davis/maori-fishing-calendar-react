@@ -4,7 +4,7 @@ import {
   useDatabaseContext,
   useAuth,
 } from "./contexts";
-import { useIndexedDB } from "./hooks/useIndexedDB";
+import { firebaseDataService } from "./services/firebaseDataService";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { Header, Footer } from "./components/Layout";
 import { Calendar } from "./components/Calendar";
@@ -50,7 +50,6 @@ type ModalState =
 function AppContent() {
   const { isReady, error } = useDatabaseContext();
   const { user } = useAuth();
-  const db = useIndexedDB();
 
   // Modal state management for routing between different views
   const [currentModal, setCurrentModal] = useState<ModalState>("none");
@@ -92,24 +91,26 @@ function AppContent() {
     }
 
     // Check if trips exist for this date
-    if (date && db?.isReady) {
+    if (date && user) {
       try {
+        const allTrips = await firebaseDataService.getAllTrips();
         const dateStr = date.toLocaleDateString("en-CA");
-        const trips = await db.trips.getByDate(dateStr);
+        const tripsForDate = allTrips.filter(trip => trip.date === dateStr);
 
-        if (trips.length === 0) {
+        if (tripsForDate.length === 0) {
           // No trips exist, open trip form directly
           setCurrentModal("tripForm");
           return;
         }
       } catch (err) {
         console.error("Error checking trips:", err);
+        // On error, default to showing trip log
       }
     }
 
     // Trips exist or error occurred, show trip log
     setCurrentModal("tripLog");
-  }, [db?.isReady, db?.trips]);
+  }, [user]);
 
   const handleNewTrip = useCallback(() => {
     setCurrentModal("tripForm");
