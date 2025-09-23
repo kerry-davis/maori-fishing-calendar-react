@@ -1,21 +1,62 @@
 import React, { useState, useEffect } from "react";
 import { MONTH_NAMES } from "../../types";
 import { CalendarGrid } from "./CalendarGrid";
+import { useAuth } from "../../contexts/AuthContext";
+import { firebaseDataService } from "../../services/firebaseDataService";
 
 interface CalendarProps {
   onDateSelect: (date: Date) => void;
 }
 
 export const Calendar: React.FC<CalendarProps> = ({ onDateSelect }) => {
+  const { user } = useAuth();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentMonth, setCurrentMonth] = useState(currentDate.getMonth());
   const [currentYear, setCurrentYear] = useState(currentDate.getFullYear());
+  const [daysWithTrips, setDaysWithTrips] = useState<Set<string>>(new Set());
+  const [loadingTrips, setLoadingTrips] = useState(false);
+
+  // Load trips for the current month
+  const loadTripsForMonth = async () => {
+    if (!user) {
+      setDaysWithTrips(new Set());
+      return;
+    }
+
+    setLoadingTrips(true);
+    try {
+      // Get all trips for the user (Firebase will handle filtering)
+      const allTrips = await firebaseDataService.getAllTrips();
+
+      // Filter trips for the current month
+      const daysWithTripsSet = new Set<string>();
+      allTrips.forEach(trip => {
+        const tripDate = new Date(trip.date);
+        if (tripDate.getMonth() === currentMonth && tripDate.getFullYear() === currentYear) {
+          const dayKey = `${tripDate.getFullYear()}-${tripDate.getMonth()}-${tripDate.getDate()}`;
+          daysWithTripsSet.add(dayKey);
+        }
+      });
+
+      setDaysWithTrips(daysWithTripsSet);
+    } catch (error) {
+      console.error('Error loading trips for calendar:', error);
+      setDaysWithTrips(new Set());
+    } finally {
+      setLoadingTrips(false);
+    }
+  };
 
   // Update current date when month/year changes
   useEffect(() => {
     const newDate = new Date(currentYear, currentMonth, 1);
     setCurrentDate(newDate);
   }, [currentMonth, currentYear]);
+
+  // Load trips when month/year changes or user changes
+  useEffect(() => {
+    loadTripsForMonth();
+  }, [currentMonth, currentYear, user]);
 
   const handlePrevMonth = () => {
     if (currentMonth === 0) {
@@ -76,6 +117,7 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect }) => {
         currentMonth={currentMonth}
         currentYear={currentYear}
         onDateSelect={handleDateSelect}
+        daysWithTrips={daysWithTrips}
       />
     </div>
   );
