@@ -1,6 +1,6 @@
 import type { Trip, WeatherLog, FishCaught, DatabaseError } from "../types";
 import { DB_CONFIG } from "../types";
-import { firestore } from "./firebase";
+import { firestore, auth } from "./firebase";
 import { databaseService } from "./databaseService";
 import {
   collection,
@@ -87,7 +87,11 @@ export class FirebaseDataService {
       notes: tripData.notes ? this.sanitizeString(tripData.notes) : tripData.notes,
     };
 
+    console.log('Creating trip with service userId:', this.userId);
+    console.log('Auth currentUser UID:', auth.currentUser?.uid);
+
     const tripWithUser = { ...sanitizedTripData, userId: this.userId };
+    console.log('Trip data to save:', tripWithUser);
 
     if (this.isOnline) {
       try {
