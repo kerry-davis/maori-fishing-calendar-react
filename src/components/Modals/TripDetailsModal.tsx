@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './Modal';
-import { useIndexedDB } from '../../hooks/useIndexedDB';
+import { useAuth } from '../../contexts/AuthContext';
+import { firebaseDataService } from '../../services/firebaseDataService';
 import type { Trip, TripModalProps, FormValidation } from '../../types';
 
 /**
@@ -18,6 +19,7 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
   onTripUpdated,
   onCancelEdit
 }) => {
+  const { user } = useAuth();
   const [formData, setFormData] = useState<Omit<Trip, 'id'>>({
     date: '',
     water: '',
@@ -26,17 +28,16 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
     companions: '',
     notes: ''
   });
-  
+
   const [validation, setValidation] = useState<FormValidation>({
     isValid: true,
     errors: {}
   });
-  
+
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
-  const db = useIndexedDB();
+
   const isEditing = tripId !== undefined;
 
   // Format date for input field (YYYY-MM-DD)
@@ -71,11 +72,13 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
 
   // Load trip data for editing
   const loadTripData = async (id: number) => {
+    if (!user) return;
+
     setIsLoading(true);
     setError(null);
 
     try {
-      const trip = await db.trips.getById(id);
+      const trip = await firebaseDataService.getTripById(id);
       if (trip) {
         setFormData({
           date: trip.date,
@@ -143,6 +146,11 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (!user) {
+      setError('You must be logged in to save trips.');
+      return;
+    }
+
     const validationResult = validateForm();
     setValidation(validationResult);
 
@@ -156,13 +164,10 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
     try {
       if (isEditing && tripId) {
         // Update existing trip
-        await db.trips.update({
-          id: tripId,
-          ...formData
-        });
+        await firebaseDataService.updateTrip({ id: tripId, ...formData });
       } else {
         // Create new trip
-        await db.trips.create(formData);
+        await firebaseDataService.createTrip(formData);
       }
 
       // Call the trip updated callback and close modal on success

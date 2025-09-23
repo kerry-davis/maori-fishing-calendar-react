@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Modal, ModalHeader, ModalBody } from './Modal';
-import { useIndexedDB } from '../../hooks/useIndexedDB';
+import { useAuth } from '../../contexts/AuthContext';
+import { firebaseDataService } from '../../services/firebaseDataService';
 import type { Trip, WeatherLog, FishCaught, ModalProps } from '../../types';
 import { LUNAR_PHASES } from '../../types';
 import { getMoonPhaseData } from '../../services/lunarService';
@@ -49,6 +50,7 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
   isOpen,
   onClose
 }) => {
+  const { user } = useAuth();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [weatherLogs, setWeatherLogs] = useState<WeatherLog[]>([]);
   const [fishCaught, setFishCaught] = useState<FishCaught[]>([]);
@@ -56,20 +58,19 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [selectedSpecies, setSelectedSpecies] = useState<string>('all');
   const [selectedGearType, setSelectedGearType] = useState<string>('all');
-  const db = useIndexedDB();
 
   // Load all analytics data
   const loadAnalyticsData = useCallback(async () => {
-    if (!isOpen || !db.isReady) return;
+    if (!isOpen || !user) return;
 
     setIsLoading(true);
     setError(null);
 
     try {
       const [tripsData, weatherData, fishData] = await Promise.all([
-        db.trips.getAll(),
-        db.weather.getAll(),
-        db.fish.getAll()
+        firebaseDataService.getAllTrips(),
+        firebaseDataService.getAllWeatherLogs(),
+        firebaseDataService.getAllFishCaught()
       ]);
 
       setTrips(tripsData);
@@ -87,7 +88,7 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [isOpen, db.isReady, db.trips, db.weather, db.fish]);
+  }, [isOpen, user]);
 
   // Load data when modal opens
   useEffect(() => {
