@@ -40,7 +40,6 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
 
         // Only update state if component is still mounted
         if (isMounted) {
-          console.log('Database context: Setting isReady to true');
           setIsReady(true);
           console.log('Database context ready');
         }
