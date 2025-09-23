@@ -268,7 +268,7 @@ export class DatabaseService {
   /**
    * Delete a trip and all associated data
    */
-  async deleteTrip(id: number): Promise<void> {
+  async deleteTrip(id: number, firebaseDocId?: string): Promise<void> {
     await this.initialize();
 
     return new Promise((resolve, reject) => {
