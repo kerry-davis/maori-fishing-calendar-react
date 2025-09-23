@@ -7,12 +7,14 @@ interface CalendarGridProps {
   currentMonth: number;
   currentYear: number;
   onDateSelect: (date: Date) => void;
+  daysWithTrips: Set<string>;
 }
 
 export const CalendarGrid: React.FC<CalendarGridProps> = ({
   currentMonth,
   currentYear,
   onDateSelect,
+  daysWithTrips,
 }) => {
   // Note: getTripsForMonth will be used in future enhancements for performance optimization
 
@@ -89,16 +91,22 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
 
       {/* Calendar days grid */}
       <div id="calendarDays" className="grid grid-cols-7 gap-1">
-        {calendarDays.map((dayData) => (
-          <CalendarDay
-            key={`${dayData.date.getFullYear()}-${dayData.date.getMonth()}-${dayData.date.getDate()}`}
-            date={dayData.date}
-            dayNumber={dayData.dayNumber}
-            isCurrentMonth={dayData.isCurrentMonth}
-            isToday={dayData.isToday}
-            onDateSelect={onDateSelect}
-          />
-        ))}
+        {calendarDays.map((dayData) => {
+          const dayKey = `${dayData.date.getFullYear()}-${dayData.date.getMonth()}-${dayData.date.getDate()}`;
+          const hasTrips = daysWithTrips.has(dayKey);
+
+          return (
+            <CalendarDay
+              key={dayKey}
+              date={dayData.date}
+              dayNumber={dayData.dayNumber}
+              isCurrentMonth={dayData.isCurrentMonth}
+              isToday={dayData.isToday}
+              hasTrips={hasTrips}
+              onDateSelect={onDateSelect}
+            />
+          );
+        })}
       </div>
     </div>
   );
