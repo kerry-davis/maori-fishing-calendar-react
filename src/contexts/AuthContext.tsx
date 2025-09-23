@@ -9,6 +9,7 @@ import {
   onAuthStateChanged
 } from 'firebase/auth';
 import { auth } from '../services/firebase';
+import { firebaseDataService } from '../services/firebaseDataService';
 
 interface AuthContextType {
   user: User | null;
@@ -19,7 +20,9 @@ interface AuthContextType {
   register: (email: string, password: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
+  forceLogout: () => void;
   clearSuccessMessage: () => void;
+  clearSyncQueue: () => boolean;
   isFirebaseConfigured: boolean;
 }
 
@@ -109,17 +112,75 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
+    console.log('Logout called, auth available:', !!auth);
+
     if (!auth) {
-      throw new Error('Firebase authentication is not configured. Please set up your Firebase environment variables.');
+      console.warn('Firebase auth not available, clearing local user state');
+      // If Firebase auth is not available, just clear the local user state
+      setUser(null);
+      setSuccessMessage('Signed out successfully');
+      return;
     }
+
     try {
       setError(null);
+      console.log('Calling Firebase signOut...');
       await signOut(auth);
+      console.log('Firebase signOut successful');
+
+      // Clear sync queue after successful logout
+      try {
+        firebaseDataService.clearSyncQueue();
+        console.log('Sync queue cleared during logout');
+        // Dispatch custom event to notify sync status hook
+        window.dispatchEvent(new CustomEvent('syncQueueCleared'));
+      } catch (syncError) {
+        console.warn('Failed to clear sync queue during logout:', syncError);
+      }
+
+      setSuccessMessage('Signed out successfully');
     } catch (err) {
+      console.error('Firebase logout error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Logout failed';
       setError(errorMessage);
+
+      // If Firebase logout fails, still clear local state as fallback
+      console.log('Clearing local user state as fallback');
+      setUser(null);
+
+      // Also try to clear sync queue even if Firebase logout failed
+      try {
+        firebaseDataService.clearSyncQueue();
+        console.log('Sync queue cleared during fallback logout');
+        // Dispatch custom event to notify sync status hook
+        window.dispatchEvent(new CustomEvent('syncQueueCleared'));
+      } catch (syncError) {
+        console.warn('Failed to clear sync queue during fallback logout:', syncError);
+      }
+
+      setSuccessMessage('Signed out locally');
+
       throw new Error(errorMessage);
     }
+  };
+
+  // Alternative logout method that always works (for debugging)
+  const forceLogout = () => {
+    console.log('Force logout called - clearing all user state');
+
+    // Clear sync queue
+    try {
+      firebaseDataService.clearSyncQueue();
+      console.log('Sync queue cleared during force logout');
+      // Dispatch custom event to notify sync status hook
+      window.dispatchEvent(new CustomEvent('syncQueueCleared'));
+    } catch (syncError) {
+      console.warn('Failed to clear sync queue during force logout:', syncError);
+    }
+
+    setUser(null);
+    setError(null);
+    setSuccessMessage('Force logout completed');
   };
 
   const clearSuccessMessage = () => {
@@ -127,6 +188,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const isFirebaseConfigured = auth !== null;
+
+  // Debug method to clear sync queue (exposed to window for debugging)
+  const clearSyncQueue = () => {
+    try {
+      firebaseDataService.clearSyncQueue();
+      console.log('Sync queue cleared via debug method');
+
+      // Dispatch custom event to notify sync status hook
+      window.dispatchEvent(new CustomEvent('syncQueueCleared'));
+
+      setSuccessMessage('Sync queue cleared');
+      return true;
+    } catch (error) {
+      console.error('Failed to clear sync queue:', error);
+      setError('Failed to clear sync queue');
+      return false;
+    }
+  };
+
+  // Expose debug method to window
+  useEffect(() => {
+    (window as any).clearSyncQueue = clearSyncQueue;
+  }, []);
 
   const value = {
     user,
@@ -137,7 +221,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     register,
     signInWithGoogle,
     logout,
+    forceLogout,
     clearSuccessMessage,
+    clearSyncQueue,
     isFirebaseConfigured,
   };
 

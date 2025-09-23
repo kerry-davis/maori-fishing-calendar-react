@@ -97,8 +97,18 @@ export function useSyncStatus() {
       }
     };
 
+    // Listen for custom sync queue clear events
+    const handleSyncQueueClear = () => {
+      updateSyncStatus();
+    };
+
     window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    window.addEventListener('syncQueueCleared', handleSyncQueueClear);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('syncQueueCleared', handleSyncQueueClear);
+    };
   }, [user, updateSyncStatus]);
 
   // Mark sync as completed
@@ -110,6 +120,11 @@ export function useSyncStatus() {
       setSyncQueueLength(0);
     }
   }, [user]);
+
+  // Expose refresh function to window for debugging
+  useEffect(() => {
+    (window as any).refreshSyncStatus = updateSyncStatus;
+  }, [updateSyncStatus]);
 
   return {
     isOnline,
