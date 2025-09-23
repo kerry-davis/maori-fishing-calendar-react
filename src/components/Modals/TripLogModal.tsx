@@ -8,6 +8,7 @@ import type { Trip, WeatherLog, FishCaught, DateModalProps } from "../../types";
 export interface TripLogModalProps extends DateModalProps {
   onEditTrip?: (tripId: number) => void;
   onNewTrip?: () => void;
+  refreshTrigger?: number; // Add refresh trigger prop
 }
 
 /**
@@ -24,6 +25,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
   selectedDate,
   onEditTrip,
   onNewTrip,
+  refreshTrigger,
 }) => {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -135,6 +137,15 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
       loadWeatherLogs();
     }
   }, [isOpen, selectedDate, loadFishCatches, loadWeatherLogs]);
+
+  // Reload data when refresh trigger changes (e.g., after trip deletion from other modals)
+  useEffect(() => {
+    if (isOpen && selectedDate && refreshTrigger !== undefined) {
+      loadTrips();
+      loadFishCatches();
+      loadWeatherLogs();
+    }
+  }, [refreshTrigger, isOpen, selectedDate]);
 
   // Handle trip deletion
   const handleDeleteTrip = async (tripId: number) => {
