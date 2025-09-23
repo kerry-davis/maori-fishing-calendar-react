@@ -43,6 +43,12 @@ let firestore: any = null;
 
 try {
   if (missingEnvVars.length === 0) {
+    console.log('Initializing Firebase with config:', {
+      projectId: firebaseConfig.projectId,
+      authDomain: firebaseConfig.authDomain,
+      hasApiKey: !!firebaseConfig.apiKey
+    });
+
     app = initializeApp(firebaseConfig);
     auth = getAuth(app);
     storage = getStorage(app);
@@ -51,10 +57,13 @@ try {
   } else {
     console.warn('Firebase not initialized due to missing environment variables');
     console.warn('Authentication features will be disabled until environment variables are configured');
+    console.warn('Missing variables:', missingEnvVars);
   }
 } catch (error) {
   console.error('Failed to initialize Firebase:', error);
+  console.error('Error details:', error);
   console.warn('Please check your Firebase configuration and environment variables');
+  console.warn('Authentication features will be disabled');
 }
 
 export { app, auth, storage, firestore };
