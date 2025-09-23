@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Modal, ModalHeader, ModalBody } from "./Modal";
 import { useLocationContext } from "../../contexts/LocationContext";
-import { useAuth } from "../../contexts/AuthContext";
-import { firebaseDataService } from "../../services/firebaseDataService";
+// import { useAuth } from "../../contexts/AuthContext"; // Not currently used
+import { useDatabaseService } from "../../contexts/DatabaseContext";
 import {
   getLunarPhase,
   getMoonPhaseData,
@@ -47,8 +47,9 @@ export const LunarModal: React.FC<LunarModalProps> = ({
   selectedDate,
   onTripLogOpen,
 }) => {
-  const { user } = useAuth();
+  // const { user } = useAuth(); // Not currently used
   const { userLocation, setLocation, requestLocation, searchLocation, searchLocationSuggestions } = useLocationContext();
+  const db = useDatabaseService();
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [weatherError, setWeatherError] = useState<string | null>(null);
@@ -78,18 +79,18 @@ export const LunarModal: React.FC<LunarModalProps> = ({
     let isMounted = true;
 
     const checkTripsForDate = async () => {
-      if (!user) {
-        if (isMounted) setHasTripsForDate(false);
-        return;
-      }
-
       try {
-        // Query Firebase for trips on this date
-        const allTrips = await firebaseDataService.getAllTrips();
+        // Query database service (handles both Firebase and local data)
+        // This works for both authenticated users and guests
+        const allTrips = await db.getAllTrips();
 
         // Filter trips for the current date
         const dateStr = currentDate.toLocaleDateString("en-CA");
         const hasTrips = allTrips.some(trip => trip.date === dateStr);
+
+        console.log(`Checking trips for date ${dateStr}: found ${allTrips.length} total trips`);
+        console.log('Trip dates:', allTrips.map(trip => trip.date));
+        console.log(`${hasTrips ? 'Has' : 'No'} trips for this date`);
 
         if (isMounted) {
           setHasTripsForDate(hasTrips);
@@ -107,7 +108,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [currentDate, user]);
+  }, [currentDate, db]);
 
   // Cleanup timeout on unmount
   useEffect(() => {

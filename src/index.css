@@ -11,7 +11,8 @@
 
 @layer components {
     .calendar-day {
-        @apply min-h-[80px] cursor-pointer transition-all duration-200 flex flex-col items-center justify-around p-1;
+        @apply min-h-[80px] cursor-pointer flex flex-col items-center justify-around p-1;
+        transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
     }
 
     .calendar-day:hover {

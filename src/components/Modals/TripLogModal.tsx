@@ -3,6 +3,7 @@ import { Modal, ModalHeader, ModalBody, ModalFooter } from "./Modal";
 import { useDatabaseService } from "../../contexts/DatabaseContext";
 import { WeatherLogModal } from "./WeatherLogModal";
 import { FishCatchModal } from "./FishCatchModal";
+import ContextualConfirmation from "../UI/ContextualConfirmation";
 import type { Trip, WeatherLog, FishCaught, DateModalProps } from "../../types";
 
 export interface TripLogModalProps extends DateModalProps {
@@ -40,7 +41,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
   const [editingWeatherId, setEditingWeatherId] = useState<string | null>(null);
   const [editingFishId, setEditingFishId] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<{ type: 'weather' | 'fish', id: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ type: 'weather' | 'fish' | 'trip', id: string, tripId?: number, firebaseDocId?: string } | null>(null);
   const db = useDatabaseService();
 
   // Format date for display and database queries
@@ -164,10 +165,16 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
     }
   }, [refreshTrigger, isOpen, selectedDate, loadTrips, loadFishCatches, loadWeatherLogs]);
 
-  // Handle trip deletion
+  // Handle trip deletion - show confirmation first
   const handleDeleteTrip = useCallback(async (tripId: number, firebaseDocId?: string) => {
     console.log('handleDeleteTrip called with tripId:', tripId, 'firebaseDocId:', firebaseDocId);
-    console.log('Deleting trip without confirmation...');
+    setDeleteTarget({ type: 'trip', id: tripId.toString(), tripId, firebaseDocId });
+    setShowDeleteConfirm(true);
+  }, []);
+
+  // Execute trip deletion after confirmation
+  const executeTripDeletion = useCallback(async (tripId: number, firebaseDocId?: string) => {
+    console.log('Executing trip deletion with tripId:', tripId, 'firebaseDocId:', firebaseDocId);
 
     try {
       await db.deleteTrip(tripId, firebaseDocId);
@@ -332,11 +339,13 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
       executeWeatherDeletion(deleteTarget.id);
     } else if (deleteTarget.type === 'fish') {
       executeFishDeletion(deleteTarget.id);
+    } else if (deleteTarget.type === 'trip') {
+      executeTripDeletion(deleteTarget.tripId!, deleteTarget.firebaseDocId);
     }
 
     setShowDeleteConfirm(false);
     setDeleteTarget(null);
-  }, [deleteTarget, executeWeatherDeletion, executeFishDeletion]);
+  }, [deleteTarget, executeWeatherDeletion, executeFishDeletion, executeTripDeletion]);
 
   const handleCancelDelete = useCallback(() => {
     console.log('[Delete Debug] User cancelled deletion in custom modal');
@@ -480,54 +489,22 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
         />
       )}
 
-      {/* Custom Delete Confirmation Modal */}
-      {showDeleteConfirm && deleteTarget && (
-        <Modal
-          isOpen={showDeleteConfirm}
-          onClose={handleCancelDelete}
-          maxWidth="sm"
-        >
-          <ModalHeader
-            title="Confirm Deletion"
-            subtitle={`Are you sure you want to delete this ${deleteTarget.type}?`}
-            onClose={handleCancelDelete}
-          />
-
-          <ModalBody>
-            <div className="py-4">
-              <p className="text-gray-600 dark:text-gray-400 mb-4">
-                This action cannot be undone. The {deleteTarget.type} will be permanently removed from your records.
-              </p>
-              <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-3">
-                <div className="flex items-center">
-                  <i className="fas fa-exclamation-triangle text-yellow-500 mr-2"></i>
-                  <span className="text-yellow-700 dark:text-yellow-300 text-sm font-medium">
-                    This will permanently delete the {deleteTarget.type}.
-                  </span>
-                </div>
-              </div>
-            </div>
-          </ModalBody>
-
-          <ModalFooter>
-            <div className="flex justify-end space-x-3">
-              <button
-                onClick={handleCancelDelete}
-                className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmDelete}
-                className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors flex items-center"
-              >
-                <i className="fas fa-trash mr-2"></i>
-                Delete {deleteTarget.type === 'weather' ? 'Weather Log' : 'Fish Catch'}
-              </button>
-            </div>
-          </ModalFooter>
-        </Modal>
-      )}
+      {/* Standardized Delete Confirmation */}
+      <ContextualConfirmation
+        isOpen={showDeleteConfirm && deleteTarget !== null}
+        title={`Delete ${deleteTarget?.type === 'trip' ? 'Trip' : deleteTarget?.type === 'weather' ? 'Weather Log' : 'Fish Catch'}`}
+        message={
+          deleteTarget?.type === 'trip' 
+            ? 'This will permanently delete the entire trip and all associated data (weather logs, fish catches).'
+            : `This will permanently delete this ${deleteTarget?.type} from your records.`
+        }
+        confirmText={`Delete ${deleteTarget?.type === 'trip' ? 'Trip' : deleteTarget?.type === 'weather' ? 'Weather Log' : 'Fish Catch'}`}
+        cancelText="Keep It"
+        onConfirm={handleConfirmDelete}
+        onCancel={handleCancelDelete}
+        variant="danger"
+        position="top-right"
+      />
     </Modal>
   );
 };
@@ -726,7 +703,7 @@ const TripCard: React.FC<TripCardProps> = ({
                             console.log('[UI Debug] Weather delete button mouse enter');
                           }}
                         >
-                          🗑️ Delete
+                          Delete
                         </button>
                       </div>
                     </div>
@@ -823,7 +800,7 @@ const TripCard: React.FC<TripCardProps> = ({
                             console.log('[UI Debug] Fish delete button mouse enter');
                           }}
                         >
-                          🗑️ Delete
+                          Delete
                         </button>
                       </div>
                     </div>
