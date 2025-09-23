@@ -1,5 +1,4 @@
 import type { Trip, WeatherLog, FishCaught, DatabaseError } from "../types";
-import { DB_CONFIG } from "../types";
 import { firestore, auth } from "./firebase";
 import { databaseService } from "./databaseService";
 import {
@@ -13,13 +12,9 @@ import {
   query,
   where,
   orderBy,
-  limit,
   serverTimestamp,
-  writeBatch,
-  onSnapshot,
-  Timestamp
+  writeBatch
 } from "firebase/firestore";
-import { useAuth } from "../contexts/AuthContext";
 
 /**
  * Firebase Data Service - Cloud-first with offline fallback
@@ -781,53 +776,6 @@ await batch.commit();
     return queuedOperation.id;
   }
 
-  private async processSyncQueue(): Promise<void> {
-    if (this.syncQueue.length === 0) return;
-
-    console.log('Processing sync queue...', this.syncQueue.length, 'operations');
-
-    let syncedCount = 0;
-    for (const operation of this.syncQueue) {
-      try {
-        await this.executeQueuedOperation(operation);
-        // Remove from queue on success
-        this.syncQueue = this.syncQueue.filter(op => op.id !== operation.id);
-        syncedCount++;
-      } catch (error) {
-        console.error('Failed to sync operation:', operation, error);
-        // For now, remove failed operations to prevent infinite sync attempts
-        console.log('Removing failed operation from queue to prevent blocking');
-        this.syncQueue = this.syncQueue.filter(op => op.id !== operation.id);
-      }
-    }
-
-    this.saveSyncQueue();
-
-    // Mark sync as complete if we successfully synced operations
-    if (syncedCount > 0 && this.userId) {
-      localStorage.setItem(`lastSync_${this.userId}`, new Date().toISOString());
-    }
-  }
-
-  private async executeQueuedOperation(operation: any): Promise<void> {
-    const { operation: opType, collection: coll, data } = operation;
-
-    switch (opType) {
-      case 'create':
-        await addDoc(collection(firestore, coll), {
-          ...data,
-          createdAt: serverTimestamp()
-        });
-        break;
-      case 'update':
-        // Find the document by some identifier
-        // This is complex - we'd need to store Firebase IDs
-        break;
-      case 'delete':
-        // Similar complexity for deletes
-        break;
-    }
-  }
 
   private saveSyncQueue(): void {
     if (this.userId) {
@@ -878,19 +826,6 @@ await batch.commit();
     };
   }
 
-  /**
-   * Create a standardized database error
-   */
-  private createDatabaseError(
-    type: DatabaseError["type"],
-    message: string,
-  ): DatabaseError {
-    return {
-      type,
-      message,
-      recoverable: type !== "connection",
-    };
-  }
 
   // TACKLE BOX METHODS
 
@@ -1370,103 +1305,6 @@ await batch.commit();
     return input.replace(/[<>\"'&]/g, '').trim();
   }
 
-  /**
-   * Delete trip documents and associated data
-   */
-  private async deleteTripDocuments(tripRefs: any[]): Promise<void> {
-    const batch = writeBatch(firestore);
-
-    // Delete trip documents
-    tripRefs.forEach(ref => batch.delete(ref));
-
-    for (const tripRef of tripRefs) {
-      const tripId = tripRef.id;
-      const weatherQuery = query(
-        collection(firestore, 'weatherLogs'),
-        where('userId', '==', this.userId),
-        where('tripId', '==', tripId)
-      );
-      const weatherSnapshot = await getDocs(weatherQuery);
-      weatherSnapshot.forEach((doc) => {
-        batch.delete(doc.ref);
-      });
-      const fishQuery = query(
-        collection(firestore, 'fishCaught'),
-        where('userId', '==', this.userId),
-        where('tripId', '==', tripId)
-      );
-      const fishSnapshot = await getDocs(fishQuery);
-      fishSnapshot.forEach((doc) => {
-        batch.delete(doc.ref);
-      });
-    }
-    await batch.commit();
-    console.log(`Deleted ${tripRefs.length} trip document(s) and associated data from Firestore`);
-  }
-
-  /**
-   * Resync trips from local storage to Firestore (nuclear option)
-   */
-  private async resyncTripsFromLocalStorage(): Promise<void> {
-    console.log('Starting data resync from local storage...');
-
-    // Get all local trips
-    const localTrips = await databaseService.getAllTrips();
-    console.log(`Found ${localTrips.length} trips in local storage`);
-
-    if (localTrips.length === 0) {
-      console.log('No local trips to resync');
-      return;
-    }
-
-    // Clear existing Firestore data for this user
-    console.log('Clearing existing Firestore data...');
-    await this.clearUserFirestoreData();
-
-    // Recreate all trips in Firestore
-    console.log('Recreating trips in Firestore...');
-    for (const trip of localTrips) {
-      try {
-        const tripData = { ...trip, userId: this.userId };
-        const docRef = await addDoc(collection(firestore, 'trips'), {
-          ...tripData,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
-
-        // Store the mapping
-        await this.storeLocalMapping('trips', trip.id.toString(), docRef.id);
-        console.log(`Resynced trip ${trip.id}`);
-      } catch (error) {
-        console.error(`Failed to resync trip ${trip.id}:`, error);
-      }
-    }
-
-    console.log('Data resync completed');
-  }
-
-  /**
-   * Clear all user data from Firestore (dangerous operation)
-   */
-  private async clearUserFirestoreData(): Promise<void> {
-    console.log('Clearing user data from Firestore...');
-
-    // Delete all trips
-    const tripsQuery = query(
-      collection(firestore, 'trips'),
-      where('userId', '==', this.userId)
-    );
-    const tripsSnapshot = await getDocs(tripsQuery);
-    const batch = writeBatch(firestore);
-
-    tripsSnapshot.forEach(doc => batch.delete(doc.ref));
-
-    // Note: In a real implementation, you'd also delete weather logs and fish catches
-    // But for this emergency resync, we'll focus on trips
-
-    await batch.commit();
-    console.log(`Cleared ${tripsSnapshot.size} trip documents from Firestore`);
-  }
 }
 
 // Export a singleton instance

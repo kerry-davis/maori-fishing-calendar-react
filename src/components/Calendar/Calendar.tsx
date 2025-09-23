@@ -14,12 +14,10 @@ interface CalendarProps {
 
 export const Calendar: React.FC<CalendarProps> = ({ onDateSelect, refreshTrigger = 0 }) => {
   const { user } = useAuth();
-  const { isReady: dbReady } = useDatabaseContext();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentMonth, setCurrentMonth] = useState(currentDate.getMonth());
   const [currentYear, setCurrentYear] = useState(currentDate.getFullYear());
   const [daysWithTrips, setDaysWithTrips] = useState<Set<string>>(new Set());
-  const [loadingTrips, setLoadingTrips] = useState(false);
 
   // Load trips for the current month with robust error handling
   const loadTripsForMonth = async (retryCount = 0) => {
@@ -28,7 +26,6 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect, refreshTrigger
       return;
     }
 
-    setLoadingTrips(true);
     const maxRetries = 5;
     const retryDelay = 1000; // 1000ms
 
@@ -76,8 +73,6 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect, refreshTrigger
         console.error('Local fallback also failed:', localError);
         setDaysWithTrips(new Set());
       }
-    } finally {
-      setLoadingTrips(false);
     }
   };
 
