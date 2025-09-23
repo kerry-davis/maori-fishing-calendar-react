@@ -14,6 +14,7 @@ interface PWAContextType {
   
   // Status
   isOnline: boolean;
+  isPWA: boolean;
 }
 
 const PWAContext = createContext<PWAContextType | undefined>(undefined);
@@ -26,6 +27,7 @@ export const PWAProvider: React.FC<PWAProviderProps> = ({ children }) => {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [canInstall, setCanInstall] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [isPWA, setIsPWA] = useState(false);
 
   const {
     needRefresh: [needRefresh],
@@ -72,6 +74,22 @@ export const PWAProvider: React.FC<PWAProviderProps> = ({ children }) => {
     };
   }, []);
 
+  // Check display mode
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(display-mode: standalone)');
+    setIsPWA(mediaQuery.matches);
+
+    const handleChange = (e: MediaQueryListEvent) => {
+      setIsPWA(e.matches);
+    };
+
+    mediaQuery.addEventListener('change', handleChange);
+
+    return () => {
+      mediaQuery.removeEventListener('change', handleChange);
+    };
+  }, []);
+
   const showInstallPrompt = async () => {
     if (!deferredPrompt) return;
 
@@ -99,6 +117,7 @@ export const PWAProvider: React.FC<PWAProviderProps> = ({ children }) => {
     offlineReady,
     updateServiceWorker,
     isOnline,
+    isPWA,
   };
 
   return (
