@@ -7,7 +7,7 @@ export interface WeatherLogModalProps {
   isOpen: boolean;
   onClose: () => void;
   tripId: number;
-  weatherId?: number; // For editing existing weather log
+  weatherId?: string; // For editing existing weather log
   onWeatherLogged?: (weatherLog: WeatherLog) => void;
 }
 
@@ -40,12 +40,14 @@ export const WeatherLogModal: React.FC<WeatherLogModalProps> = ({
   const isEditing = weatherId !== undefined;
 
   // Load existing weather data when editing
-  const loadWeatherData = async (id: number) => {
+  const loadWeatherData = async (id: string) => {
     setIsLoading(true);
     setError(null);
 
     try {
-      const weather = await db.getWeatherLogById(id);
+      // Convert string ID to number for database lookup
+      const numericId = parseInt(id.split('-').pop() || '0', 10);
+      const weather = await db.getWeatherLogById(numericId);
       if (weather) {
         setFormData({
           timeOfDay: weather.timeOfDay,
@@ -146,7 +148,7 @@ export const WeatherLogModal: React.FC<WeatherLogModalProps> = ({
         const newWeatherId = await db.createWeatherLog(weatherData);
 
         const newWeatherLog: WeatherLog = {
-          id: newWeatherId,
+          id: newWeatherId.toString(),
           ...weatherData,
         };
 

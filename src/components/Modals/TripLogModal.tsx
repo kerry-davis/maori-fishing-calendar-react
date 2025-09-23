@@ -37,10 +37,10 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
   const [showWeatherModal, setShowWeatherModal] = useState(false);
   const [showFishModal, setShowFishModal] = useState(false);
   const [selectedTripId, setSelectedTripId] = useState<number | null>(null);
-  const [editingWeatherId, setEditingWeatherId] = useState<number | null>(null);
-  const [editingFishId, setEditingFishId] = useState<number | null>(null);
+  const [editingWeatherId, setEditingWeatherId] = useState<string | null>(null);
+  const [editingFishId, setEditingFishId] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<{ type: 'weather' | 'fish', id: number } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ type: 'weather' | 'fish', id: string } | null>(null);
   const db = useDatabaseService();
 
   // Format date for display and database queries
@@ -97,11 +97,12 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
       );
 
       setFishCatches(relevantFishCatches);
+
     } catch (err) {
       console.error("Error loading fish catches:", err);
       // Don't set error state for fish catches as it's not critical
     }
-  }, [isOpen, selectedDate]);
+  }, [isOpen, selectedDate, db]);
 
   // Load all weather logs for the selected date
   const loadWeatherLogs = useCallback(async () => {
@@ -110,25 +111,35 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
     try {
       // Get all weather logs from database
       const allWeatherLogs = await db.getAllWeatherLogs();
-      console.log('All weather logs from database:', allWeatherLogs);
 
       // Filter weather logs for trips that exist on the selected date
       const dateStr = formatDateForDB(selectedDate);
       const tripsOnDate = await db.getTripsByDate(dateStr);
-      console.log('Trips on selected date:', tripsOnDate);
 
       // Get weather logs only for trips on the selected date
       const relevantWeatherLogs = allWeatherLogs.filter((log: WeatherLog) =>
         tripsOnDate.some((trip: Trip) => trip.id === log.tripId)
       );
 
-      console.log('Relevant weather logs for date:', relevantWeatherLogs);
       setWeatherLogs(relevantWeatherLogs);
     } catch (err) {
       console.error("Error loading weather logs:", err);
       // Don't set error state for weather logs as it's not critical
     }
-  }, [isOpen, selectedDate]);
+  }, [isOpen, selectedDate, db]);
+
+  // Helper function to get the correct ID for deletion
+  const getCorrectIdForDeletion = useCallback((item: WeatherLog | FishCaught): string => {
+    // If the item has a string ID (from Firestore), use it
+    if (typeof item.id === 'string' && item.id.includes('-')) {
+      return item.id;
+    }
+    // For numeric IDs, we need to construct the correct string ID
+    // The pattern is ${tripId}-${timestamp}, but we don't have the original timestamp
+    // However, we can use the ID mapping system which has the correct mappings
+    // For now, pass the numeric ID and let the Firebase service handle the lookup
+    return item.id.toString();
+  }, []);
 
   // Load trips when modal opens or date changes
   useEffect(() => {
@@ -151,7 +162,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
       loadFishCatches();
       loadWeatherLogs();
     }
-  }, [refreshTrigger, isOpen, selectedDate]);
+  }, [refreshTrigger, isOpen, selectedDate, loadTrips, loadFishCatches, loadWeatherLogs]);
 
   // Handle trip deletion
   const handleDeleteTrip = useCallback(async (tripId: number, firebaseDocId?: string) => {
@@ -238,72 +249,92 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
   };
 
   // Handle fish catch editing
-  const handleEditFish = useCallback((fishId: number) => {
+  const handleEditFish = useCallback((fishId: string) => {
     // Find the fish catch to edit
     const fishCatch = fishCatches.find(fish => fish.id === fishId);
     if (fishCatch) {
       setSelectedTripId(fishCatch.tripId);
-      setEditingFishId(fishId);
+      // Use the correct ID for editing
+      const correctId = getCorrectIdForDeletion(fishCatch);
+      setEditingFishId(correctId);
       setShowFishModal(true);
     }
-  }, [fishCatches]);
+  }, [fishCatches, getCorrectIdForDeletion]);
 
   // Handle fish catch deletion
-  const handleDeleteFish = useCallback(async (fishId: number) => {
-    console.log('[Delete Debug] Fish delete button clicked for ID:', fishId);
-    console.log('[Delete Debug] Showing custom confirmation modal for fish deletion');
+  const handleDeleteFish = useCallback(async (fishId: string) => {
     setDeleteTarget({ type: 'fish', id: fishId });
     setShowDeleteConfirm(true);
   }, []);
 
   // Execute fish deletion after confirmation
-  const executeFishDeletion = useCallback(async (fishId: number) => {
+  const executeFishDeletion = useCallback(async (fishId: string) => {
     console.log('[Delete Debug] Proceeding with fish deletion...');
+
+    // Find the fish catch to get the correct ID for deletion
+    const fishCatch = fishCatches.find(fish => fish.id === fishId);
+    const correctId = fishCatch ? getCorrectIdForDeletion(fishCatch) : fishId;
+
+    console.log('[Delete Debug] Using correct ID for deletion:', correctId);
+
+    // Final Strategy: Optimistic UI update, and NO reload.
+    // The user's action of closing/re-opening the modal will be the source of truth refresh.
+    setFishCatches(prev => prev.filter(fish => fish.id !== fishId));
+
     try {
-      await db.deleteFishCaught(fishId);
-      console.log('[Delete Debug] Fish deletion successful, reloading...');
-      // Reload fish catches from database to ensure state consistency
-      await loadFishCatches();
-      console.log('[Delete Debug] Fish catches reloaded successfully');
+      await db.deleteFishCaught(correctId);
+      console.log('[Delete Debug] Fish deletion successful. UI was updated optimistically.');
     } catch (err) {
       console.error("Error deleting fish catch:", err);
       setError("Failed to delete fish catch. Please try again.");
+      // If error, revert the optimistic update by reloading
+      loadFishCatches();
     }
-  }, [db, loadFishCatches]);
+  }, [db, loadFishCatches, fishCatches, getCorrectIdForDeletion]);
 
   // Handle weather log editing
-  const handleEditWeather = useCallback((weatherId: number) => {
+  const handleEditWeather = useCallback((weatherId: string) => {
     // Find the tripId for this weather log
     const weatherLog = weatherLogs.find(log => log.id === weatherId);
     if (weatherLog) {
       setSelectedTripId(weatherLog.tripId);
+      // Use the correct ID for editing
+      const correctId = getCorrectIdForDeletion(weatherLog);
+      setEditingWeatherId(correctId);
     }
-    setEditingWeatherId(weatherId);
     setShowWeatherModal(true);
-  }, [weatherLogs]);
+  }, [weatherLogs, getCorrectIdForDeletion]);
 
   // Handle weather log deletion
-  const handleDeleteWeather = useCallback(async (weatherId: number) => {
-    console.log('[Delete Debug] Weather delete button clicked for ID:', weatherId);
-    console.log('[Delete Debug] Showing custom confirmation modal for weather deletion');
+  const handleDeleteWeather = useCallback(async (weatherId: string) => {
     setDeleteTarget({ type: 'weather', id: weatherId });
     setShowDeleteConfirm(true);
   }, []);
 
   // Execute weather deletion after confirmation
-  const executeWeatherDeletion = useCallback(async (weatherId: number) => {
+  const executeWeatherDeletion = useCallback(async (weatherId: string) => {
     console.log('[Delete Debug] Proceeding with weather deletion...');
+
+    // Find the weather log to get the correct ID for deletion
+    const weatherLog = weatherLogs.find(log => log.id === weatherId);
+    const correctId = weatherLog ? getCorrectIdForDeletion(weatherLog) : weatherId;
+
+    console.log('[Delete Debug] Using correct ID for deletion:', correctId);
+
+    // Final Strategy: Optimistic UI update, and NO reload.
+    // The user's action of closing/re-opening the modal will be the source of truth refresh.
+    setWeatherLogs(prev => prev.filter(log => log.id !== weatherId));
+
     try {
-      await db.deleteWeatherLog(weatherId);
-      console.log('[Delete Debug] Weather deletion successful, reloading...');
-      // Reload weather logs from database to ensure state consistency
-      await loadWeatherLogs();
-      console.log('[Delete Debug] Weather logs reloaded successfully');
+      await db.deleteWeatherLog(correctId);
+      console.log('[Delete Debug] Weather deletion successful. UI was updated optimistically.');
     } catch (err) {
       console.error("Error deleting weather log:", err);
       setError("Failed to delete weather log. Please try again.");
+      // If error, revert the optimistic update by reloading
+      loadWeatherLogs();
     }
-  }, [db, loadWeatherLogs]);
+  }, [db, loadWeatherLogs, weatherLogs, getCorrectIdForDeletion]);
 
   // Handle confirmation dialog
   const handleConfirmDelete = useCallback(() => {
@@ -312,15 +343,27 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
     console.log('[Delete Debug] User confirmed deletion for', deleteTarget.type, 'ID:', deleteTarget.id);
     console.log('[Delete Debug] Custom confirmation modal - proceeding with deletion');
 
+    // Find the correct item to get the proper ID for deletion
+    let correctId = deleteTarget.id;
     if (deleteTarget.type === 'weather') {
-      executeWeatherDeletion(deleteTarget.id);
+      const weatherLog = weatherLogs.find(log => log.id === deleteTarget.id);
+      correctId = weatherLog ? getCorrectIdForDeletion(weatherLog) : deleteTarget.id;
     } else if (deleteTarget.type === 'fish') {
-      executeFishDeletion(deleteTarget.id);
+      const fishCatch = fishCatches.find(fish => fish.id === deleteTarget.id);
+      correctId = fishCatch ? getCorrectIdForDeletion(fishCatch) : deleteTarget.id;
+    }
+
+    console.log('[Delete Debug] Using correct ID for deletion:', correctId);
+
+    if (deleteTarget.type === 'weather') {
+      executeWeatherDeletion(correctId);
+    } else if (deleteTarget.type === 'fish') {
+      executeFishDeletion(correctId);
     }
 
     setShowDeleteConfirm(false);
     setDeleteTarget(null);
-  }, [deleteTarget, executeWeatherDeletion, executeFishDeletion]);
+  }, [deleteTarget, executeWeatherDeletion, executeFishDeletion, weatherLogs, fishCatches, getCorrectIdForDeletion]);
 
   const handleCancelDelete = useCallback(() => {
     console.log('[Delete Debug] User cancelled deletion in custom modal');
@@ -328,7 +371,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
     setDeleteTarget(null);
   }, []);
 
-  console.log('[TripLogModal Debug] Rendering TripLogModal, trips count:', trips.length, 'weather logs count:', weatherLogs.length, 'fish catches count:', fishCatches.length);
+  // Removed debug logging to reduce console clutter
 
   // Add error boundary for debugging
   useEffect(() => {
@@ -523,10 +566,10 @@ interface TripCardProps {
   onDelete: (firebaseDocId?: string) => void;
   onAddWeather: (tripId: number) => void;
   onAddFish: (tripId: number) => void;
-  onEditWeather: (weatherId: number) => void;
-  onDeleteWeather: (weatherId: number) => void;
-  onEditFish: (fishId: number) => void;
-  onDeleteFish: (fishId: number) => void;
+  onEditWeather: (weatherId: string) => void;
+  onDeleteWeather: (weatherId: string) => void;
+  onEditFish: (fishId: string) => void;
+  onDeleteFish: (fishId: string) => void;
   weatherLogs: WeatherLog[];
   fishCatches: FishCaught[];
 }
