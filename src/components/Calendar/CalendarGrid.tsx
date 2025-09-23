@@ -29,18 +29,7 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
   const daysInMonth = lastDayOfMonth.getDate();
   const startingDayOfWeek = (firstDayOfMonth.getDay() + 6) % 7; // 0 = Monday, 1 = Tuesday, etc.
 
-  // Get days from previous month to fill the grid
-  const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
-  const prevYear = currentMonth === 0 ? currentYear - 1 : currentYear;
-  const daysInPrevMonth = new Date(currentYear, currentMonth, 0).getDate();
-
-  // Get days from next month to fill the grid
-  const nextMonth = currentMonth === 11 ? 0 : currentMonth + 1;
-  const nextYear = currentMonth === 11 ? currentYear + 1 : currentYear;
-
-  // Calculate total cells needed (6 rows × 7 days = 42 cells)
-  const totalCells = 42;
-  const daysFromNextMonth = totalCells - startingDayOfWeek - daysInMonth;
+  // We only show current month days, so these calculations are not needed
 
   // Create array of all days to display
   const calendarDays = [];

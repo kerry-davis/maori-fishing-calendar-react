@@ -47,7 +47,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
   selectedDate,
   onTripLogOpen,
 }) => {
-  const { user } = useAuth();
+  // const { user } = useAuth(); // Not currently used
   const { userLocation, setLocation, requestLocation, searchLocation, searchLocationSuggestions } = useLocationContext();
   const db = useDatabaseService();
   const [currentDate, setCurrentDate] = useState<Date>(new Date());

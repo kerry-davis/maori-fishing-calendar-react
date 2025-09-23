@@ -16,7 +16,7 @@ export const debugDataStatus = async () => {
     console.log(`- Fish caught: ${localFish.length}`);
     
     // Check if Firebase service is ready and user is authenticated
-    if (firebaseDataService.isReady() && !firebaseDataService.isGuest) {
+    if (firebaseDataService.isReady() && !(firebaseDataService as any).isGuest) {
       console.log('FIREBASE DATA:');
       try {
         const firebaseTrips = await firebaseDataService.getAllTrips();
@@ -53,7 +53,7 @@ export const analyzeDuplicateTrips = async () => {
   try {
     const { firebaseDataService } = await import('../services/firebaseDataService');
     
-    if (firebaseDataService.isGuest) {
+    if ((firebaseDataService as any).isGuest) {
       console.log('Cannot analyze - user not logged in');
       return;
     }
@@ -62,7 +62,7 @@ export const analyzeDuplicateTrips = async () => {
     console.log(`Found ${allTrips.length} trips total`);
 
     console.log('All trips:');
-    allTrips.forEach((trip, index) => {
+    allTrips.forEach((trip: any, index: number) => {
       console.log(`${index + 1}. ${trip.date} at ${trip.water} - ${trip.location} (${trip.hours}h)`);
       console.log(`   ID: ${trip.id}, Notes: "${trip.notes || 'no notes'}"`);
     });
@@ -80,7 +80,7 @@ export const analyzeDuplicateTrips = async () => {
     });
 
     // Find groups with exact duplicates
-    const duplicateGroups = Array.from(tripGroups.entries()).filter(([key, trips]) => trips.length > 1);
+    const duplicateGroups = Array.from(tripGroups.entries()).filter(([, trips]) => trips.length > 1);
     
     console.log(`Found ${duplicateGroups.length} groups with potential exact duplicates`);
     
@@ -119,7 +119,7 @@ export const deleteSpecificTrip = async (tripId: number) => {
   try {
     const { firebaseDataService } = await import('../services/firebaseDataService');
     
-    if (firebaseDataService.isGuest) {
+    if ((firebaseDataService as any).isGuest) {
       console.log('Cannot delete - user not logged in');
       return;
     }
