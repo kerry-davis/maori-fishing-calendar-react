@@ -2,9 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Modal } from './Modal';
 import { GearForm } from './GearForm';
 import { GearTypeForm } from './GearTypeForm';
-import { useTackleBoxStorage } from '../../hooks/useLocalStorage';
+import { useFirebaseTackleBox, useFirebaseGearTypes } from '../../hooks/useFirebaseTackleBox';
 import type { ModalProps, TackleItem } from '../../types';
-import { DEFAULT_GEAR_TYPES } from '../../types';
 
 /**
  * TackleBoxModal Component
@@ -19,45 +18,13 @@ import { DEFAULT_GEAR_TYPES } from '../../types';
  * Requirements: 1.1, 5.1
  */
 export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
-  const [tacklebox, setTacklebox] = useTackleBoxStorage();
-  const [gearTypes, setGearTypes] = useState<string[]>(DEFAULT_GEAR_TYPES.slice());
+  const [tacklebox, setTacklebox] = useFirebaseTackleBox();
+  const [gearTypes, setGearTypes] = useFirebaseGearTypes();
   const [selectedGearId, setSelectedGearId] = useState<string>('');
   const [selectedGearType, setSelectedGearType] = useState<string>('');
   const [activeForm, setActiveForm] = useState<'gear' | 'gearType' | null>(null);
   const [editingGear, setEditingGear] = useState<TackleItem | null>(null);
   const [editingGearType, setEditingGearType] = useState<string>('');
-
-  // Load gear types from localStorage on mount
-  useEffect(() => {
-    try {
-      const savedGearTypes = localStorage.getItem('gearTypes');
-      if (savedGearTypes) {
-        try {
-          const parsed = JSON.parse(savedGearTypes);
-          setGearTypes(Array.isArray(parsed) ? parsed : DEFAULT_GEAR_TYPES.slice());
-        } catch (parseError) {
-          console.error('Error parsing gear types:', parseError);
-          setGearTypes(DEFAULT_GEAR_TYPES.slice());
-        }
-      } else {
-        // Save default gear types if none exist
-        localStorage.setItem('gearTypes', JSON.stringify(DEFAULT_GEAR_TYPES));
-        setGearTypes(DEFAULT_GEAR_TYPES.slice());
-      }
-    } catch (storageError) {
-      console.error('Error accessing localStorage:', storageError);
-      setGearTypes(DEFAULT_GEAR_TYPES.slice());
-    }
-  }, []);
-
-  // Save gear types to localStorage whenever they change
-  useEffect(() => {
-    try {
-      localStorage.setItem('gearTypes', JSON.stringify(gearTypes));
-    } catch (error) {
-      console.error('Error saving gear types to localStorage:', error);
-    }
-  }, [gearTypes]);
 
   // Reset form state when modal opens/closes
   useEffect(() => {
