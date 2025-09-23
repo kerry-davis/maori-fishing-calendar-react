@@ -93,7 +93,7 @@ export const analyzeDuplicateTrips = async () => {
       console.log(`\n🔍 POTENTIAL DUPLICATES FOUND:`);
       console.log(`Key: ${key}`);
       console.log(`Count: ${trips.length} trips`);
-      trips.forEach((trip, index) => {
+      trips.forEach((trip: any, index: number) => {
         console.log(`  ${index + 1}. ID: ${trip.id}, Firebase ID: ${trip.firebaseDocId}`);
         console.log(`     Date: ${trip.date}, Location: ${trip.water} - ${trip.location}`);
         console.log(`     Hours: ${trip.hours}, Companions: ${trip.companions || 'none'}`);
