@@ -3,7 +3,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { LoginModal } from './LoginModal';
 
 export const AuthButton: React.FC = () => {
-  const { user, logout, forceLogout, clearSyncQueue, isFirebaseConfigured } = useAuth();
+  const { user, logout, forceLogout, isFirebaseConfigured } = useAuth();
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
