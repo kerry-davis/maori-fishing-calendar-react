@@ -54,9 +54,10 @@ service cloud.firestore {
     // Gear types collection - users can only access their own gear types
     match /gearTypes/{document} {
       allow create: if isAuthenticated() &&
+        request.auth.uid == request.resource.data.userId;
+      allow get, update, delete: if isAuthenticated() &&
         request.auth.uid == resource.data.userId;
-      allow read, update, delete: if isAuthenticated() &&
-        request.auth.uid == resource.data.userId;
+      allow list: if isAuthenticated();
     }
 
     // Allow read access to public data (if any)
