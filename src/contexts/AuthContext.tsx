@@ -4,12 +4,15 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider,
   signOut,
   onAuthStateChanged
 } from 'firebase/auth';
 import { auth } from '../services/firebase';
 import { firebaseDataService } from '../services/firebaseDataService';
+import { usePWA } from './PWAContext';
 
 interface AuthContextType {
   user: User | null;
@@ -41,6 +44,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { isPWA } = usePWA();
 
   useEffect(() => {
     if (!auth) {
@@ -52,6 +56,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(user);
       setLoading(false);
     });
+
+    // Handle redirect result
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result) {
+          setSuccessMessage('Successfully signed in with Google!');
+        }
+      })
+      .catch((err) => {
+        console.error('getRedirectResult error:', err);
+        const errorMessage = err instanceof Error ? err.message : 'Google sign-in failed';
+        setError(errorMessage);
+      });
 
     return unsubscribe;
   }, []);
@@ -99,10 +116,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setError(null);
       console.log('Creating GoogleAuthProvider...');
       const provider = new GoogleAuthProvider();
-      console.log('Calling signInWithPopup...');
-      await signInWithPopup(auth, provider);
-      console.log('signInWithPopup successful');
-      setSuccessMessage('Successfully signed in with Google!');
+      if (isPWA) {
+        console.log('PWA mode detected, calling signInWithRedirect...');
+        await signInWithRedirect(auth, provider);
+      } else {
+        console.log('Calling signInWithPopup...');
+        await signInWithPopup(auth, provider);
+        console.log('signInWithPopup successful');
+        setSuccessMessage('Successfully signed in with Google!');
+      }
     } catch (err) {
       console.error('signInWithGoogle error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Google sign-in failed';
