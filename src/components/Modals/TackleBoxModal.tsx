@@ -4,7 +4,6 @@ import { GearForm } from './GearForm';
 import { GearTypeForm } from './GearTypeForm';
 import { useFirebaseTackleBox, useFirebaseGearTypes } from '../../hooks/useFirebaseTackleBox';
 import type { ModalProps, TackleItem } from '../../types';
-import { DEFAULT_GEAR_TYPES } from '../../types';
 
 /**
  * TackleBoxModal Component
@@ -19,8 +18,8 @@ import { DEFAULT_GEAR_TYPES } from '../../types';
  * Requirements: 1.1, 5.1
  */
 export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
-  const [tacklebox, setTacklebox, , tackleboxError, tackleboxLoading] = useFirebaseTackleBox();
-  const [gearTypes, setGearTypes, , gearTypesError, gearTypesLoading] = useFirebaseGearTypes();
+  const [tacklebox, setTacklebox] = useFirebaseTackleBox();
+  const [gearTypes, setGearTypes] = useFirebaseGearTypes();
   const [selectedGearId, setSelectedGearId] = useState<string>('');
   const [selectedGearType, setSelectedGearType] = useState<string>('');
   const [activeForm, setActiveForm] = useState<'gear' | 'gearType' | null>(null);
