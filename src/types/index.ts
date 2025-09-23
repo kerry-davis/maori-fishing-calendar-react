@@ -446,7 +446,7 @@ export const STORAGE_KEYS = {
 // Database configuration
 export const DB_CONFIG = {
   NAME: "fishingLog",
-  VERSION: 2,
+  VERSION: 3,
   STORES: {
     TRIPS: "trips",
     WEATHER_LOGS: "weather_logs",
