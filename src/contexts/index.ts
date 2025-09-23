@@ -54,25 +54,21 @@ interface AppProvidersProps {
  */
 export function AppProviders({ children }: AppProvidersProps): React.ReactElement {
   return React.createElement(
-    AuthProvider,
+    PWAProvider,
     null,
     React.createElement(
-      ThemeProvider,
+      AuthProvider,
       null,
       React.createElement(
-        LocationProvider,
+        ThemeProvider,
         null,
         React.createElement(
-          DatabaseProvider,
+          LocationProvider,
           null,
           React.createElement(
-            PWAProvider,
+            DatabaseProvider,
             null,
-            React.createElement(
-              AuthProvider,
-              null,
-              children
-            )
+            children
           )
         )
       )
