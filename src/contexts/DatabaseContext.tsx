@@ -1,7 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { firebaseDataService } from '../services/firebaseDataService';
-import { useAuth } from './AuthContext';
 import type { DatabaseContextType } from '../types';
 
 // Create the database context
@@ -13,39 +12,23 @@ interface DatabaseProviderProps {
 }
 
 export function DatabaseProvider({ children }: DatabaseProviderProps) {
-  const { user, loading: authLoading } = useAuth();
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Initialize database when user is available
   useEffect(() => {
     let isMounted = true;
 
     const initializeDatabase = async () => {
       try {
         setError(null);
-        console.log('Initializing Firebase database service...');
-
-        if (user) {
-          // Reset isReady to false during Firebase initialization
-          if (isMounted) {
-            setIsReady(false);
-          }
-          await firebaseDataService.initialize(user.uid);
-          console.log('Firebase database service initialized for user:', user.uid);
-        } else {
-          // If no user, we're in offline/local mode
-          console.log('No authenticated user - using offline mode');
-        }
-
-        // Only update state if component is still mounted
+        console.log('Initializing database service in guest mode...');
+        await firebaseDataService.initialize(); // Initialize as guest
         if (isMounted) {
           setIsReady(true);
           console.log('Database context ready');
         }
       } catch (err) {
         console.error('Database initialization failed:', err);
-
         if (isMounted) {
           const errorMessage = err instanceof Error ? err.message : 'Unknown database error';
           setError(errorMessage);
@@ -54,16 +37,12 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
       }
     };
 
-    // Only initialize if auth is not loading
-    if (!authLoading) {
-      initializeDatabase();
-    }
+    initializeDatabase();
 
-    // Cleanup function
     return () => {
       isMounted = false;
     };
-  }, [user, authLoading]);
+  }, []); // Run only once on mount
 
   const contextValue: DatabaseContextType = {
     db: null, // Firebase doesn't expose a database object like IndexedDB
