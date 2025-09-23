@@ -61,7 +61,7 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
 
   // Load all analytics data
   const loadAnalyticsData = useCallback(async () => {
-    if (!isOpen || !user) return;
+    if (!isOpen) return;
 
     setIsLoading(true);
     setError(null);
