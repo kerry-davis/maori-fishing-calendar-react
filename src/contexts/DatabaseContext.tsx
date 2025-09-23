@@ -1,7 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { firebaseDataService } from '../services/firebaseDataService';
-import { useAuth } from './AuthContext';
 import type { DatabaseContextType } from '../types';
 
 // Create the database context
