@@ -75,9 +75,13 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect }) => {
     setCurrentDate(newDate);
   }, [currentMonth, currentYear]);
 
-  // Load trips when month/year changes or user/db readiness changes
+  // Load trips when month/year changes and both user and db are ready
   useEffect(() => {
-    loadTripsForMonth();
+    if (user && dbReady) {
+      loadTripsForMonth();
+    } else {
+      setDaysWithTrips(new Set());
+    }
   }, [currentMonth, currentYear, user, dbReady]);
 
   const handlePrevMonth = () => {
