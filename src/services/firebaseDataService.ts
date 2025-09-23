@@ -1265,12 +1265,19 @@ await batch.commit();
       throw new Error('Time of day is required for weather log');
     }
 
-    if (weatherData.waterTemp !== undefined && typeof weatherData.waterTemp !== 'number') {
-      throw new Error('Water temperature must be a number');
+    // Handle temperature validation - can be string or number
+    if (weatherData.waterTemp !== undefined && weatherData.waterTemp !== '') {
+      const waterTemp = typeof weatherData.waterTemp === 'string' ? parseFloat(weatherData.waterTemp) : weatherData.waterTemp;
+      if (isNaN(waterTemp)) {
+        throw new Error('Water temperature must be a valid number');
+      }
     }
 
-    if (weatherData.airTemp !== undefined && typeof weatherData.airTemp !== 'number') {
-      throw new Error('Air temperature must be a number');
+    if (weatherData.airTemp !== undefined && weatherData.airTemp !== '') {
+      const airTemp = typeof weatherData.airTemp === 'string' ? parseFloat(weatherData.airTemp) : weatherData.airTemp;
+      if (isNaN(airTemp)) {
+        throw new Error('Air temperature must be a valid number');
+      }
     }
   }
 
