@@ -57,13 +57,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (newUser && !previousUser) {
         // User is logging in
-        console.log('User logging in, merging data...');
+        console.log('User logging in, checking for local data and merging...');
         await firebaseDataService.switchToUser(newUser.uid);
+        
+        // First merge any local data to Firebase, THEN clear local data
+        console.log('Merging any local guest data to Firebase...');
         await firebaseDataService.mergeLocalDataForUser();
+        
+        // Now clear local data to prevent duplicates with Firebase data
+        console.log('Clearing local data after merge to prevent duplicates');
+        await firebaseDataService.clearAllData();
+        
+        console.log('Login completed - local data merged and Firebase data will be loaded fresh');
       } else if (!newUser && previousUser) {
         // User is logging out
         console.log('User logging out, switching to guest mode...');
+        // Don't clear local data - keep it visible for better UX
         await firebaseDataService.initialize(); // Re-initialize in guest mode.
+        console.log('Switched to guest mode - local data remains visible');
       }
 
       setUser(newUser);
@@ -159,6 +170,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       setError(null);
+      
+      // Download Firebase data to local storage for guest mode access
+      console.log('Downloading your data for offline access...');
+      setSuccessMessage('Downloading your data for offline access...');
+      
+      try {
+        await firebaseDataService.backupLocalDataBeforeLogout();
+        console.log('Data download completed - your data will be available offline');
+      } catch (backupError) {
+        console.warn('Failed to download data for offline access:', backupError);
+        // Continue with logout even if backup fails
+      }
+
       console.log('Calling Firebase signOut...');
       await signOut(auth);
       console.log('Firebase signOut successful');
