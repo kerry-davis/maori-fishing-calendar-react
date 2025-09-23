@@ -520,6 +520,7 @@ await batch.commit();
 
     if (this.isOnline) {
       try {
+        // We might not have a firebaseId if the item was created offline and not synced
         const firebaseId = await this.getFirebaseId('weatherLogs', id);
         if (firebaseId) {
           const docRef = doc(firestore, 'weatherLogs', firebaseId);
@@ -527,26 +528,26 @@ await batch.commit();
 
           if (docSnap.exists()) {
             const data = docSnap.data();
-            // The local ID is the string ID we passed in.
-            return this.convertFromFirestore(data, this.generateLocalId(firebaseId), firebaseId) as WeatherLog;
-          }
-        } else {
-          // No Firebase ID mapping found - try to find by local ID in Firestore
-          console.log('No Firebase ID mapping found for weather log, trying alternative lookup');
-          const weatherQuery = query(
-            collection(firestore, 'weatherLogs'),
-            where('userId', '==', this.userId),
-            where('id', '==', id)
-          );
-
-          const weatherSnapshot = await getDocs(weatherQuery);
-          if (!weatherSnapshot.empty) {
-            const doc = weatherSnapshot.docs[0];
-            const data = doc.data();
-            const localId = this.generateLocalId(doc.id);
-            return this.convertFromFirestore(data, localId, doc.id) as WeatherLog;
+            return this.convertFromFirestore(data, id, firebaseId) as WeatherLog;
           }
         }
+
+        // Fallback to querying by the string ID if no mapping is found
+        const weatherQuery = query(
+          collection(firestore, 'weatherLogs'),
+          where('userId', '==', this.userId),
+          where('id', '==', id)
+        );
+
+        const weatherSnapshot = await getDocs(weatherQuery);
+        if (!weatherSnapshot.empty) {
+          const doc = weatherSnapshot.docs[0];
+          const data = doc.data();
+          // Ensure mapping is stored for future lookups
+          await this.storeLocalMapping('weatherLogs', id, doc.id);
+          return this.convertFromFirestore(data, id, doc.id) as WeatherLog;
+        }
+
       } catch (error) {
         console.warn('Firestore get failed, trying local:', error);
       }
@@ -574,9 +575,9 @@ await batch.commit();
 
         querySnapshot.forEach((doc) => {
           const data = doc.data();
-          const localId = this.generateLocalId(doc.id);
-          this.storeLocalMapping('weatherLogs', localId.toString(), doc.id);
-          weatherLogs.push(this.convertFromFirestore(data, localId) as WeatherLog);
+          const localId = data.id as string; // The ID is stored in the document
+          this.storeLocalMapping('weatherLogs', localId, doc.id);
+          weatherLogs.push(this.convertFromFirestore(data, localId, doc.id) as WeatherLog);
         });
 
         return weatherLogs;
@@ -606,9 +607,9 @@ await batch.commit();
 
         querySnapshot.forEach((doc) => {
           const data = doc.data();
-          const localId = this.generateLocalId(doc.id);
-          this.storeLocalMapping('weatherLogs', localId.toString(), doc.id);
-          weatherLogs.push(this.convertFromFirestore(data, localId) as WeatherLog);
+          const localId = data.id as string; // The ID is stored in the document
+          this.storeLocalMapping('weatherLogs', localId, doc.id);
+          weatherLogs.push(this.convertFromFirestore(data, localId, doc.id) as WeatherLog);
         });
 
         return weatherLogs;
@@ -768,25 +769,24 @@ await batch.commit();
 
           if (docSnap.exists()) {
             const data = docSnap.data();
-            return this.convertFromFirestore(data, this.generateLocalId(firebaseId), firebaseId) as FishCaught;
-          }
-        } else {
-          // No Firebase ID mapping found - try to find by local ID in Firestore
-          console.log('No Firebase ID mapping found for fish catch, trying alternative lookup');
-          const fishQuery = query(
-            collection(firestore, 'fishCaught'),
-            where('userId', '==', this.userId),
-            where('id', '==', id)
-          );
-
-          const fishSnapshot = await getDocs(fishQuery);
-          if (!fishSnapshot.empty) {
-            const doc = fishSnapshot.docs[0];
-            const data = doc.data();
-            const localId = this.generateLocalId(doc.id);
-            return this.convertFromFirestore(data, localId, doc.id) as FishCaught;
+            return this.convertFromFirestore(data, id, firebaseId) as FishCaught;
           }
         }
+
+        const fishQuery = query(
+          collection(firestore, 'fishCaught'),
+          where('userId', '==', this.userId),
+          where('id', '==', id)
+        );
+
+        const fishSnapshot = await getDocs(fishQuery);
+        if (!fishSnapshot.empty) {
+          const doc = fishSnapshot.docs[0];
+          const data = doc.data();
+          await this.storeLocalMapping('fishCaught', id, doc.id);
+          return this.convertFromFirestore(data, id, doc.id) as FishCaught;
+        }
+
       } catch (error) {
         console.warn('Firestore get failed, trying local:', error);
       }
@@ -814,9 +814,9 @@ await batch.commit();
 
         querySnapshot.forEach((doc) => {
           const data = doc.data();
-          const localId = this.generateLocalId(doc.id);
-          this.storeLocalMapping('fishCaught', localId.toString(), doc.id);
-          fishCaught.push(this.convertFromFirestore(data, localId) as FishCaught);
+          const localId = data.id as string;
+          this.storeLocalMapping('fishCaught', localId, doc.id);
+          fishCaught.push(this.convertFromFirestore(data, localId, doc.id) as FishCaught);
         });
 
         return fishCaught;
@@ -846,9 +846,9 @@ await batch.commit();
 
         querySnapshot.forEach((doc) => {
           const data = doc.data();
-          const localId = this.generateLocalId(doc.id);
-          this.storeLocalMapping('fishCaught', localId.toString(), doc.id);
-          fishCaught.push(this.convertFromFirestore(data, localId) as FishCaught);
+          const localId = data.id as string;
+          this.storeLocalMapping('fishCaught', localId, doc.id);
+          fishCaught.push(this.convertFromFirestore(data, localId, doc.id) as FishCaught);
         });
 
         return fishCaught;
@@ -1117,7 +1117,7 @@ await batch.commit();
     return Math.abs(hash);
   }
 
-  private convertFromFirestore(data: any, localId: number, firebaseDocId?: string): any {
+  private convertFromFirestore(data: any, localId: number | string, firebaseDocId?: string): any {
     const { userId, createdAt, updatedAt, ...cleanData } = data;
     return {
       ...cleanData,
