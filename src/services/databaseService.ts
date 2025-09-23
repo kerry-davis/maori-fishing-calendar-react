@@ -22,7 +22,7 @@ export class DatabaseService {
 
       request.onupgradeneeded = (event) => {
         const db = (event.target as IDBOpenDBRequest).result;
-        const transaction = (event.target as IDBOpenDBRequest).transaction;
+        const transaction = (event.target as IDBOpenDBRequest).transaction!;
         console.log("Upgrading database schema...");
 
         // Trips store (no changes needed)
@@ -40,7 +40,7 @@ export class DatabaseService {
             const store = transaction.objectStore(DB_CONFIG.STORES.WEATHER_LOGS);
             if (store.autoIncrement) {
                 console.log('Migrating weather_logs store...');
-                const data = [];
+                const data: WeatherLog[] = [];
                 store.openCursor().onsuccess = (e) => {
                     const cursor = (e.target as IDBRequest<IDBCursorWithValue>).result;
                     if (cursor) {
@@ -50,7 +50,7 @@ export class DatabaseService {
                         db.deleteObjectStore(DB_CONFIG.STORES.WEATHER_LOGS);
                         const newStore = db.createObjectStore(DB_CONFIG.STORES.WEATHER_LOGS, { keyPath: 'id' });
                         newStore.createIndex('tripId', 'tripId', { unique: false });
-                        data.forEach((item: any) => {
+                        data.forEach((item: WeatherLog) => {
                             const newItem = { ...item, id: `${item.tripId}-${Date.now()}` };
                             newStore.add(newItem);
                         });
@@ -69,7 +69,7 @@ export class DatabaseService {
             const store = transaction.objectStore(DB_CONFIG.STORES.FISH_CAUGHT);
             if (store.autoIncrement) {
                 console.log('Migrating fish_caught store...');
-                const data = [];
+                const data: FishCaught[] = [];
                 store.openCursor().onsuccess = (e) => {
                     const cursor = (e.target as IDBRequest<IDBCursorWithValue>).result;
                     if (cursor) {
@@ -79,7 +79,7 @@ export class DatabaseService {
                         db.deleteObjectStore(DB_CONFIG.STORES.FISH_CAUGHT);
                         const newStore = db.createObjectStore(DB_CONFIG.STORES.FISH_CAUGHT, { keyPath: 'id' });
                         newStore.createIndex('tripId', 'tripId', { unique: false });
-                        data.forEach((item: any) => {
+                        data.forEach((item: FishCaught) => {
                             const newItem = { ...item, id: `${item.tripId}-${Date.now()}` };
                             newStore.add(newItem);
                         });
@@ -192,7 +192,7 @@ export class DatabaseService {
       const request = store.get(id);
 
       request.onsuccess = () => {
-        resolve(request.result || null);
+        resolve((request.result as Trip) || null);
       };
 
       request.onerror = () => {
@@ -221,7 +221,7 @@ export class DatabaseService {
       const request = index.getAll(date);
 
       request.onsuccess = () => {
-        resolve(request.result || []);
+        resolve((request.result as Trip[]) || []);
       };
 
       request.onerror = () => {
@@ -249,7 +249,7 @@ export class DatabaseService {
       const request = store.getAll();
 
       request.onsuccess = () => {
-        resolve(request.result || []);
+        resolve((request.result as Trip[]) || []);
       };
 
       request.onerror = () => {
@@ -315,7 +315,7 @@ export class DatabaseService {
       transaction.onerror = () => {
         const error = this.createDatabaseError(
           "transaction",
-          `Failed to delete trip: ${transaction.error?.message}`,
+          `Failed to delete trip: ${transaction.error!.message}`,
         );
         reject(error);
       };
