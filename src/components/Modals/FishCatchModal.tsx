@@ -53,9 +53,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
     setError(null);
 
     try {
-      // Convert string ID to number for database lookup
-      const numericId = parseInt(id.split('-').pop() || '0', 10);
-      const fish = await db.getFishCaughtById(numericId);
+      const fish = await db.getFishCaughtById(id);
       if (fish) {
         setFormData({
           species: fish.species,
