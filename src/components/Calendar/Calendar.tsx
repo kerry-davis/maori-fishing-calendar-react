@@ -1,21 +1,92 @@
 import React, { useState, useEffect } from "react";
 import { MONTH_NAMES } from "../../types";
+import type { Trip } from "../../types";
 import { CalendarGrid } from "./CalendarGrid";
+import { useAuth } from "../../contexts/AuthContext";
+import { useDatabaseService } from "../../contexts/DatabaseContext";
+import { databaseService } from "../../services/databaseService";
 
 interface CalendarProps {
   onDateSelect: (date: Date) => void;
+  refreshTrigger?: number;
 }
 
-export const Calendar: React.FC<CalendarProps> = ({ onDateSelect }) => {
+export const Calendar: React.FC<CalendarProps> = ({ onDateSelect, refreshTrigger = 0 }) => {
+  const { user } = useAuth();
+  const db = useDatabaseService();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentMonth, setCurrentMonth] = useState(currentDate.getMonth());
   const [currentYear, setCurrentYear] = useState(currentDate.getFullYear());
+  const [daysWithTrips, setDaysWithTrips] = useState<Set<string>>(new Set());
+
+  // Load trips for the current month with robust error handling
+  const loadTripsForMonth = async () => {
+    if (!user) {
+      setDaysWithTrips(new Set());
+      return;
+    }
+
+    try {
+      // Try Firebase first
+      const allTrips = await db.getAllTrips();
+
+      // Filter trips for the current month
+      const daysWithTripsSet = new Set<string>();
+      allTrips.forEach((trip: Trip) => {
+        const tripDate = new Date(trip.date);
+        if (tripDate.getMonth() === currentMonth && tripDate.getFullYear() === currentYear) {
+          const dayKey = `${tripDate.getFullYear()}-${tripDate.getMonth()}-${tripDate.getDate()}`;
+          daysWithTripsSet.add(dayKey);
+        }
+      });
+
+      setDaysWithTrips(daysWithTripsSet);
+    } catch (error: any) {
+      console.error('Trip loading failed, trying local fallback:', error);
+      try {
+        // Fallback to local IndexedDB
+        const localTrips = await databaseService.getAllTrips();
+
+        // Filter trips for the current month
+        const daysWithTripsSet = new Set<string>();
+        localTrips.forEach((trip: Trip) => {
+          const tripDate = new Date(trip.date);
+          if (tripDate.getMonth() === currentMonth && tripDate.getFullYear() === currentYear) {
+            const dayKey = `${tripDate.getFullYear()}-${tripDate.getMonth()}-${tripDate.getDate()}`;
+            daysWithTripsSet.add(dayKey);
+          }
+        });
+
+        setDaysWithTrips(daysWithTripsSet);
+      } catch (localError) {
+        console.error('Local fallback also failed:', localError);
+        setDaysWithTrips(new Set());
+      }
+    }
+  };
 
   // Update current date when month/year changes
   useEffect(() => {
     const newDate = new Date(currentYear, currentMonth, 1);
     setCurrentDate(newDate);
   }, [currentMonth, currentYear]);
+
+  // Load trips when month/year changes or user becomes available
+  useEffect(() => {
+    if (user) {
+      loadTripsForMonth();
+    } else {
+      setDaysWithTrips(new Set());
+    }
+  }, [currentMonth, currentYear, user]);
+
+  // Reload trips when refreshTrigger changes (e.g., when new trip is created)
+  useEffect(() => {
+    if (user && refreshTrigger > 0) {
+      console.log('Calendar: Refreshing trip data due to refreshTrigger change');
+      loadTripsForMonth();
+    }
+  }, [refreshTrigger, user]);
 
   const handlePrevMonth = () => {
     if (currentMonth === 0) {
@@ -76,6 +147,7 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect }) => {
         currentMonth={currentMonth}
         currentYear={currentYear}
         onDateSelect={handleDateSelect}
+        daysWithTrips={daysWithTrips}
       />
     </div>
   );

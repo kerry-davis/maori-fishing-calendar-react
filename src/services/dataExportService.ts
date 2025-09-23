@@ -1,5 +1,6 @@
 import type { FishCaught } from "../types";
 import { databaseService } from "./databaseService";
+import { firebaseDataService } from "./firebaseDataService";
 import JSZip from "jszip";
 import Papa from "papaparse";
 
@@ -16,14 +17,14 @@ export class DataExportService {
     console.log("Exporting data as a zip file...");
 
     try {
-      // Get all data from IndexedDB
+      // Get all data from Firebase (primary) with fallback to IndexedDB
       const [trips, weatherLogs, fishCaught] = await Promise.all([
-        databaseService.getAllTrips(),
-        databaseService.getAllWeatherLogs(),
-        databaseService.getAllFishCaught(),
+        firebaseDataService.isReady() ? firebaseDataService.getAllTrips() : databaseService.getAllTrips(),
+        firebaseDataService.isReady() ? firebaseDataService.getAllWeatherLogs() : databaseService.getAllWeatherLogs(),
+        firebaseDataService.isReady() ? firebaseDataService.getAllFishCaught() : databaseService.getAllFishCaught(),
       ]);
 
-      // Get localStorage data
+      // Get tackle box data from Firebase hooks (with localStorage fallback)
       const tacklebox = this.getLocalStorageData("tacklebox", []);
       const gearTypes = this.getLocalStorageData("gearTypes", []);
 
@@ -97,11 +98,11 @@ export class DataExportService {
     console.log("Exporting data as CSV...");
 
     try {
-      // Get all data from IndexedDB
+      // Get all data from Firebase (primary) with fallback to IndexedDB
       const [trips, weatherLogs, fishCaught] = await Promise.all([
-        databaseService.getAllTrips(),
-        databaseService.getAllWeatherLogs(),
-        databaseService.getAllFishCaught(),
+        firebaseDataService.isReady() ? firebaseDataService.getAllTrips() : databaseService.getAllTrips(),
+        firebaseDataService.isReady() ? firebaseDataService.getAllWeatherLogs() : databaseService.getAllWeatherLogs(),
+        firebaseDataService.isReady() ? firebaseDataService.getAllFishCaught() : databaseService.getAllFishCaught(),
       ]);
 
       // Create ZIP file
@@ -367,42 +368,15 @@ export class DataExportService {
       // Trim strings in the data
       const cleanData = this.trimObjectStrings(data);
 
-      // Clear existing data
-      await this.clearAllData();
+      // Import to Firebase if user is authenticated, otherwise use local storage
+      const useFirebase = firebaseDataService.isReady();
 
-      // Import localStorage data
-      if (cleanData.localStorage?.tacklebox) {
-        localStorage.setItem(
-          "tacklebox",
-          JSON.stringify(cleanData.localStorage.tacklebox),
-        );
-      }
-      if (cleanData.localStorage?.gearTypes) {
-        localStorage.setItem(
-          "gearTypes",
-          JSON.stringify(cleanData.localStorage.gearTypes),
-        );
-      }
-
-      // Import IndexedDB data
-      const dbData = cleanData.indexedDB;
-
-      if (dbData.trips && Array.isArray(dbData.trips)) {
-        for (const trip of dbData.trips) {
-          await databaseService.createTrip(trip);
-        }
-      }
-
-      if (dbData.weather_logs && Array.isArray(dbData.weather_logs)) {
-        for (const weather of dbData.weather_logs) {
-          await databaseService.createWeatherLog(weather);
-        }
-      }
-
-      if (dbData.fish_caught && Array.isArray(dbData.fish_caught)) {
-        for (const fish of dbData.fish_caught) {
-          await databaseService.createFishCaught(fish);
-        }
+      if (useFirebase) {
+        console.log("Importing data to Firebase...");
+        await this.importToFirebase(cleanData);
+      } else {
+        console.log("Importing data to local storage...");
+        await this.importToLocal(cleanData);
       }
 
       console.log(`Successfully imported data from "${filename}"`);
@@ -411,6 +385,83 @@ export class DataExportService {
       throw new Error(
         `Could not import data from "${filename}": ${error instanceof Error ? error.message : "Unknown error"}`,
       );
+    }
+  }
+
+  /**
+   * Import data to Firebase
+   */
+  private async importToFirebase(data: any): Promise<void> {
+    // Import tackle box data via Firebase hooks (this will handle localStorage too)
+    if (data.localStorage?.tacklebox) {
+      localStorage.setItem("tacklebox", JSON.stringify(data.localStorage.tacklebox));
+    }
+    if (data.localStorage?.gearTypes) {
+      localStorage.setItem("gearTypes", JSON.stringify(data.localStorage.gearTypes));
+    }
+
+    // Import database data to Firebase
+    const dbData = data.indexedDB;
+
+    if (dbData.trips && Array.isArray(dbData.trips)) {
+      for (const trip of dbData.trips) {
+        await firebaseDataService.createTrip(trip);
+      }
+    }
+
+    if (dbData.weather_logs && Array.isArray(dbData.weather_logs)) {
+      for (const weather of dbData.weather_logs) {
+        await firebaseDataService.createWeatherLog(weather);
+      }
+    }
+
+    if (dbData.fish_caught && Array.isArray(dbData.fish_caught)) {
+      for (const fish of dbData.fish_caught) {
+        await firebaseDataService.createFishCaught(fish);
+      }
+    }
+  }
+
+  /**
+   * Import data to local storage (fallback)
+   */
+  private async importToLocal(data: any): Promise<void> {
+    // Clear existing data
+    await this.clearAllData();
+
+    // Import localStorage data
+    if (data.localStorage?.tacklebox) {
+      localStorage.setItem(
+        "tacklebox",
+        JSON.stringify(data.localStorage.tacklebox),
+      );
+    }
+    if (data.localStorage?.gearTypes) {
+      localStorage.setItem(
+        "gearTypes",
+        JSON.stringify(data.localStorage.gearTypes),
+      );
+    }
+
+    // Import IndexedDB data
+    const dbData = data.indexedDB;
+
+    if (dbData.trips && Array.isArray(dbData.trips)) {
+      for (const trip of dbData.trips) {
+        await databaseService.createTrip(trip);
+      }
+    }
+
+    if (dbData.weather_logs && Array.isArray(dbData.weather_logs)) {
+      for (const weather of dbData.weather_logs) {
+        await databaseService.createWeatherLog(weather);
+      }
+    }
+
+    if (dbData.fish_caught && Array.isArray(dbData.fish_caught)) {
+      for (const fish of dbData.fish_caught) {
+        await databaseService.createFishCaught(fish);
+      }
     }
   }
 
@@ -434,8 +485,13 @@ export class DataExportService {
     localStorage.removeItem("tacklebox");
     localStorage.removeItem("gearTypes");
 
-    // Clear IndexedDB
-    await databaseService.clearAllData();
+    // Clear Firebase data if available
+    if (firebaseDataService.isReady()) {
+      await firebaseDataService.clearAllData();
+    } else {
+      // Clear IndexedDB as fallback
+      await databaseService.clearAllData();
+    }
   }
 
   /**
