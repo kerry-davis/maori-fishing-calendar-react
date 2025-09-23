@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Modal, ModalHeader, ModalBody } from "./Modal";
 import { useLocationContext } from "../../contexts/LocationContext";
-import { useIndexedDB } from "../../hooks/useIndexedDB";
+import { useAuth } from "../../contexts/AuthContext";
+import { firebaseDataService } from "../../services/firebaseDataService";
 import {
   getLunarPhase,
   getMoonPhaseData,
@@ -46,8 +47,8 @@ export const LunarModal: React.FC<LunarModalProps> = ({
   selectedDate,
   onTripLogOpen,
 }) => {
+  const { user } = useAuth();
   const { userLocation, setLocation, requestLocation, searchLocation, searchLocationSuggestions } = useLocationContext();
-  const db = useIndexedDB();
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [weatherError, setWeatherError] = useState<string | null>(null);
@@ -77,12 +78,19 @@ export const LunarModal: React.FC<LunarModalProps> = ({
     let isMounted = true;
 
     const checkTripsForDate = async () => {
-      if (!db.isReady) return;
+      if (!user) {
+        if (isMounted) setHasTripsForDate(false);
+        return;
+      }
 
       try {
-        // Use local date string to avoid timezone conversion issues
+        // Query Firebase for trips on this date
+        const allTrips = await firebaseDataService.getAllTrips();
+
+        // Filter trips for the current date
         const dateStr = currentDate.toLocaleDateString("en-CA");
-        const hasTrips = await db.trips.hasTripsOnDate(dateStr);
+        const hasTrips = allTrips.some(trip => trip.date === dateStr);
+
         if (isMounted) {
           setHasTripsForDate(hasTrips);
         }
@@ -99,7 +107,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [currentDate, db.isReady, db.trips.hasTripsOnDate]);
+  }, [currentDate, user]);
 
   // Cleanup timeout on unmount
   useEffect(() => {

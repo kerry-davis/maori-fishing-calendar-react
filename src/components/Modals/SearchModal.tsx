@@ -154,7 +154,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
 
         results.push({
           type: "fish",
-          id: fish.id,
+          id: parseInt(fish.id, 10),
           title: `${fish.species} - ${fish.length || "Unknown length"}`,
           subtitle: `${fish.weight || "Unknown weight"} at ${fish.time}`,
           date: trip?.date || "Unknown date",
@@ -197,7 +197,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     if (result.type === "trip" && onTripSelect) {
       onTripSelect(result.id);
     } else if (result.type === "fish" && onFishSelect) {
-      const fish = fishCaught.find((f) => f.id === result.id);
+      const fish = fishCaught.find((f) => f.id === result.id.toString());
       if (fish) {
         onFishSelect(result.id, fish.tripId);
       }

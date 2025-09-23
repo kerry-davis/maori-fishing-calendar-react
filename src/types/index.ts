@@ -214,10 +214,11 @@ export interface Trip {
   hours: number;
   companions: string;
   notes: string;
+  firebaseDocId?: string; // Firestore document ID for deletion
 }
 
 export interface WeatherLog {
-  id: number;
+  id: string;
   tripId: number;
   timeOfDay: string;
   sky: string;
@@ -228,7 +229,7 @@ export interface WeatherLog {
 }
 
 export interface FishCaught {
-  id: number;
+  id: string;
   tripId: number;
   species: string;
   length: string;

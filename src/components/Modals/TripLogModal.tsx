@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "./Modal";
-import { useIndexedDB } from "../../hooks/useIndexedDB";
+import { useDatabaseService } from "../../contexts/DatabaseContext";
 import { WeatherLogModal } from "./WeatherLogModal";
 import { FishCatchModal } from "./FishCatchModal";
 import type { Trip, WeatherLog, FishCaught, DateModalProps } from "../../types";
@@ -8,6 +8,8 @@ import type { Trip, WeatherLog, FishCaught, DateModalProps } from "../../types";
 export interface TripLogModalProps extends DateModalProps {
   onEditTrip?: (tripId: number) => void;
   onNewTrip?: () => void;
+  refreshTrigger?: number; // Add refresh trigger prop
+  onTripDeleted?: () => void; // Add callback for when trips are deleted
 }
 
 /**
@@ -24,6 +26,8 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
   selectedDate,
   onEditTrip,
   onNewTrip,
+  refreshTrigger,
+  onTripDeleted,
 }) => {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -33,9 +37,11 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
   const [showWeatherModal, setShowWeatherModal] = useState(false);
   const [showFishModal, setShowFishModal] = useState(false);
   const [selectedTripId, setSelectedTripId] = useState<number | null>(null);
-  const [editingWeatherId, setEditingWeatherId] = useState<number | null>(null);
-  const [editingFishId, setEditingFishId] = useState<number | null>(null);
-  const db = useIndexedDB();
+  const [editingWeatherId, setEditingWeatherId] = useState<string | null>(null);
+  const [editingFishId, setEditingFishId] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ type: 'weather' | 'fish', id: string } | null>(null);
+  const db = useDatabaseService();
 
   // Format date for display and database queries
   const formatDateForDisplay = (date: Date): string => {
@@ -54,14 +60,16 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
 
   // Load trips for the selected date
   const loadTrips = useCallback(async () => {
-    if (!isOpen || !db.isReady || !selectedDate) return;
+    if (!isOpen || !selectedDate) return;
 
     setIsLoading(true);
     setError(null);
 
     try {
       const dateStr = formatDateForDB(selectedDate);
-      const tripsData = await db.trips.getByDate(dateStr);
+      console.log('Loading trips for date:', dateStr);
+      const tripsData = await db.getTripsByDate(dateStr);
+      console.log('Loaded trips data:', tripsData);
       setTrips(tripsData);
     } catch (err) {
       console.error("Error loading trips:", err);
@@ -69,58 +77,69 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [isOpen, selectedDate, db.isReady]);
+  }, [isOpen, selectedDate]);
 
   // Load all fish catches for the selected date
   const loadFishCatches = useCallback(async () => {
-    if (!isOpen || !db.isReady || !selectedDate) return;
+    if (!isOpen || !selectedDate) return;
 
     try {
-      // Get all fish catches from database
-      const allFishCatches = await db.fish.getAll();
+      // Get all fish catches - the Firebase service will handle filtering by user
+      const allFishCatches = await db.getAllFishCaught();
 
       // Filter fish catches for trips that exist on the selected date
       const dateStr = formatDateForDB(selectedDate);
-      const tripsOnDate = await db.trips.getByDate(dateStr);
+      const tripsOnDate = await db.getTripsByDate(dateStr);
 
       // Get fish catches only for trips on the selected date
-      const relevantFishCatches = allFishCatches.filter(fish =>
-        tripsOnDate.some(trip => trip.id === fish.tripId)
+      const relevantFishCatches = allFishCatches.filter((fish: FishCaught) =>
+        tripsOnDate.some((trip: Trip) => trip.id === fish.tripId)
       );
 
       setFishCatches(relevantFishCatches);
+
     } catch (err) {
       console.error("Error loading fish catches:", err);
       // Don't set error state for fish catches as it's not critical
     }
-  }, [isOpen, selectedDate, db.isReady]);
+  }, [isOpen, selectedDate, db]);
 
   // Load all weather logs for the selected date
   const loadWeatherLogs = useCallback(async () => {
-    if (!isOpen || !db.isReady || !selectedDate) return;
+    if (!isOpen || !selectedDate) return;
 
     try {
       // Get all weather logs from database
-      const allWeatherLogs = await db.weather.getAll();
-      console.log('All weather logs from database:', allWeatherLogs);
+      const allWeatherLogs = await db.getAllWeatherLogs();
 
       // Filter weather logs for trips that exist on the selected date
       const dateStr = formatDateForDB(selectedDate);
-      const tripsOnDate = await db.trips.getByDate(dateStr);
-      console.log('Trips on selected date:', tripsOnDate);
+      const tripsOnDate = await db.getTripsByDate(dateStr);
 
       // Get weather logs only for trips on the selected date
-      const relevantWeatherLogs = allWeatherLogs.filter(log =>
-        tripsOnDate.some(trip => trip.id === log.tripId)
+      const relevantWeatherLogs = allWeatherLogs.filter((log: WeatherLog) =>
+        tripsOnDate.some((trip: Trip) => trip.id === log.tripId)
       );
 
-      console.log('Relevant weather logs for date:', relevantWeatherLogs);
       setWeatherLogs(relevantWeatherLogs);
     } catch (err) {
       console.error("Error loading weather logs:", err);
       // Don't set error state for weather logs as it's not critical
     }
-  }, [isOpen, selectedDate, db.isReady]);
+  }, [isOpen, selectedDate, db]);
+
+  // Helper function to get the correct ID for deletion
+  const getCorrectIdForDeletion = useCallback((item: WeatherLog | FishCaught): string => {
+    // If the item has a string ID (from Firestore), use it
+    if (typeof item.id === 'string' && item.id.includes('-')) {
+      return item.id;
+    }
+    // For numeric IDs, we need to construct the correct string ID
+    // The pattern is ${tripId}-${timestamp}, but we don't have the original timestamp
+    // However, we can use the ID mapping system which has the correct mappings
+    // For now, pass the numeric ID and let the Firebase service handle the lookup
+    return item.id.toString();
+  }, []);
 
   // Load trips when modal opens or date changes
   useEffect(() => {
@@ -129,32 +148,44 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
 
   // Also reload trips when modal reopens (for data refresh)
   useEffect(() => {
-    if (isOpen && db.isReady && selectedDate) {
+    if (isOpen && selectedDate) {
       loadTrips();
       loadFishCatches();
       loadWeatherLogs();
     }
-  }, [isOpen, db.isReady, selectedDate, loadFishCatches, loadWeatherLogs]);
+  }, [isOpen, selectedDate, loadFishCatches, loadWeatherLogs]);
+
+  // Reload data when refresh trigger changes (e.g., after trip deletion from other modals)
+  useEffect(() => {
+    if (isOpen && selectedDate && refreshTrigger !== undefined) {
+      loadTrips();
+      loadFishCatches();
+      loadWeatherLogs();
+    }
+  }, [refreshTrigger, isOpen, selectedDate, loadTrips, loadFishCatches, loadWeatherLogs]);
 
   // Handle trip deletion
-  const handleDeleteTrip = async (tripId: number) => {
-    if (
-      !confirm(
-        "Are you sure you want to delete this trip? This will also delete all associated weather logs and fish catches.",
-      )
-    ) {
-      return;
-    }
+  const handleDeleteTrip = useCallback(async (tripId: number, firebaseDocId?: string) => {
+    console.log('handleDeleteTrip called with tripId:', tripId, 'firebaseDocId:', firebaseDocId);
+    console.log('Deleting trip without confirmation...');
 
     try {
-      await db.trips.delete(tripId);
+      await db.deleteTrip(tripId, firebaseDocId);
+      console.log('Deletion completed, reloading trips...');
       // Reload trips after deletion
       await loadTrips();
+      console.log('Trips reloaded successfully');
+
+      // Notify parent component that a trip was deleted (for calendar refresh)
+      if (onTripDeleted) {
+        console.log('TripLogModal: Calling onTripDeleted callback');
+        onTripDeleted();
+      }
     } catch (err) {
       console.error("Error deleting trip:", err);
       setError("Failed to delete trip. Please try again.");
     }
-  };
+  }, [db, loadTrips, onTripDeleted]);
 
   // Handle edit trip
   const handleEditTrip = (tripId: number) => {
@@ -218,58 +249,112 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
   };
 
   // Handle fish catch editing
-  const handleEditFish = (fishId: number) => {
+  const handleEditFish = useCallback((fishId: string) => {
     // Find the fish catch to edit
     const fishCatch = fishCatches.find(fish => fish.id === fishId);
     if (fishCatch) {
       setSelectedTripId(fishCatch.tripId);
-      setEditingFishId(fishId);
+      // Use the correct ID for editing
+      const correctId = getCorrectIdForDeletion(fishCatch);
+      setEditingFishId(correctId);
       setShowFishModal(true);
     }
-  };
+  }, [fishCatches, getCorrectIdForDeletion]);
 
   // Handle fish catch deletion
-  const handleDeleteFish = async (fishId: number) => {
-    if (!confirm("Are you sure you want to delete this fish catch?")) {
-      return;
-    }
+  const handleDeleteFish = useCallback(async (fishId: string) => {
+    setDeleteTarget({ type: 'fish', id: fishId });
+    setShowDeleteConfirm(true);
+  }, []);
 
+  // Execute fish deletion after confirmation
+  const executeFishDeletion = useCallback(async (fishId: string) => {
     try {
-      await db.fish.delete(fishId);
-      // Reload fish catches from database to ensure state consistency
-      await loadFishCatches();
+      // The fishId passed here is the one from the UI element, which is what we need to filter the state.
+      // The underlying `deleteFishCaught` service has already been fixed to handle various ID formats.
+      await db.deleteFishCaught(fishId);
+
+      // On successful deletion, update the UI by filtering the state
+      setFishCatches(prevCatches => prevCatches.filter(fish => fish.id.toString() !== fishId.toString()));
+
+      console.log('[Delete] Fish deletion successful.');
     } catch (err) {
       console.error("Error deleting fish catch:", err);
       setError("Failed to delete fish catch. Please try again.");
+      // If the deletion fails, reload the data to ensure UI consistency
+      loadFishCatches();
     }
-  };
+  }, [db, loadFishCatches]);
 
   // Handle weather log editing
-  const handleEditWeather = (weatherId: number) => {
+  const handleEditWeather = useCallback((weatherId: string) => {
     // Find the tripId for this weather log
     const weatherLog = weatherLogs.find(log => log.id === weatherId);
     if (weatherLog) {
       setSelectedTripId(weatherLog.tripId);
+      // Use the correct ID for editing
+      const correctId = getCorrectIdForDeletion(weatherLog);
+      setEditingWeatherId(correctId);
     }
-    setEditingWeatherId(weatherId);
     setShowWeatherModal(true);
-  };
+  }, [weatherLogs, getCorrectIdForDeletion]);
 
   // Handle weather log deletion
-  const handleDeleteWeather = async (weatherId: number) => {
-    if (!confirm("Are you sure you want to delete this weather log?")) {
-      return;
-    }
+  const handleDeleteWeather = useCallback(async (weatherId: string) => {
+    setDeleteTarget({ type: 'weather', id: weatherId });
+    setShowDeleteConfirm(true);
+  }, []);
 
+  // Execute weather deletion after confirmation
+  const executeWeatherDeletion = useCallback(async (weatherId: string) => {
     try {
-      await db.weather.delete(weatherId);
-      // Reload weather logs from database to ensure state consistency
-      await loadWeatherLogs();
+      // The weatherId passed here is the one from the UI element, which is what we need to filter the state.
+      // The underlying `deleteWeatherLog` service has already been fixed to handle various ID formats.
+      await db.deleteWeatherLog(weatherId);
+
+      // On successful deletion, update the UI by filtering the state
+      setWeatherLogs(prevLogs => prevLogs.filter(log => log.id.toString() !== weatherId.toString()));
+
+      console.log('[Delete] Weather deletion successful.');
     } catch (err) {
       console.error("Error deleting weather log:", err);
       setError("Failed to delete weather log. Please try again.");
+      // If the deletion fails, reload the data to ensure UI consistency
+      loadWeatherLogs();
     }
-  };
+  }, [db, loadWeatherLogs]);
+
+  // Handle confirmation dialog
+  const handleConfirmDelete = useCallback(() => {
+    if (!deleteTarget) return;
+
+    if (deleteTarget.type === 'weather') {
+      executeWeatherDeletion(deleteTarget.id);
+    } else if (deleteTarget.type === 'fish') {
+      executeFishDeletion(deleteTarget.id);
+    }
+
+    setShowDeleteConfirm(false);
+    setDeleteTarget(null);
+  }, [deleteTarget, executeWeatherDeletion, executeFishDeletion]);
+
+  const handleCancelDelete = useCallback(() => {
+    console.log('[Delete Debug] User cancelled deletion in custom modal');
+    setShowDeleteConfirm(false);
+    setDeleteTarget(null);
+  }, []);
+
+  // Removed debug logging to reduce console clutter
+
+  // Add error boundary for debugging
+  useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      console.error('[TripLogModal Debug] JavaScript error caught:', event.error);
+    };
+
+    window.addEventListener('error', handleError);
+    return () => window.removeEventListener('error', handleError);
+  }, []);
 
   return (
     <Modal
@@ -327,7 +412,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
                 key={trip.id}
                 trip={trip}
                 onEdit={() => handleEditTrip(trip.id)}
-                onDelete={() => handleDeleteTrip(trip.id)}
+                onDelete={(firebaseDocId) => handleDeleteTrip(trip.id, firebaseDocId)}
                 onAddWeather={handleAddWeather}
                 onAddFish={handleAddFish}
                 onEditWeather={handleEditWeather}
@@ -353,11 +438,15 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
           </button>
 
           <button
-            onClick={onClose}
+            onClick={() => {
+              console.log('[UI Debug] Close button clicked - testing if any buttons work');
+              onClose();
+            }}
             className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors"
           >
             Close
           </button>
+
         </div>
       </ModalFooter>
 
@@ -390,6 +479,55 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
           onFishCaught={handleFishCaught}
         />
       )}
+
+      {/* Custom Delete Confirmation Modal */}
+      {showDeleteConfirm && deleteTarget && (
+        <Modal
+          isOpen={showDeleteConfirm}
+          onClose={handleCancelDelete}
+          maxWidth="sm"
+        >
+          <ModalHeader
+            title="Confirm Deletion"
+            subtitle={`Are you sure you want to delete this ${deleteTarget.type}?`}
+            onClose={handleCancelDelete}
+          />
+
+          <ModalBody>
+            <div className="py-4">
+              <p className="text-gray-600 dark:text-gray-400 mb-4">
+                This action cannot be undone. The {deleteTarget.type} will be permanently removed from your records.
+              </p>
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-3">
+                <div className="flex items-center">
+                  <i className="fas fa-exclamation-triangle text-yellow-500 mr-2"></i>
+                  <span className="text-yellow-700 dark:text-yellow-300 text-sm font-medium">
+                    This will permanently delete the {deleteTarget.type}.
+                  </span>
+                </div>
+              </div>
+            </div>
+          </ModalBody>
+
+          <ModalFooter>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={handleCancelDelete}
+                className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors flex items-center"
+              >
+                <i className="fas fa-trash mr-2"></i>
+                Delete {deleteTarget.type === 'weather' ? 'Weather Log' : 'Fish Catch'}
+              </button>
+            </div>
+          </ModalFooter>
+        </Modal>
+      )}
     </Modal>
   );
 };
@@ -398,13 +536,13 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
 interface TripCardProps {
   trip: Trip;
   onEdit: () => void;
-  onDelete: () => void;
+  onDelete: (firebaseDocId?: string) => void;
   onAddWeather: (tripId: number) => void;
   onAddFish: (tripId: number) => void;
-  onEditWeather: (weatherId: number) => void;
-  onDeleteWeather: (weatherId: number) => void;
-  onEditFish: (fishId: number) => void;
-  onDeleteFish: (fishId: number) => void;
+  onEditWeather: (weatherId: string) => void;
+  onDeleteWeather: (weatherId: string) => void;
+  onEditFish: (fishId: string) => void;
+  onDeleteFish: (fishId: string) => void;
   weatherLogs: WeatherLog[];
   fishCatches: FishCaught[];
 }
@@ -495,7 +633,10 @@ const TripCard: React.FC<TripCardProps> = ({
             Edit Trip
           </button>
           <button
-            onClick={onDelete}
+            onClick={() => {
+              console.log('Delete button clicked for trip:', trip.id, 'firebaseDocId:', trip.firebaseDocId);
+              onDelete(trip.firebaseDocId);
+            }}
             className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm font-medium transition-colors"
             title="Delete trip"
           >
@@ -562,11 +703,30 @@ const TripCard: React.FC<TripCardProps> = ({
                           Edit
                         </button>
                         <button
-                          onClick={() => onDeleteWeather(log.id)}
-                          className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs font-medium transition-colors"
+                          onClick={(e) => {
+                            console.log('[UI Debug] Weather delete button clicked, calling onDeleteWeather with ID:', log.id);
+                            console.log('[UI Debug] Button element:', e.currentTarget);
+                            console.log('[UI Debug] Button is disabled?', e.currentTarget.disabled);
+                            onDeleteWeather(log.id);
+                          }}
+                          className="bg-red-500 hover:bg-red-600 active:bg-red-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors cursor-pointer select-none"
                           title="Delete weather log"
+                          onMouseDown={(e) => {
+                            console.log('[UI Debug] Weather delete button mouse down');
+                            e.currentTarget.style.transform = 'scale(0.95)';
+                          }}
+                          onMouseUp={(e) => {
+                            console.log('[UI Debug] Weather delete button mouse up');
+                            e.currentTarget.style.transform = 'scale(1)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.transform = 'scale(1)';
+                          }}
+                          onMouseEnter={() => {
+                            console.log('[UI Debug] Weather delete button mouse enter');
+                          }}
                         >
-                          Delete
+                          🗑️ Delete
                         </button>
                       </div>
                     </div>
@@ -641,10 +801,29 @@ const TripCard: React.FC<TripCardProps> = ({
                           Edit
                         </button>
                         <button
-                          onClick={() => onDeleteFish(fish.id)}
-                          className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs font-medium transition-colors"
+                          onClick={(e) => {
+                            console.log('[UI Debug] Fish delete button clicked, calling onDeleteFish with ID:', fish.id);
+                            console.log('[UI Debug] Button element:', e.currentTarget);
+                            console.log('[UI Debug] Button is disabled?', e.currentTarget.disabled);
+                            onDeleteFish(fish.id);
+                          }}
+                          className="bg-red-500 hover:bg-red-600 active:bg-red-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors cursor-pointer select-none"
+                          onMouseDown={(e) => {
+                            console.log('[UI Debug] Fish delete button mouse down');
+                            e.currentTarget.style.transform = 'scale(0.95)';
+                          }}
+                          onMouseUp={(e) => {
+                            console.log('[UI Debug] Fish delete button mouse up');
+                            e.currentTarget.style.transform = 'scale(1)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.transform = 'scale(1)';
+                          }}
+                          onMouseEnter={() => {
+                            console.log('[UI Debug] Fish delete button mouse enter');
+                          }}
                         >
-                          Delete
+                          🗑️ Delete
                         </button>
                       </div>
                     </div>
