@@ -474,7 +474,7 @@ await batch.commit();
 
   // WEATHER LOG OPERATIONS
 
-  async createWeatherLog(weatherData: Omit<WeatherLog, "id">): Promise<number> {
+  async createWeatherLog(weatherData: Omit<WeatherLog, "id">): Promise<string> {
     if (!this.isReady()) throw new Error('Service not initialized');
 
     if (this.isGuest) {
@@ -498,23 +498,21 @@ await batch.commit();
         });
 
         console.log('[Weather Create] Firebase document ID:', docRef.id);
-
-        // Store mapping with both string ID and numeric ID for deletion
         await this.storeLocalMapping('weatherLogs', localId, docRef.id);
-        const numericId = parseInt(localId.split('-').pop() || '0', 10);
-        await this.storeLocalMapping('weatherLogs', numericId.toString(), docRef.id);
         console.log('[Weather Create] Successfully created weather log and stored mappings');
-        return numericId;
+        return localId;
       } catch (error) {
         console.warn('Firestore create failed, falling back to local:', error);
-        return this.queueOperation('create', 'weatherLogs', weatherWithIds);
+        this.queueOperation('create', 'weatherLogs', weatherWithIds);
+        return localId; // Return localId even on failure to update UI
       }
     } else {
-      return this.queueOperation('create', 'weatherLogs', weatherWithIds);
+      this.queueOperation('create', 'weatherLogs', weatherWithIds);
+      return localId; // Return localId for UI update
     }
   }
 
-  async getWeatherLogById(id: number): Promise<WeatherLog | null> {
+  async getWeatherLogById(id: string): Promise<WeatherLog | null> {
     if (!this.isReady()) throw new Error('Service not initialized');
     if (this.isGuest) {
       return databaseService.getWeatherLogById(id);
@@ -522,14 +520,15 @@ await batch.commit();
 
     if (this.isOnline) {
       try {
-        const firebaseId = await this.getFirebaseId('weatherLogs', id.toString());
+        const firebaseId = await this.getFirebaseId('weatherLogs', id);
         if (firebaseId) {
           const docRef = doc(firestore, 'weatherLogs', firebaseId);
           const docSnap = await getDoc(docRef);
 
           if (docSnap.exists()) {
             const data = docSnap.data();
-            return this.convertFromFirestore(data, id) as WeatherLog;
+            // The local ID is the string ID we passed in.
+            return this.convertFromFirestore(data, this.generateLocalId(firebaseId), firebaseId) as WeatherLog;
           }
         } else {
           // No Firebase ID mapping found - try to find by local ID in Firestore
@@ -545,7 +544,7 @@ await batch.commit();
             const doc = weatherSnapshot.docs[0];
             const data = doc.data();
             const localId = this.generateLocalId(doc.id);
-            return this.convertFromFirestore(data, localId) as WeatherLog;
+            return this.convertFromFirestore(data, localId, doc.id) as WeatherLog;
           }
         }
       } catch (error) {
@@ -706,7 +705,7 @@ await batch.commit();
 
   // FISH CAUGHT OPERATIONS
 
-  async createFishCaught(fishData: Omit<FishCaught, "id">): Promise<number> {
+  async createFishCaught(fishData: Omit<FishCaught, "id">): Promise<string> {
     if (!this.isReady()) throw new Error('Service not initialized');
 
     if (this.isGuest) {
@@ -740,23 +739,21 @@ await batch.commit();
         });
 
         console.log('[Fish Create] Firebase document ID:', docRef.id);
-
-        // Store mapping with both string ID and numeric ID for deletion
         await this.storeLocalMapping('fishCaught', localId, docRef.id);
-        const numericId = parseInt(localId.split('-').pop() || '0', 10);
-        await this.storeLocalMapping('fishCaught', numericId.toString(), docRef.id);
         console.log('[Fish Create] Successfully created fish catch and stored mappings');
-        return numericId;
+        return localId;
       } catch (error) {
         console.warn('Firestore create failed, falling back to local:', error);
-        return this.queueOperation('create', 'fishCaught', fishWithIds);
+        this.queueOperation('create', 'fishCaught', fishWithIds);
+        return localId;
       }
     } else {
-      return this.queueOperation('create', 'fishCaught', fishWithIds);
+      this.queueOperation('create', 'fishCaught', fishWithIds);
+      return localId;
     }
   }
 
-  async getFishCaughtById(id: number): Promise<FishCaught | null> {
+  async getFishCaughtById(id: string): Promise<FishCaught | null> {
     if (!this.isReady()) throw new Error('Service not initialized');
     if (this.isGuest) {
       return databaseService.getFishCaughtById(id);
@@ -764,14 +761,14 @@ await batch.commit();
 
     if (this.isOnline) {
       try {
-        const firebaseId = await this.getFirebaseId('fishCaught', id.toString());
+        const firebaseId = await this.getFirebaseId('fishCaught', id);
         if (firebaseId) {
           const docRef = doc(firestore, 'fishCaught', firebaseId);
           const docSnap = await getDoc(docRef);
 
           if (docSnap.exists()) {
             const data = docSnap.data();
-            return this.convertFromFirestore(data, id) as FishCaught;
+            return this.convertFromFirestore(data, this.generateLocalId(firebaseId), firebaseId) as FishCaught;
           }
         } else {
           // No Firebase ID mapping found - try to find by local ID in Firestore
@@ -787,7 +784,7 @@ await batch.commit();
             const doc = fishSnapshot.docs[0];
             const data = doc.data();
             const localId = this.generateLocalId(doc.id);
-            return this.convertFromFirestore(data, localId) as FishCaught;
+            return this.convertFromFirestore(data, localId, doc.id) as FishCaught;
           }
         }
       } catch (error) {
@@ -951,8 +948,8 @@ await batch.commit();
   }
 
   async mergeLocalDataForUser(): Promise<void> {
-    if (this.isGuest) {
-      console.warn("Cannot merge local data in guest mode.");
+    if (this.isGuest || !this.userId) {
+      console.warn("Cannot merge local data in guest mode or without a user.");
       return;
     }
 
@@ -970,23 +967,34 @@ await batch.commit();
     console.log(`Merging ${localTrips.length} trips, ${localWeatherLogs.length} weather logs, and ${localFishCaught.length} fish caught.`);
 
     const batch = writeBatch(firestore);
+    const tripIdMap = new Map<number, string>();
 
-    // Merge trips
+    // Merge trips and create an ID map
     localTrips.forEach(trip => {
-      const tripRef = doc(collection(firestore, 'trips'));
-      batch.set(tripRef, { ...trip, userId: this.userId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      const { id: localId, ...tripData } = trip;
+      const newTripRef = doc(collection(firestore, 'trips'));
+      tripIdMap.set(localId, newTripRef.id);
+      batch.set(newTripRef, { ...tripData, userId: this.userId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
     });
 
-    // Merge weather logs
+    // Merge weather logs with new trip IDs
     localWeatherLogs.forEach(log => {
-      const logRef = doc(collection(firestore, 'weatherLogs'));
-      batch.set(logRef, { ...log, userId: this.userId, createdAt: serverTimestamp() });
+      const { id: localId, tripId: localTripId, ...logData } = log;
+      const newTripId = tripIdMap.get(localTripId);
+      if (newTripId) {
+        const newLogRef = doc(collection(firestore, 'weatherLogs'));
+        batch.set(newLogRef, { ...logData, tripId: newTripId, userId: this.userId, createdAt: serverTimestamp() });
+      }
     });
 
-    // Merge fish caught
+    // Merge fish caught with new trip IDs
     localFishCaught.forEach(fish => {
-      const fishRef = doc(collection(firestore, 'fishCaught'));
-      batch.set(fishRef, { ...fish, userId: this.userId, createdAt: serverTimestamp() });
+      const { id: localId, tripId: localTripId, ...fishData } = fish;
+      const newTripId = tripIdMap.get(localTripId);
+      if (newTripId) {
+        const newFishRef = doc(collection(firestore, 'fishCaught'));
+        batch.set(newFishRef, { ...fishData, tripId: newTripId, userId: this.userId, createdAt: serverTimestamp() });
+      }
     });
 
     try {
