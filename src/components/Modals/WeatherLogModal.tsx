@@ -1,13 +1,13 @@
 import React, { useState, useCallback } from "react";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "./Modal";
-import { useIndexedDB } from "../../hooks/useIndexedDB";
+import { useDatabaseService } from "../../contexts/DatabaseContext";
 import type { WeatherLog } from "../../types";
 
 export interface WeatherLogModalProps {
   isOpen: boolean;
   onClose: () => void;
   tripId: number;
-  weatherId?: number; // For editing existing weather log
+  weatherId?: string; // For editing existing weather log
   onWeatherLogged?: (weatherLog: WeatherLog) => void;
 }
 
@@ -25,7 +25,7 @@ export const WeatherLogModal: React.FC<WeatherLogModalProps> = ({
   weatherId,
   onWeatherLogged,
 }) => {
-  const db = useIndexedDB();
+  const db = useDatabaseService();
   const [formData, setFormData] = useState({
     timeOfDay: "AM",
     sky: "",
@@ -40,12 +40,14 @@ export const WeatherLogModal: React.FC<WeatherLogModalProps> = ({
   const isEditing = weatherId !== undefined;
 
   // Load existing weather data when editing
-  const loadWeatherData = async (id: number) => {
+  const loadWeatherData = async (id: string) => {
     setIsLoading(true);
     setError(null);
 
     try {
-      const weather = await db.weather.getById(id);
+      // Convert string ID to number for database lookup
+      const numericId = parseInt(id.split('-').pop() || '0', 10);
+      const weather = await db.getWeatherLogById(numericId);
       if (weather) {
         setFormData({
           timeOfDay: weather.timeOfDay,
@@ -128,7 +130,7 @@ export const WeatherLogModal: React.FC<WeatherLogModalProps> = ({
 
       if (isEditing && weatherId) {
         // Update existing weather log
-        await db.weather.update({
+        await db.updateWeatherLog({
           id: weatherId,
           ...weatherData
         });
@@ -143,10 +145,10 @@ export const WeatherLogModal: React.FC<WeatherLogModalProps> = ({
         }
       } else {
         // Create new weather log
-        const newWeatherId = await db.weather.create(weatherData);
+        const newWeatherId = await db.createWeatherLog(weatherData);
 
         const newWeatherLog: WeatherLog = {
-          id: newWeatherId,
+          id: newWeatherId.toString(),
           ...weatherData,
         };
 

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { getLunarPhase } from '../../services/lunarService';
-import { useIndexedDB } from '../../hooks/useIndexedDB';
 import type { LunarPhase, FishingQuality } from '../../types';
 
 interface CalendarDayProps {
@@ -8,6 +7,7 @@ interface CalendarDayProps {
   dayNumber: number;
   isCurrentMonth: boolean;
   isToday?: boolean;
+  hasTrips?: boolean;
   onDateSelect: (date: Date) => void;
 }
 
@@ -16,11 +16,10 @@ export const CalendarDay: React.FC<CalendarDayProps> = ({
   dayNumber,
   isCurrentMonth,
   isToday = false,
+  hasTrips = false,
   onDateSelect
 }) => {
   const [lunarPhase, setLunarPhase] = useState<LunarPhase | null>(null);
-  const [hasTrips, setHasTrips] = useState(false);
-  const { trips } = useIndexedDB();
 
   // Calculate lunar phase for this date
   useEffect(() => {
@@ -28,21 +27,6 @@ export const CalendarDay: React.FC<CalendarDayProps> = ({
     setLunarPhase(phase);
   }, [date]);
 
-  // Check if this date has any trips
-  useEffect(() => {
-    const checkTrips = async () => {
-      try {
-        const dateStr = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
-        const tripsForDate = await trips.getByDate(dateStr);
-        setHasTrips(tripsForDate.length > 0);
-      } catch (error) {
-        console.error('Error checking trips for date:', error);
-        setHasTrips(false);
-      }
-    };
-
-    checkTrips();
-  }, [date, trips.getByDate]);
 
   const handleClick = () => {
     onDateSelect(date);
