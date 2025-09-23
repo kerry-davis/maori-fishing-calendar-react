@@ -134,7 +134,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
         time: formData.time.trim(),
         gear: formData.gear,
         details: formData.details.trim(),
-        photo: formData.photo || undefined,
+        ...(formData.photo && { photo: formData.photo }),
       };
 
       if (isEditing && fishId) {
