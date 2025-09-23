@@ -39,6 +39,8 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
   const [selectedTripId, setSelectedTripId] = useState<number | null>(null);
   const [editingWeatherId, setEditingWeatherId] = useState<number | null>(null);
   const [editingFishId, setEditingFishId] = useState<number | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ type: 'weather' | 'fish', id: number } | null>(null);
   const db = useDatabaseService();
 
   // Format date for display and database queries
@@ -236,7 +238,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
   };
 
   // Handle fish catch editing
-  const handleEditFish = (fishId: number) => {
+  const handleEditFish = useCallback((fishId: number) => {
     // Find the fish catch to edit
     const fishCatch = fishCatches.find(fish => fish.id === fishId);
     if (fishCatch) {
@@ -244,26 +246,33 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
       setEditingFishId(fishId);
       setShowFishModal(true);
     }
-  };
+  }, [fishCatches]);
 
   // Handle fish catch deletion
-  const handleDeleteFish = async (fishId: number) => {
-    if (!confirm("Are you sure you want to delete this fish catch?")) {
-      return;
-    }
+  const handleDeleteFish = useCallback(async (fishId: number) => {
+    console.log('[Delete Debug] Fish delete button clicked for ID:', fishId);
+    console.log('[Delete Debug] Showing custom confirmation modal for fish deletion');
+    setDeleteTarget({ type: 'fish', id: fishId });
+    setShowDeleteConfirm(true);
+  }, []);
 
+  // Execute fish deletion after confirmation
+  const executeFishDeletion = useCallback(async (fishId: number) => {
+    console.log('[Delete Debug] Proceeding with fish deletion...');
     try {
       await db.deleteFishCaught(fishId);
+      console.log('[Delete Debug] Fish deletion successful, reloading...');
       // Reload fish catches from database to ensure state consistency
       await loadFishCatches();
+      console.log('[Delete Debug] Fish catches reloaded successfully');
     } catch (err) {
       console.error("Error deleting fish catch:", err);
       setError("Failed to delete fish catch. Please try again.");
     }
-  };
+  }, [db, loadFishCatches]);
 
   // Handle weather log editing
-  const handleEditWeather = (weatherId: number) => {
+  const handleEditWeather = useCallback((weatherId: number) => {
     // Find the tripId for this weather log
     const weatherLog = weatherLogs.find(log => log.id === weatherId);
     if (weatherLog) {
@@ -271,23 +280,65 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
     }
     setEditingWeatherId(weatherId);
     setShowWeatherModal(true);
-  };
+  }, [weatherLogs]);
 
   // Handle weather log deletion
-  const handleDeleteWeather = async (weatherId: number) => {
-    if (!confirm("Are you sure you want to delete this weather log?")) {
-      return;
-    }
+  const handleDeleteWeather = useCallback(async (weatherId: number) => {
+    console.log('[Delete Debug] Weather delete button clicked for ID:', weatherId);
+    console.log('[Delete Debug] Showing custom confirmation modal for weather deletion');
+    setDeleteTarget({ type: 'weather', id: weatherId });
+    setShowDeleteConfirm(true);
+  }, []);
 
+  // Execute weather deletion after confirmation
+  const executeWeatherDeletion = useCallback(async (weatherId: number) => {
+    console.log('[Delete Debug] Proceeding with weather deletion...');
     try {
       await db.deleteWeatherLog(weatherId);
+      console.log('[Delete Debug] Weather deletion successful, reloading...');
       // Reload weather logs from database to ensure state consistency
       await loadWeatherLogs();
+      console.log('[Delete Debug] Weather logs reloaded successfully');
     } catch (err) {
       console.error("Error deleting weather log:", err);
       setError("Failed to delete weather log. Please try again.");
     }
-  };
+  }, [db, loadWeatherLogs]);
+
+  // Handle confirmation dialog
+  const handleConfirmDelete = useCallback(() => {
+    if (!deleteTarget) return;
+
+    console.log('[Delete Debug] User confirmed deletion for', deleteTarget.type, 'ID:', deleteTarget.id);
+    console.log('[Delete Debug] Custom confirmation modal - proceeding with deletion');
+
+    if (deleteTarget.type === 'weather') {
+      executeWeatherDeletion(deleteTarget.id);
+    } else if (deleteTarget.type === 'fish') {
+      executeFishDeletion(deleteTarget.id);
+    }
+
+    setShowDeleteConfirm(false);
+    setDeleteTarget(null);
+  }, [deleteTarget, executeWeatherDeletion, executeFishDeletion]);
+
+  const handleCancelDelete = useCallback(() => {
+    console.log('[Delete Debug] User cancelled deletion in custom modal');
+    setShowDeleteConfirm(false);
+    setDeleteTarget(null);
+  }, []);
+
+  console.log('[TripLogModal Debug] Rendering TripLogModal, trips count:', trips.length, 'weather logs count:', weatherLogs.length, 'fish catches count:', fishCatches.length);
+
+  // Add error boundary for debugging
+  useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      console.error('[TripLogModal Debug] JavaScript error caught:', event.error);
+    };
+
+    window.addEventListener('error', handleError);
+    return () => window.removeEventListener('error', handleError);
+  }, []);
 
   return (
     <Modal
@@ -371,11 +422,15 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
           </button>
 
           <button
-            onClick={onClose}
+            onClick={() => {
+              console.log('[UI Debug] Close button clicked - testing if any buttons work');
+              onClose();
+            }}
             className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors"
           >
             Close
           </button>
+
         </div>
       </ModalFooter>
 
@@ -407,6 +462,55 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
           fishId={editingFishId || undefined}
           onFishCaught={handleFishCaught}
         />
+      )}
+
+      {/* Custom Delete Confirmation Modal */}
+      {showDeleteConfirm && deleteTarget && (
+        <Modal
+          isOpen={showDeleteConfirm}
+          onClose={handleCancelDelete}
+          maxWidth="sm"
+        >
+          <ModalHeader
+            title="Confirm Deletion"
+            subtitle={`Are you sure you want to delete this ${deleteTarget.type}?`}
+            onClose={handleCancelDelete}
+          />
+
+          <ModalBody>
+            <div className="py-4">
+              <p className="text-gray-600 dark:text-gray-400 mb-4">
+                This action cannot be undone. The {deleteTarget.type} will be permanently removed from your records.
+              </p>
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-3">
+                <div className="flex items-center">
+                  <i className="fas fa-exclamation-triangle text-yellow-500 mr-2"></i>
+                  <span className="text-yellow-700 dark:text-yellow-300 text-sm font-medium">
+                    This will permanently delete the {deleteTarget.type}.
+                  </span>
+                </div>
+              </div>
+            </div>
+          </ModalBody>
+
+          <ModalFooter>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={handleCancelDelete}
+                className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors flex items-center"
+              >
+                <i className="fas fa-trash mr-2"></i>
+                Delete {deleteTarget.type === 'weather' ? 'Weather Log' : 'Fish Catch'}
+              </button>
+            </div>
+          </ModalFooter>
+        </Modal>
       )}
     </Modal>
   );
@@ -583,11 +687,30 @@ const TripCard: React.FC<TripCardProps> = ({
                           Edit
                         </button>
                         <button
-                          onClick={() => onDeleteWeather(log.id)}
-                          className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs font-medium transition-colors"
+                          onClick={(e) => {
+                            console.log('[UI Debug] Weather delete button clicked, calling onDeleteWeather with ID:', log.id);
+                            console.log('[UI Debug] Button element:', e.currentTarget);
+                            console.log('[UI Debug] Button is disabled?', e.currentTarget.disabled);
+                            onDeleteWeather(log.id);
+                          }}
+                          className="bg-red-500 hover:bg-red-600 active:bg-red-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors cursor-pointer select-none"
                           title="Delete weather log"
+                          onMouseDown={(e) => {
+                            console.log('[UI Debug] Weather delete button mouse down');
+                            e.currentTarget.style.transform = 'scale(0.95)';
+                          }}
+                          onMouseUp={(e) => {
+                            console.log('[UI Debug] Weather delete button mouse up');
+                            e.currentTarget.style.transform = 'scale(1)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.transform = 'scale(1)';
+                          }}
+                          onMouseEnter={() => {
+                            console.log('[UI Debug] Weather delete button mouse enter');
+                          }}
                         >
-                          Delete
+                          🗑️ Delete
                         </button>
                       </div>
                     </div>
@@ -662,10 +785,29 @@ const TripCard: React.FC<TripCardProps> = ({
                           Edit
                         </button>
                         <button
-                          onClick={() => onDeleteFish(fish.id)}
-                          className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs font-medium transition-colors"
+                          onClick={(e) => {
+                            console.log('[UI Debug] Fish delete button clicked, calling onDeleteFish with ID:', fish.id);
+                            console.log('[UI Debug] Button element:', e.currentTarget);
+                            console.log('[UI Debug] Button is disabled?', e.currentTarget.disabled);
+                            onDeleteFish(fish.id);
+                          }}
+                          className="bg-red-500 hover:bg-red-600 active:bg-red-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors cursor-pointer select-none"
+                          onMouseDown={(e) => {
+                            console.log('[UI Debug] Fish delete button mouse down');
+                            e.currentTarget.style.transform = 'scale(0.95)';
+                          }}
+                          onMouseUp={(e) => {
+                            console.log('[UI Debug] Fish delete button mouse up');
+                            e.currentTarget.style.transform = 'scale(1)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.transform = 'scale(1)';
+                          }}
+                          onMouseEnter={() => {
+                            console.log('[UI Debug] Fish delete button mouse enter');
+                          }}
                         >
-                          Delete
+                          🗑️ Delete
                         </button>
                       </div>
                     </div>
