@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { LoginModal } from './LoginModal';
+import ContextualConfirmation from '../UI/ContextualConfirmation';
 
 export const AuthButton: React.FC = () => {
   const { user, logout, forceLogout, isFirebaseConfigured } = useAuth();
@@ -13,36 +14,25 @@ export const AuthButton: React.FC = () => {
     console.log('User object:', user);
     console.log('Current time:', new Date().toISOString());
 
-    // Show custom inline confirmation instead of browser dialog
+    // Show modern confirmation dialog
     setShowLogoutConfirm(true);
   };
 
-  const handleLogoutConfirm = async (confirmed: boolean) => {
+  const handleLogoutConfirm = async () => {
     console.log('=== LOGOUT CONFIRMATION ===');
-    console.log('User clicked:', confirmed ? 'Sign Out' : 'Cancel');
-    console.log('Modal state before:', showLogoutConfirm);
-
+    console.log('User confirmed logout, proceeding...');
+    
     setShowLogoutConfirm(false);
 
-    console.log('Modal state after:', showLogoutConfirm);
-
-    if (!confirmed) {
-      console.log('User cancelled logout confirmation');
-      return;
-    }
-
-    console.log('User confirmed logout, proceeding...');
     try {
       if (isFirebaseConfigured) {
         console.log('Using Firebase logout...');
         await logout();
         console.log('✅ Firebase logout completed successfully');
-        console.log('✅ Sync queue should be cleared automatically');
       } else {
         console.log('Firebase not configured, using force logout');
         forceLogout();
         console.log('✅ Force logout completed successfully');
-        console.log('✅ Sync queue should be cleared automatically');
       }
     } catch (error) {
       console.error('❌ Logout error:', error);
@@ -51,7 +41,6 @@ export const AuthButton: React.FC = () => {
       try {
         forceLogout();
         console.log('✅ Force logout fallback completed successfully');
-        console.log('✅ Sync queue should be cleared automatically');
       } catch (fallbackError) {
         console.error('❌ Force logout also failed:', fallbackError);
         alert(`Logout failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -59,48 +48,43 @@ export const AuthButton: React.FC = () => {
     }
   };
 
+  const handleLogoutCancel = () => {
+    console.log('User cancelled logout confirmation');
+    setShowLogoutConfirm(false);
+  };
+
   if (user) {
     return (
-      <>
+      <div className="relative">
         <button
           onClick={() => {
             console.log('=== BUTTON CLICK DETECTED ===');
             handleLogout();
           }}
-          className="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-full w-10 h-10 flex items-center justify-center shadow-md hover:bg-red-300 dark:hover:bg-red-600 transition"
+          className="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-full w-10 h-10 flex items-center justify-center shadow-md hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200"
           title="Logout"
         >
           <i className="fas fa-sign-out-alt text-gray-800 dark:text-gray-200"></i>
         </button>
 
-        {/* Custom Logout Confirmation Modal */}
-        {showLogoutConfirm && (
-          <div className="absolute top-12 right-0 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-3 z-50 min-w-48">
-            <p className="text-sm text-gray-700 dark:text-gray-300 mb-3 text-center">
-              Sign out?
-            </p>
-            <div className="flex gap-2 justify-center">
-              <button
-                onClick={() => handleLogoutConfirm(false)}
-                className="px-3 py-1 text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => handleLogoutConfirm(true)}
-                className="px-3 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600 transition"
-              >
-                Sign Out
-              </button>
-            </div>
-          </div>
-        )}
+        {/* Standardized Logout Confirmation */}
+        <ContextualConfirmation
+          isOpen={showLogoutConfirm}
+          title="Sign Out"
+          message="Your data will be safely backed up before signing out."
+          confirmText="Sign Out"
+          cancelText="Stay Signed In"
+          onConfirm={handleLogoutConfirm}
+          onCancel={handleLogoutCancel}
+          variant="warning"
+          position="top-right"
+        />
 
         <LoginModal
           isOpen={showLoginModal}
           onClose={() => setShowLoginModal(false)}
         />
-      </>
+      </div>
     );
   }
 
