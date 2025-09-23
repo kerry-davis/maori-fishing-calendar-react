@@ -63,7 +63,9 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
 
     try {
       const dateStr = formatDateForDB(selectedDate);
+      console.log('Loading trips for date:', dateStr);
       const tripsData = await db.getTripsByDate(dateStr);
+      console.log('Loaded trips data:', tripsData);
       setTrips(tripsData);
     } catch (err) {
       console.error("Error loading trips:", err);
@@ -148,24 +150,21 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
   }, [refreshTrigger, isOpen, selectedDate]);
 
   // Handle trip deletion
-  const handleDeleteTrip = async (tripId: number) => {
-    if (
-      !confirm(
-        "Are you sure you want to delete this trip? This will also delete all associated weather logs and fish catches.",
-      )
-    ) {
-      return;
-    }
+  const handleDeleteTrip = useCallback(async (tripId: number, firebaseDocId?: string) => {
+    console.log('handleDeleteTrip called with tripId:', tripId, 'firebaseDocId:', firebaseDocId);
+    console.log('Deleting trip without confirmation...');
 
     try {
-      await db.deleteTrip(tripId);
+      await db.deleteTrip(tripId, firebaseDocId);
+      console.log('Deletion completed, reloading trips...');
       // Reload trips after deletion
       await loadTrips();
+      console.log('Trips reloaded successfully');
     } catch (err) {
       console.error("Error deleting trip:", err);
       setError("Failed to delete trip. Please try again.");
     }
-  };
+  }, [db, loadTrips]);
 
   // Handle edit trip
   const handleEditTrip = (tripId: number) => {
@@ -338,7 +337,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
                 key={trip.id}
                 trip={trip}
                 onEdit={() => handleEditTrip(trip.id)}
-                onDelete={() => handleDeleteTrip(trip.id)}
+                onDelete={(firebaseDocId) => handleDeleteTrip(trip.id, firebaseDocId)}
                 onAddWeather={handleAddWeather}
                 onAddFish={handleAddFish}
                 onEditWeather={handleEditWeather}
@@ -409,7 +408,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
 interface TripCardProps {
   trip: Trip;
   onEdit: () => void;
-  onDelete: () => void;
+  onDelete: (firebaseDocId?: string) => void;
   onAddWeather: (tripId: number) => void;
   onAddFish: (tripId: number) => void;
   onEditWeather: (weatherId: number) => void;
@@ -506,7 +505,10 @@ const TripCard: React.FC<TripCardProps> = ({
             Edit Trip
           </button>
           <button
-            onClick={onDelete}
+            onClick={() => {
+              console.log('Delete button clicked for trip:', trip.id, 'firebaseDocId:', trip.firebaseDocId);
+              onDelete(trip.firebaseDocId);
+            }}
             className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm font-medium transition-colors"
             title="Delete trip"
           >

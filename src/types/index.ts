@@ -214,6 +214,7 @@ export interface Trip {
   hours: number;
   companions: string;
   notes: string;
+  firebaseDocId?: string; // Firestore document ID for deletion
 }
 
 export interface WeatherLog {
