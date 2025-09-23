@@ -249,6 +249,7 @@ export class FirebaseDataService {
 
     if (this.isOnline) {
       try {
+        console.log('Fetching trips from Firebase for user:', this.userId);
         const q = query(
           collection(firestore, 'trips'),
           where('userId', '==', this.userId),
@@ -265,9 +266,10 @@ export class FirebaseDataService {
           trips.push(this.convertFromFirestore(data, localId, doc.id));
         });
 
+        console.log(`Found ${trips.length} trips in Firebase for user ${this.userId}`);
         return trips;
       } catch (error) {
-        console.warn('Firestore query failed, falling back to local:', error);
+        console.error('Firestore query failed, falling back to local:', error);
       }
     }
 
@@ -474,7 +476,7 @@ await batch.commit();
 
   // WEATHER LOG OPERATIONS
 
-  async createWeatherLog(weatherData: Omit<WeatherLog, "id">): Promise<number> {
+  async createWeatherLog(weatherData: Omit<WeatherLog, "id">): Promise<string> {
     if (!this.isReady()) throw new Error('Service not initialized');
 
     if (this.isGuest) {
@@ -498,23 +500,21 @@ await batch.commit();
         });
 
         console.log('[Weather Create] Firebase document ID:', docRef.id);
-
-        // Store mapping with both string ID and numeric ID for deletion
         await this.storeLocalMapping('weatherLogs', localId, docRef.id);
-        const numericId = parseInt(localId.split('-').pop() || '0', 10);
-        await this.storeLocalMapping('weatherLogs', numericId.toString(), docRef.id);
         console.log('[Weather Create] Successfully created weather log and stored mappings');
-        return numericId;
+        return localId;
       } catch (error) {
         console.warn('Firestore create failed, falling back to local:', error);
-        return this.queueOperation('create', 'weatherLogs', weatherWithIds);
+        this.queueOperation('create', 'weatherLogs', weatherWithIds);
+        return localId; // Return localId even on failure to update UI
       }
     } else {
-      return this.queueOperation('create', 'weatherLogs', weatherWithIds);
+      this.queueOperation('create', 'weatherLogs', weatherWithIds);
+      return localId; // Return localId for UI update
     }
   }
 
-  async getWeatherLogById(id: number): Promise<WeatherLog | null> {
+  async getWeatherLogById(id: string): Promise<WeatherLog | null> {
     if (!this.isReady()) throw new Error('Service not initialized');
     if (this.isGuest) {
       return databaseService.getWeatherLogById(id);
@@ -522,32 +522,34 @@ await batch.commit();
 
     if (this.isOnline) {
       try {
-        const firebaseId = await this.getFirebaseId('weatherLogs', id.toString());
+        // We might not have a firebaseId if the item was created offline and not synced
+        const firebaseId = await this.getFirebaseId('weatherLogs', id);
         if (firebaseId) {
           const docRef = doc(firestore, 'weatherLogs', firebaseId);
           const docSnap = await getDoc(docRef);
 
           if (docSnap.exists()) {
             const data = docSnap.data();
-            return this.convertFromFirestore(data, id) as WeatherLog;
-          }
-        } else {
-          // No Firebase ID mapping found - try to find by local ID in Firestore
-          console.log('No Firebase ID mapping found for weather log, trying alternative lookup');
-          const weatherQuery = query(
-            collection(firestore, 'weatherLogs'),
-            where('userId', '==', this.userId),
-            where('id', '==', id)
-          );
-
-          const weatherSnapshot = await getDocs(weatherQuery);
-          if (!weatherSnapshot.empty) {
-            const doc = weatherSnapshot.docs[0];
-            const data = doc.data();
-            const localId = this.generateLocalId(doc.id);
-            return this.convertFromFirestore(data, localId) as WeatherLog;
+            return this.convertFromFirestore(data, id, firebaseId) as WeatherLog;
           }
         }
+
+        // Fallback to querying by the string ID if no mapping is found
+        const weatherQuery = query(
+          collection(firestore, 'weatherLogs'),
+          where('userId', '==', this.userId),
+          where('id', '==', id)
+        );
+
+        const weatherSnapshot = await getDocs(weatherQuery);
+        if (!weatherSnapshot.empty) {
+          const doc = weatherSnapshot.docs[0];
+          const data = doc.data();
+          // Ensure mapping is stored for future lookups
+          await this.storeLocalMapping('weatherLogs', id, doc.id);
+          return this.convertFromFirestore(data, id, doc.id) as WeatherLog;
+        }
+
       } catch (error) {
         console.warn('Firestore get failed, trying local:', error);
       }
@@ -575,9 +577,9 @@ await batch.commit();
 
         querySnapshot.forEach((doc) => {
           const data = doc.data();
-          const localId = this.generateLocalId(doc.id);
-          this.storeLocalMapping('weatherLogs', localId.toString(), doc.id);
-          weatherLogs.push(this.convertFromFirestore(data, localId) as WeatherLog);
+          const localId = data.id as string; // The ID is stored in the document
+          this.storeLocalMapping('weatherLogs', localId, doc.id);
+          weatherLogs.push(this.convertFromFirestore(data, localId, doc.id) as WeatherLog);
         });
 
         return weatherLogs;
@@ -607,9 +609,9 @@ await batch.commit();
 
         querySnapshot.forEach((doc) => {
           const data = doc.data();
-          const localId = this.generateLocalId(doc.id);
-          this.storeLocalMapping('weatherLogs', localId.toString(), doc.id);
-          weatherLogs.push(this.convertFromFirestore(data, localId) as WeatherLog);
+          const localId = data.id as string; // The ID is stored in the document
+          this.storeLocalMapping('weatherLogs', localId, doc.id);
+          weatherLogs.push(this.convertFromFirestore(data, localId, doc.id) as WeatherLog);
         });
 
         return weatherLogs;
@@ -706,7 +708,7 @@ await batch.commit();
 
   // FISH CAUGHT OPERATIONS
 
-  async createFishCaught(fishData: Omit<FishCaught, "id">): Promise<number> {
+  async createFishCaught(fishData: Omit<FishCaught, "id">): Promise<string> {
     if (!this.isReady()) throw new Error('Service not initialized');
 
     if (this.isGuest) {
@@ -740,23 +742,21 @@ await batch.commit();
         });
 
         console.log('[Fish Create] Firebase document ID:', docRef.id);
-
-        // Store mapping with both string ID and numeric ID for deletion
         await this.storeLocalMapping('fishCaught', localId, docRef.id);
-        const numericId = parseInt(localId.split('-').pop() || '0', 10);
-        await this.storeLocalMapping('fishCaught', numericId.toString(), docRef.id);
         console.log('[Fish Create] Successfully created fish catch and stored mappings');
-        return numericId;
+        return localId;
       } catch (error) {
         console.warn('Firestore create failed, falling back to local:', error);
-        return this.queueOperation('create', 'fishCaught', fishWithIds);
+        this.queueOperation('create', 'fishCaught', fishWithIds);
+        return localId;
       }
     } else {
-      return this.queueOperation('create', 'fishCaught', fishWithIds);
+      this.queueOperation('create', 'fishCaught', fishWithIds);
+      return localId;
     }
   }
 
-  async getFishCaughtById(id: number): Promise<FishCaught | null> {
+  async getFishCaughtById(id: string): Promise<FishCaught | null> {
     if (!this.isReady()) throw new Error('Service not initialized');
     if (this.isGuest) {
       return databaseService.getFishCaughtById(id);
@@ -764,32 +764,31 @@ await batch.commit();
 
     if (this.isOnline) {
       try {
-        const firebaseId = await this.getFirebaseId('fishCaught', id.toString());
+        const firebaseId = await this.getFirebaseId('fishCaught', id);
         if (firebaseId) {
           const docRef = doc(firestore, 'fishCaught', firebaseId);
           const docSnap = await getDoc(docRef);
 
           if (docSnap.exists()) {
             const data = docSnap.data();
-            return this.convertFromFirestore(data, id) as FishCaught;
-          }
-        } else {
-          // No Firebase ID mapping found - try to find by local ID in Firestore
-          console.log('No Firebase ID mapping found for fish catch, trying alternative lookup');
-          const fishQuery = query(
-            collection(firestore, 'fishCaught'),
-            where('userId', '==', this.userId),
-            where('id', '==', id)
-          );
-
-          const fishSnapshot = await getDocs(fishQuery);
-          if (!fishSnapshot.empty) {
-            const doc = fishSnapshot.docs[0];
-            const data = doc.data();
-            const localId = this.generateLocalId(doc.id);
-            return this.convertFromFirestore(data, localId) as FishCaught;
+            return this.convertFromFirestore(data, id, firebaseId) as FishCaught;
           }
         }
+
+        const fishQuery = query(
+          collection(firestore, 'fishCaught'),
+          where('userId', '==', this.userId),
+          where('id', '==', id)
+        );
+
+        const fishSnapshot = await getDocs(fishQuery);
+        if (!fishSnapshot.empty) {
+          const doc = fishSnapshot.docs[0];
+          const data = doc.data();
+          await this.storeLocalMapping('fishCaught', id, doc.id);
+          return this.convertFromFirestore(data, id, doc.id) as FishCaught;
+        }
+
       } catch (error) {
         console.warn('Firestore get failed, trying local:', error);
       }
@@ -817,9 +816,9 @@ await batch.commit();
 
         querySnapshot.forEach((doc) => {
           const data = doc.data();
-          const localId = this.generateLocalId(doc.id);
-          this.storeLocalMapping('fishCaught', localId.toString(), doc.id);
-          fishCaught.push(this.convertFromFirestore(data, localId) as FishCaught);
+          const localId = data.id as string;
+          this.storeLocalMapping('fishCaught', localId, doc.id);
+          fishCaught.push(this.convertFromFirestore(data, localId, doc.id) as FishCaught);
         });
 
         return fishCaught;
@@ -849,9 +848,9 @@ await batch.commit();
 
         querySnapshot.forEach((doc) => {
           const data = doc.data();
-          const localId = this.generateLocalId(doc.id);
-          this.storeLocalMapping('fishCaught', localId.toString(), doc.id);
-          fishCaught.push(this.convertFromFirestore(data, localId) as FishCaught);
+          const localId = data.id as string;
+          this.storeLocalMapping('fishCaught', localId, doc.id);
+          fishCaught.push(this.convertFromFirestore(data, localId, doc.id) as FishCaught);
         });
 
         return fishCaught;
@@ -950,9 +949,88 @@ await batch.commit();
     }
   }
 
+  async cleanupOrphanedFirestoreData(): Promise<void> {
+    if (this.isGuest || !this.isOnline) {
+      return;
+    }
+
+    console.log("Checking for orphaned data in Firestore...");
+
+    try {
+      // Get all trips for this user
+      const tripsQuery = query(
+        collection(firestore, 'trips'),
+        where('userId', '==', this.userId)
+      );
+      const tripsSnapshot = await getDocs(tripsQuery);
+      const validTripIds = new Set();
+      
+      tripsSnapshot.forEach(doc => {
+        const tripData = doc.data();
+        if (tripData.id) {
+          validTripIds.add(tripData.id);
+        }
+      });
+
+      console.log(`Found ${validTripIds.size} valid trips in Firestore`);
+
+      // Check weather logs
+      const weatherQuery = query(
+        collection(firestore, 'weatherLogs'),
+        where('userId', '==', this.userId)
+      );
+      const weatherSnapshot = await getDocs(weatherQuery);
+      const orphanedWeatherDocs: string[] = [];
+
+      weatherSnapshot.forEach(doc => {
+        const data = doc.data();
+        if (!data.tripId || !validTripIds.has(data.tripId)) {
+          orphanedWeatherDocs.push(doc.id);
+        }
+      });
+
+      // Check fish caught
+      const fishQuery = query(
+        collection(firestore, 'fishCaught'),
+        where('userId', '==', this.userId)
+      );
+      const fishSnapshot = await getDocs(fishQuery);
+      const orphanedFishDocs: string[] = [];
+
+      fishSnapshot.forEach(doc => {
+        const data = doc.data();
+        if (!data.tripId || !validTripIds.has(data.tripId)) {
+          orphanedFishDocs.push(doc.id);
+        }
+      });
+
+      // Delete orphaned documents
+      if (orphanedWeatherDocs.length > 0 || orphanedFishDocs.length > 0) {
+        console.log(`Cleaning up ${orphanedWeatherDocs.length} orphaned weather logs and ${orphanedFishDocs.length} orphaned fish caught records from Firestore.`);
+        
+        const batch = writeBatch(firestore);
+        
+        orphanedWeatherDocs.forEach(docId => {
+          batch.delete(doc(firestore, 'weatherLogs', docId));
+        });
+        
+        orphanedFishDocs.forEach(docId => {
+          batch.delete(doc(firestore, 'fishCaught', docId));
+        });
+        
+        await batch.commit();
+        console.log("Orphaned data cleanup completed successfully.");
+      } else {
+        console.log("No orphaned data found in Firestore.");
+      }
+    } catch (error) {
+      console.error("Error during orphaned data cleanup:", error);
+    }
+  }
+
   async mergeLocalDataForUser(): Promise<void> {
-    if (this.isGuest) {
-      console.warn("Cannot merge local data in guest mode.");
+    if (this.isGuest || !this.userId) {
+      console.warn("Cannot merge local data in guest mode or without a user.");
       return;
     }
 
@@ -967,35 +1045,108 @@ await batch.commit();
       return;
     }
 
-    console.log(`Merging ${localTrips.length} trips, ${localWeatherLogs.length} weather logs, and ${localFishCaught.length} fish caught.`);
+    console.log(`Found ${localTrips.length} trips, ${localWeatherLogs.length} weather logs, and ${localFishCaught.length} fish caught locally.`);
 
     const batch = writeBatch(firestore);
+    const tripIdMap = new Map<number, string>();
 
-    // Merge trips
+    // Helper function to clean data for Firebase (remove undefined values)
+    const cleanForFirebase = (obj: any) => {
+      const cleaned: any = {};
+      Object.keys(obj).forEach(key => {
+        if (obj[key] !== undefined) {
+          cleaned[key] = obj[key];
+        }
+      });
+      return cleaned;
+    };
+
+    // Merge trips and create an ID map
     localTrips.forEach(trip => {
-      const tripRef = doc(collection(firestore, 'trips'));
-      batch.set(tripRef, { ...trip, userId: this.userId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      const { id: localId, ...tripData } = trip;
+      const newTripRef = doc(collection(firestore, 'trips'));
+      tripIdMap.set(localId, newTripRef.id);
+      const cleanTrip = cleanForFirebase(tripData);
+      batch.set(newTripRef, { ...cleanTrip, userId: this.userId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
     });
 
-    // Merge weather logs
-    localWeatherLogs.forEach(log => {
-      const logRef = doc(collection(firestore, 'weatherLogs'));
-      batch.set(logRef, { ...log, userId: this.userId, createdAt: serverTimestamp() });
+    // Create a set of valid trip IDs for validation
+    const validTripIds = new Set(localTrips.map(trip => trip.id));
+
+    // Merge weather logs with new trip IDs (only those associated with valid trips)
+    const validWeatherLogs = localWeatherLogs.filter(log => {
+      if (!log.tripId || !validTripIds.has(log.tripId)) {
+        console.log(`Skipping orphaned weather log with tripId: ${log.tripId}`);
+        return false;
+      }
+      return true;
     });
 
-    // Merge fish caught
-    localFishCaught.forEach(fish => {
-      const fishRef = doc(collection(firestore, 'fishCaught'));
-      batch.set(fishRef, { ...fish, userId: this.userId, createdAt: serverTimestamp() });
+    validWeatherLogs.forEach(log => {
+      const { id: localId, tripId: localTripId, ...logData } = log;
+      const newTripId = tripIdMap.get(localTripId);
+      if (newTripId) {
+        const newLogRef = doc(collection(firestore, 'weatherLogs'));
+        const cleanLog = cleanForFirebase(logData);
+        batch.set(newLogRef, { ...cleanLog, tripId: newTripId, userId: this.userId, createdAt: serverTimestamp() });
+      }
     });
+
+    // Merge fish caught with new trip IDs (only those associated with valid trips)
+    const validFishCaught = localFishCaught.filter(fish => {
+      if (!fish.tripId || !validTripIds.has(fish.tripId)) {
+        console.log(`Skipping orphaned fish caught with tripId: ${fish.tripId}`);
+        return false;
+      }
+      return true;
+    });
+
+    validFishCaught.forEach(fish => {
+      const { id: localId, tripId: localTripId, ...fishData } = fish;
+      const newTripId = tripIdMap.get(localTripId);
+      if (newTripId) {
+        const newFishRef = doc(collection(firestore, 'fishCaught'));
+        const cleanFish = cleanForFirebase(fishData);
+        batch.set(newFishRef, { ...cleanFish, tripId: newTripId, userId: this.userId, createdAt: serverTimestamp() });
+      }
+    });
+
+
+
+    console.log(`Merging ${localTrips.length} trips, ${validWeatherLogs.length} valid weather logs, and ${validFishCaught.length} valid fish caught.`);
+
+    // Clean up orphaned data from local storage
+    const orphanedWeatherLogs = localWeatherLogs.length - validWeatherLogs.length;
+    const orphanedFishCaught = localFishCaught.length - validFishCaught.length;
+    
+    if (orphanedWeatherLogs > 0 || orphanedFishCaught > 0) {
+      console.log(`Cleaning up ${orphanedWeatherLogs} orphaned weather logs and ${orphanedFishCaught} orphaned fish caught records from local storage.`);
+      
+      // Remove orphaned weather logs
+      for (const log of localWeatherLogs) {
+        if (!log.tripId || !validTripIds.has(log.tripId)) {
+          await databaseService.deleteWeatherLog(log.id);
+        }
+      }
+      
+      // Remove orphaned fish caught
+      for (const fish of localFishCaught) {
+        if (!fish.tripId || !validTripIds.has(fish.tripId)) {
+          await databaseService.deleteFishCaught(fish.id);
+        }
+      }
+    }
 
     try {
       await batch.commit();
       console.log("Successfully merged local data to Firestore.");
 
-      // Clear local data after successful merge
-      await databaseService.clearAllData();
-      console.log("Cleared local data after merge.");
+      // Clean up any existing orphaned data in Firestore
+      await this.cleanupOrphanedFirestoreData();
+
+      // Keep local data visible for better UX - don't clear after merge
+      // await databaseService.clearAllData();
+      console.log("Local data backed up successfully - keeping visible for continuity");
     } catch (error) {
       console.error("Failed to merge local data to Firestore:", error);
       // Not clearing local data if merge fails, so we can retry later.
@@ -1030,6 +1181,100 @@ await batch.commit();
 
     // Note: We don't clear Firestore data here as it's the source of truth
     console.log('Local data cleared, Firestore data preserved');
+  }
+
+  /**
+   * Download user's Firebase data to local storage before logout
+   * This ensures data persistence and continuity in guest mode
+   */
+  async backupLocalDataBeforeLogout(): Promise<void> {
+    if (this.isGuest) {
+      console.log("Service is in guest mode, skipping data download");
+      return;
+    }
+
+    if (!this.userId) {
+      console.log("No user ID available, skipping data download");
+      return;
+    }
+
+    console.log("Downloading Firebase data to local storage before logout...");
+
+    try {
+      // Only download if we're online and can access Firebase
+      if (!this.isOnline) {
+        console.log("Offline - cannot download Firebase data, keeping any existing local data");
+        return;
+      }
+
+      // Download all user data from Firebase
+      console.log('Fetching trips from Firebase...');
+      const firebaseTrips = await this.getAllTrips();
+      console.log('Fetching weather logs from Firebase...');
+      const firebaseWeatherLogs = await this.getAllWeatherLogs();
+      console.log('Fetching fish caught from Firebase...');
+      const firebaseFishCaught = await this.getAllFishCaught();
+
+      console.log(`Found ${firebaseTrips.length} trips, ${firebaseWeatherLogs.length} weather logs, and ${firebaseFishCaught.length} fish caught in Firebase`);
+
+      if (firebaseTrips.length === 0 && firebaseWeatherLogs.length === 0 && firebaseFishCaught.length === 0) {
+        console.log('No data found in Firebase - user may not have any data yet');
+        return;
+      }
+
+      console.log(`Downloading ${firebaseTrips.length} trips, ${firebaseWeatherLogs.length} weather logs, and ${firebaseFishCaught.length} fish caught to local storage`);
+
+      // Clear local storage first to avoid duplicates
+      await databaseService.clearAllData();
+
+      // Store Firebase data locally for guest mode access
+      for (const trip of firebaseTrips) {
+        await databaseService.createTrip(trip);
+      }
+
+      for (const weatherLog of firebaseWeatherLogs) {
+        await databaseService.createWeatherLog(weatherLog);
+      }
+
+      for (const fishCaught of firebaseFishCaught) {
+        await databaseService.createFishCaught(fishCaught);
+      }
+
+      console.log("Successfully downloaded Firebase data to local storage for guest mode access");
+
+    } catch (error) {
+      console.error("Failed to download Firebase data to local storage:", error);
+      // Don't throw error - we don't want to prevent logout, but log the issue
+      console.warn("Logout will continue, but Firebase data may not be available in guest mode");
+    }
+  }
+
+  /**
+   * Periodic safety check to ensure all local data is synced for authenticated users
+   * This provides an extra layer of data protection
+   */
+  async performSafetySync(): Promise<void> {
+    if (this.isGuest) {
+      return; // No sync needed for guest users
+    }
+
+    try {
+      // Check for any unsynced local data
+      const localTrips = await databaseService.getAllTrips();
+      const localWeatherLogs = await databaseService.getAllWeatherLogs();
+      const localFishCaught = await databaseService.getAllFishCaught();
+
+      const totalLocalItems = localTrips.length + localWeatherLogs.length + localFishCaught.length;
+
+      if (totalLocalItems > 0) {
+        console.log(`Safety sync: Found ${totalLocalItems} local items to sync`);
+        await this.mergeLocalDataForUser();
+        console.log('Safety sync completed successfully');
+      }
+    } catch (error) {
+      console.warn('Safety sync failed:', error);
+      // Don't throw - this is a background safety operation
+    }
   }
 
   // OFFLINE QUEUE MANAGEMENT
@@ -1109,7 +1354,7 @@ await batch.commit();
     return Math.abs(hash);
   }
 
-  private convertFromFirestore(data: any, localId: number, firebaseDocId?: string): any {
+  private convertFromFirestore(data: any, localId: number | string, firebaseDocId?: string): any {
     const { userId, createdAt, updatedAt, ...cleanData } = data;
     return {
       ...cleanData,

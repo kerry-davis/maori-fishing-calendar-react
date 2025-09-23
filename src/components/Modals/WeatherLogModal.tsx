@@ -45,9 +45,7 @@ export const WeatherLogModal: React.FC<WeatherLogModalProps> = ({
     setError(null);
 
     try {
-      // Convert string ID to number for database lookup
-      const numericId = parseInt(id.split('-').pop() || '0', 10);
-      const weather = await db.getWeatherLogById(numericId);
+      const weather = await db.getWeatherLogById(id);
       if (weather) {
         setFormData({
           timeOfDay: weather.timeOfDay,
