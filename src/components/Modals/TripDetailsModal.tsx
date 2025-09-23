@@ -73,24 +73,21 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
 
   // Load trip data for editing
   const loadTripData = async (id: number) => {
-    if (!user) return;
-
     setIsLoading(true);
     setError(null);
 
     try {
-      // Try local storage first (more reliable for editing existing trips)
+      // Try local storage first (works for both guest and authenticated users)
       let trip = await databaseService.getTripById(id);
 
-      // If not found locally, try Firebase as fallback
-      if (!trip) {
+      // If not found locally and user is authenticated, try Firebase as fallback
+      if (!trip && user) {
         console.log('Trip not found in local storage, trying Firebase...');
         trip = await firebaseDataService.getTripById(id);
       }
 
-      // If still not found, try to find by Firebase document ID directly
-      // This handles cases where we have a Firebase-generated local ID
-      if (!trip) {
+      // Additional Firebase fallback for authenticated users
+      if (!trip && user) {
         console.log('Trip not found via ID mapping, trying direct Firebase lookup...');
 
         // First, try to get all trips and find the one with matching ID
@@ -183,10 +180,7 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!user) {
-      setError('You must be logged in to save trips.');
-      return;
-    }
+    // Allow trip saving for both authenticated and guest users
 
     const validationResult = validateForm();
     setValidation(validationResult);

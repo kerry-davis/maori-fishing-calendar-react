@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { getLunarPhase } from '../../services/lunarService';
+import React from 'react';
 import type { LunarPhase, FishingQuality } from '../../types';
 
 interface CalendarDayProps {
@@ -9,6 +8,7 @@ interface CalendarDayProps {
   isToday?: boolean;
   hasTrips?: boolean;
   onDateSelect: (date: Date) => void;
+  lunarPhase: LunarPhase;
 }
 
 export const CalendarDay: React.FC<CalendarDayProps> = ({
@@ -17,15 +17,9 @@ export const CalendarDay: React.FC<CalendarDayProps> = ({
   isCurrentMonth,
   isToday = false,
   hasTrips = false,
-  onDateSelect
+  onDateSelect,
+  lunarPhase
 }) => {
-  const [lunarPhase, setLunarPhase] = useState<LunarPhase | null>(null);
-
-  // Calculate lunar phase for this date
-  useEffect(() => {
-    const phase = getLunarPhase(date);
-    setLunarPhase(phase);
-  }, [date]);
 
 
   const handleClick = () => {
@@ -49,13 +43,7 @@ export const CalendarDay: React.FC<CalendarDayProps> = ({
 
 
 
-  if (!lunarPhase) {
-    return (
-      <div className="calendar-day bg-gray-100 dark:bg-gray-800 rounded-lg p-2 min-h-[80px] flex flex-col items-center justify-center">
-        <span className="day-number text-gray-400">Loading...</span>
-      </div>
-    );
-  }
+
 
   return (
     <div
