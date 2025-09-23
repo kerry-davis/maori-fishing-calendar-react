@@ -64,11 +64,11 @@ export function useSyncStatus() {
 
     try {
       // Simple connectivity test - try to access a Firestore collection
-      const { collection, getDocs, query, limit } = await import('firebase/firestore');
+      const { collection, getDocs, query } = await import('firebase/firestore');
       const { firestore } = await import('../services/firebase');
 
       // Test with a simple query that should work even with restrictive rules
-      const testQuery = query(collection(firestore, '_test'), limit(1));
+      const testQuery = query(collection(firestore, '_test'));
       await getDocs(testQuery);
 
       setIsFirebaseReachable(true);
