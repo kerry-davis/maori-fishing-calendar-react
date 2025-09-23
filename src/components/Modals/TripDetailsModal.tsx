@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './Modal';
 import { useAuth } from '../../contexts/AuthContext';
 import { firebaseDataService } from '../../services/firebaseDataService';
+import { databaseService } from '../../services/databaseService';
 import type { Trip, TripModalProps, FormValidation } from '../../types';
 
 /**
@@ -78,7 +79,41 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
     setError(null);
 
     try {
-      const trip = await firebaseDataService.getTripById(id);
+      // Try local storage first (more reliable for editing existing trips)
+      let trip = await databaseService.getTripById(id);
+
+      // If not found locally, try Firebase as fallback
+      if (!trip) {
+        console.log('Trip not found in local storage, trying Firebase...');
+        trip = await firebaseDataService.getTripById(id);
+      }
+
+      // If still not found, try to find by Firebase document ID directly
+      // This handles cases where we have a Firebase-generated local ID
+      if (!trip) {
+        console.log('Trip not found via ID mapping, trying direct Firebase lookup...');
+
+        // First, try to get all trips and find the one with matching ID
+        const allTrips = await firebaseDataService.getAllTrips();
+        const foundTrip = allTrips.find(t => t.id === id);
+        if (foundTrip) {
+          trip = foundTrip;
+        }
+
+        // If still not found, try the new Firebase ID lookup method
+        if (!trip) {
+          console.log('Searching for trip with ID:', id);
+          // Try to find the Firebase document ID by searching through all trips
+          const allFirebaseTrips = await firebaseDataService.getAllTrips();
+          const matchingTrip = allFirebaseTrips.find(t => t.id === id);
+
+          if (matchingTrip && matchingTrip.firebaseDocId) {
+            console.log('Found trip via search, trying direct Firebase lookup with doc ID:', matchingTrip.firebaseDocId);
+            trip = await firebaseDataService.getTripByFirebaseId(matchingTrip.firebaseDocId);
+          }
+        }
+      }
+
       if (trip) {
         setFormData({
           date: trip.date,
@@ -88,7 +123,9 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
           companions: trip.companions,
           notes: trip.notes
         });
+        console.log('Trip loaded successfully for editing:', trip.id);
       } else {
+        console.error('Trip not found in either local storage or Firebase:', id);
         setError('Trip not found');
       }
     } catch (err) {
@@ -163,8 +200,26 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
 
     try {
       if (isEditing && tripId) {
-        // Update existing trip
-        await firebaseDataService.updateTrip({ id: tripId, ...formData });
+        // Update existing trip - use local storage first for reliability
+        await databaseService.updateTrip({ id: tripId, ...formData });
+
+        // Also update in Firebase if online - try multiple approaches
+        try {
+          // First, try to get the trip from Firebase to see if it has firebaseDocId
+          const allTrips = await firebaseDataService.getAllTrips();
+          const existingTrip = allTrips.find(t => t.id === tripId);
+
+          if (existingTrip && existingTrip.firebaseDocId) {
+            // Use the direct Firebase document ID if available
+            console.log('Using direct Firebase document ID for update:', existingTrip.firebaseDocId);
+            await firebaseDataService.updateTripWithFirebaseId(existingTrip.firebaseDocId, { id: tripId, ...formData });
+          } else {
+            // Fall back to the regular update method
+            await firebaseDataService.updateTrip({ id: tripId, ...formData });
+          }
+        } catch (firebaseError) {
+          console.warn('Firebase update failed, but local update succeeded:', firebaseError);
+        }
       } else {
         // Create new trip
         await firebaseDataService.createTrip(formData);
