@@ -27,6 +27,10 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
         console.log('Initializing Firebase database service...');
 
         if (user) {
+          // Reset isReady to false during Firebase initialization
+          if (isMounted) {
+            setIsReady(false);
+          }
           await firebaseDataService.initialize(user.uid);
           console.log('Firebase database service initialized for user:', user.uid);
         } else {
@@ -36,6 +40,7 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
 
         // Only update state if component is still mounted
         if (isMounted) {
+          console.log('Database context: Setting isReady to true');
           setIsReady(true);
           console.log('Database context ready');
         }
