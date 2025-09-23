@@ -20,14 +20,17 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect }) => {
   const [daysWithTrips, setDaysWithTrips] = useState<Set<string>>(new Set());
   const [loadingTrips, setLoadingTrips] = useState(false);
 
-  // Load trips for the current month
-  const loadTripsForMonth = async () => {
-    if (!user || !dbReady) {
+  // Load trips for the current month with robust error handling
+  const loadTripsForMonth = async (retryCount = 0) => {
+    if (!user) {
       setDaysWithTrips(new Set());
       return;
     }
 
     setLoadingTrips(true);
+    const maxRetries = 3;
+    const retryDelay = 500; // 500ms
+
     try {
       // Try Firebase first
       const allTrips = await firebaseDataService.getAllTrips();
@@ -43,7 +46,14 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect }) => {
       });
 
       setDaysWithTrips(daysWithTripsSet);
-    } catch (error) {
+    } catch (error: any) {
+      // If Firebase service not initialized and we haven't exceeded retries, wait and retry
+      if (error.message === 'Service not initialized' && retryCount < maxRetries) {
+        console.log(`Firebase service not ready, retrying in ${retryDelay}ms (attempt ${retryCount + 1}/${maxRetries})`);
+        setTimeout(() => loadTripsForMonth(retryCount + 1), retryDelay);
+        return;
+      }
+
       console.error('Firebase trip loading failed, trying local fallback:', error);
       try {
         // Fallback to local IndexedDB
@@ -75,14 +85,14 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect }) => {
     setCurrentDate(newDate);
   }, [currentMonth, currentYear]);
 
-  // Load trips when month/year changes and both user and db are ready
+  // Load trips when month/year changes or user becomes available
   useEffect(() => {
-    if (user && dbReady) {
+    if (user) {
       loadTripsForMonth();
     } else {
       setDaysWithTrips(new Set());
     }
-  }, [currentMonth, currentYear, user, dbReady]);
+  }, [currentMonth, currentYear, user]);
 
   const handlePrevMonth = () => {
     if (currentMonth === 0) {
