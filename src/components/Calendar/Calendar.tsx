@@ -21,14 +21,13 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect, refreshTrigger
 
   // Load trips for the current month with robust error handling
   const loadTripsForMonth = async () => {
-    if (!user) {
-      setDaysWithTrips(new Set());
-      return;
-    }
+    // Load trips for both authenticated and guest users
+    console.log('Loading trips for month, user:', user ? 'authenticated' : 'guest');
 
     try {
-      // Try Firebase first
+      // Get trips from appropriate source (Firebase for authenticated, local for guest)
       const allTrips = await db.getAllTrips();
+      console.log(`Calendar: Found ${allTrips.length} trips`);
 
       // Filter trips for the current month
       const daysWithTripsSet = new Set<string>();
@@ -73,20 +72,28 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect, refreshTrigger
 
   // Load trips when month/year changes or user becomes available
   useEffect(() => {
-    if (user) {
-      loadTripsForMonth();
-    } else {
-      setDaysWithTrips(new Set());
-    }
+    // Load trips for both authenticated and guest users
+    loadTripsForMonth();
   }, [currentMonth, currentYear, user]);
+
+  // Listen for force refresh events
+  useEffect(() => {
+    const handleForceRefresh = () => {
+      console.log('Calendar: Force refresh triggered');
+      loadTripsForMonth();
+    };
+
+    window.addEventListener('forceCalendarRefresh', handleForceRefresh);
+    return () => window.removeEventListener('forceCalendarRefresh', handleForceRefresh);
+  }, []);
 
   // Reload trips when refreshTrigger changes (e.g., when new trip is created)
   useEffect(() => {
-    if (user && refreshTrigger > 0) {
+    if (refreshTrigger > 0) {
       console.log('Calendar: Refreshing trip data due to refreshTrigger change');
       loadTripsForMonth();
     }
-  }, [refreshTrigger, user]);
+  }, [refreshTrigger]);
 
   const handlePrevMonth = () => {
     if (currentMonth === 0) {
