@@ -9,6 +9,7 @@ export interface TripLogModalProps extends DateModalProps {
   onEditTrip?: (tripId: number) => void;
   onNewTrip?: () => void;
   refreshTrigger?: number; // Add refresh trigger prop
+  onTripDeleted?: () => void; // Add callback for when trips are deleted
 }
 
 /**
@@ -26,6 +27,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
   onEditTrip,
   onNewTrip,
   refreshTrigger,
+  onTripDeleted,
 }) => {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -160,11 +162,17 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
       // Reload trips after deletion
       await loadTrips();
       console.log('Trips reloaded successfully');
+
+      // Notify parent component that a trip was deleted (for calendar refresh)
+      if (onTripDeleted) {
+        console.log('TripLogModal: Calling onTripDeleted callback');
+        onTripDeleted();
+      }
     } catch (err) {
       console.error("Error deleting trip:", err);
       setError("Failed to delete trip. Please try again.");
     }
-  }, [db, loadTrips]);
+  }, [db, loadTrips, onTripDeleted]);
 
   // Handle edit trip
   const handleEditTrip = (tripId: number) => {
