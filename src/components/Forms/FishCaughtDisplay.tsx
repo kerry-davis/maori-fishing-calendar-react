@@ -23,9 +23,9 @@ export const FishCaughtDisplay: React.FC<FishCaughtDisplayProps> = ({
   isLoading = false
 }) => {
   // Handle delete with confirmation
-  const handleDelete = (fishCaughtId: number) => {
+  const handleDelete = (fishCaughtId: string) => {
     if (onDelete && confirm('Are you sure you want to delete this fish catch record?')) {
-      onDelete(fishCaughtId);
+      onDelete(parseInt(fishCaughtId, 10));
     }
   };
 
