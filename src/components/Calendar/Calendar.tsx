@@ -9,9 +9,10 @@ import { databaseService } from "../../services/databaseService";
 
 interface CalendarProps {
   onDateSelect: (date: Date) => void;
+  refreshTrigger?: number;
 }
 
-export const Calendar: React.FC<CalendarProps> = ({ onDateSelect }) => {
+export const Calendar: React.FC<CalendarProps> = ({ onDateSelect, refreshTrigger = 0 }) => {
   const { user } = useAuth();
   const { isReady: dbReady } = useDatabaseContext();
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -94,6 +95,14 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect }) => {
       setDaysWithTrips(new Set());
     }
   }, [currentMonth, currentYear, user]);
+
+  // Reload trips when refreshTrigger changes (e.g., when new trip is created)
+  useEffect(() => {
+    if (user && refreshTrigger > 0) {
+      console.log('Calendar: Refreshing trip data due to refreshTrigger change');
+      loadTripsForMonth();
+    }
+  }, [refreshTrigger, user]);
 
   const handlePrevMonth = () => {
     if (currentMonth === 0) {
