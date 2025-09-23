@@ -268,7 +268,7 @@ export class DatabaseService {
   /**
    * Delete a trip and all associated data
    */
-  async deleteTrip(id: number, firebaseDocId?: string): Promise<void> {
+  async deleteTrip(id: number, _firebaseDocId?: string): Promise<void> {
     await this.initialize();
 
     return new Promise((resolve, reject) => {
@@ -363,8 +363,10 @@ export class DatabaseService {
   /**
    * Get weather log by ID
    */
-  async getWeatherLogById(id: number): Promise<WeatherLog | null> {
+  async getWeatherLogById(id: string | number): Promise<WeatherLog | null> {
     await this.initialize();
+    
+    const numericId = typeof id === 'string' ? parseInt(id.split('-').pop() || '0', 10) : id;
 
     return new Promise((resolve, reject) => {
       const transaction = this.getDatabase().transaction(
@@ -372,7 +374,7 @@ export class DatabaseService {
         "readonly",
       );
       const store = transaction.objectStore(DB_CONFIG.STORES.WEATHER_LOGS);
-      const request = store.get(id);
+      const request = store.get(numericId);
 
       request.onsuccess = () => {
         resolve(request.result || null);
@@ -477,8 +479,10 @@ export class DatabaseService {
   /**
    * Delete a weather log
    */
-  async deleteWeatherLog(id: number): Promise<void> {
+  async deleteWeatherLog(id: string | number): Promise<void> {
     await this.initialize();
+    
+    const numericId = typeof id === 'string' ? parseInt(id.split('-').pop() || '0', 10) : id;
 
     return new Promise((resolve, reject) => {
       const transaction = this.getDatabase().transaction(
@@ -486,10 +490,10 @@ export class DatabaseService {
         "readwrite",
       );
       const store = transaction.objectStore(DB_CONFIG.STORES.WEATHER_LOGS);
-      const request = store.delete(id);
+      const request = store.delete(numericId);
 
       request.onsuccess = () => {
-        console.log("Weather log deleted successfully:", id);
+        console.log("Weather log deleted successfully:", numericId);
         resolve();
       };
 
@@ -538,8 +542,10 @@ export class DatabaseService {
   /**
    * Get fish caught record by ID
    */
-  async getFishCaughtById(id: number): Promise<FishCaught | null> {
+  async getFishCaughtById(id: string | number): Promise<FishCaught | null> {
     await this.initialize();
+
+    const numericId = typeof id === 'string' ? parseInt(id.split('-').pop() || '0', 10) : id;
 
     return new Promise((resolve, reject) => {
       const transaction = this.getDatabase().transaction(
@@ -547,7 +553,7 @@ export class DatabaseService {
         "readonly",
       );
       const store = transaction.objectStore(DB_CONFIG.STORES.FISH_CAUGHT);
-      const request = store.get(id);
+      const request = store.get(numericId);
 
       request.onsuccess = () => {
         resolve(request.result || null);
@@ -652,8 +658,10 @@ export class DatabaseService {
   /**
    * Delete a fish caught record
    */
-  async deleteFishCaught(id: number): Promise<void> {
+  async deleteFishCaught(id: string | number): Promise<void> {
     await this.initialize();
+    
+    const numericId = typeof id === 'string' ? parseInt(id.split('-').pop() || '0', 10) : id;
 
     return new Promise((resolve, reject) => {
       const transaction = this.getDatabase().transaction(
@@ -661,10 +669,10 @@ export class DatabaseService {
         "readwrite",
       );
       const store = transaction.objectStore(DB_CONFIG.STORES.FISH_CAUGHT);
-      const request = store.delete(id);
+      const request = store.delete(numericId);
 
       request.onsuccess = () => {
-        console.log("Fish caught record deleted successfully:", id);
+        console.log("Fish caught record deleted successfully:", numericId);
         resolve();
       };
 
