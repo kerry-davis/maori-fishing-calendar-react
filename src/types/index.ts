@@ -218,7 +218,7 @@ export interface Trip {
 }
 
 export interface WeatherLog {
-  id: number;
+  id: string;
   tripId: number;
   timeOfDay: string;
   sky: string;
@@ -229,7 +229,7 @@ export interface WeatherLog {
 }
 
 export interface FishCaught {
-  id: number;
+  id: string;
   tripId: number;
   species: string;
   length: string;
