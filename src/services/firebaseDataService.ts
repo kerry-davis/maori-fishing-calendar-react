@@ -1,4 +1,4 @@
-import type { Trip, WeatherLog, FishCaught, DatabaseError } from "../types";
+import type { Trip, WeatherLog, FishCaught } from "../types";
 import { firestore, auth } from "./firebase";
 import { databaseService } from "./databaseService";
 import {
