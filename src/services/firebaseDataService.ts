@@ -125,31 +125,55 @@ export class FirebaseDataService {
   }
 
   /**
-   * Get a trip by ID
-   */
-  async getTripById(id: number): Promise<Trip | null> {
-    if (!this.isReady()) throw new Error('Service not initialized');
+    * Get a trip by ID
+    */
+   async getTripById(id: number): Promise<Trip | null> {
+     if (!this.isReady()) throw new Error('Service not initialized');
 
-    if (this.isOnline) {
-      try {
-        const firebaseId = await this.getFirebaseId('trips', id.toString());
-        if (firebaseId) {
-          const docRef = doc(firestore, 'trips', firebaseId);
-          const docSnap = await getDoc(docRef);
+     if (this.isOnline) {
+       try {
+         const firebaseId = await this.getFirebaseId('trips', id.toString());
+         if (firebaseId) {
+           const docRef = doc(firestore, 'trips', firebaseId);
+           const docSnap = await getDoc(docRef);
 
-          if (docSnap.exists()) {
-            const data = docSnap.data();
-            return this.convertFromFirestore(data, id, docSnap.id);
-          }
-        }
-      } catch (error) {
-        console.warn('Firestore get failed, trying local:', error);
-      }
-    }
+           if (docSnap.exists()) {
+             const data = docSnap.data();
+             return this.convertFromFirestore(data, id, docSnap.id);
+           }
+         }
+       } catch (error) {
+         console.warn('Firestore get failed, trying local:', error);
+       }
+     }
 
-    // Fallback to local storage
-    return databaseService.getTripById(id);
-  }
+     // Fallback to local storage
+     return databaseService.getTripById(id);
+   }
+
+   /**
+    * Get a trip by Firebase document ID (for cases where we have the Firebase ID directly)
+    */
+   async getTripByFirebaseId(firebaseId: string): Promise<Trip | null> {
+     if (!this.isReady()) throw new Error('Service not initialized');
+
+     if (this.isOnline) {
+       try {
+         const docRef = doc(firestore, 'trips', firebaseId);
+         const docSnap = await getDoc(docRef);
+
+         if (docSnap.exists()) {
+           const data = docSnap.data();
+           const localId = this.generateLocalId(firebaseId);
+           return this.convertFromFirestore(data, localId, firebaseId);
+         }
+       } catch (error) {
+         console.warn('Firestore get by Firebase ID failed:', error);
+       }
+     }
+
+     return null;
+   }
 
   /**
     * Get all trips for a specific date
@@ -225,34 +249,61 @@ export class FirebaseDataService {
   }
 
   /**
-   * Update a trip
-   */
-  async updateTrip(trip: Trip): Promise<void> {
-    if (!this.isReady()) throw new Error('Service not initialized');
+    * Update a trip
+    */
+   async updateTrip(trip: Trip): Promise<void> {
+     if (!this.isReady()) throw new Error('Service not initialized');
 
-    const tripWithUser = { ...trip, userId: this.userId };
+     const tripWithUser = { ...trip, userId: this.userId };
 
-    if (this.isOnline) {
-      try {
-        const firebaseId = await this.getFirebaseId('trips', trip.id.toString());
-        if (firebaseId) {
-          const docRef = doc(firestore, 'trips', firebaseId);
-          await updateDoc(docRef, {
-            ...tripWithUser,
-            updatedAt: serverTimestamp()
-          });
-          console.log('Trip updated in Firestore:', firebaseId);
-          return;
-        }
-      } catch (error) {
-        console.warn('Firestore update failed, falling back to local:', error);
-      }
-    }
+     if (this.isOnline) {
+       try {
+         const firebaseId = await this.getFirebaseId('trips', trip.id.toString());
+         if (firebaseId) {
+           const docRef = doc(firestore, 'trips', firebaseId);
+           await updateDoc(docRef, {
+             ...tripWithUser,
+             updatedAt: serverTimestamp()
+           });
+           console.log('Trip updated in Firestore:', firebaseId);
+           return;
+         }
+       } catch (error) {
+         console.warn('Firestore update failed, falling back to local:', error);
+       }
+     }
 
-    // Fallback to local storage
-    await databaseService.updateTrip(trip);
-    this.queueOperation('update', 'trips', tripWithUser);
-  }
+     // Fallback to local storage
+     await databaseService.updateTrip(trip);
+     this.queueOperation('update', 'trips', tripWithUser);
+   }
+
+   /**
+    * Update a trip using Firebase document ID directly (bypasses ID mapping)
+    */
+   async updateTripWithFirebaseId(firebaseId: string, trip: Trip): Promise<void> {
+     if (!this.isReady()) throw new Error('Service not initialized');
+
+     const tripWithUser = { ...trip, userId: this.userId };
+
+     if (this.isOnline) {
+       try {
+         const docRef = doc(firestore, 'trips', firebaseId);
+         await updateDoc(docRef, {
+           ...tripWithUser,
+           updatedAt: serverTimestamp()
+         });
+         console.log('Trip updated in Firestore using direct Firebase ID:', firebaseId);
+         return;
+       } catch (error) {
+         console.warn('Firestore update with direct ID failed, falling back to local:', error);
+       }
+     }
+
+     // Fallback to local storage
+     await databaseService.updateTrip(trip);
+     this.queueOperation('update', 'trips', tripWithUser);
+   }
 
   /**
     * Delete a trip and all associated data
