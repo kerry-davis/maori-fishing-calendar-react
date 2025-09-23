@@ -4,7 +4,7 @@ export const cleanupDuplicateTrips = async () => {
   console.log('=== CLEANING UP DUPLICATE TRIPS ===');
   
   try {
-    if (firebaseDataService.isGuest) {
+    if ((firebaseDataService as any).isGuest) {
       console.log('Cannot cleanup - user not logged in');
       return;
     }
@@ -24,17 +24,17 @@ export const cleanupDuplicateTrips = async () => {
     });
 
     // Find groups with duplicates
-    const duplicateGroups = Array.from(tripGroups.entries()).filter(([key, trips]) => trips.length > 1);
+    const duplicateGroups = Array.from(tripGroups.entries()).filter(([, trips]) => trips.length > 1);
     
     console.log(`Found ${duplicateGroups.length} groups with duplicates`);
     
     for (const [key, trips] of duplicateGroups) {
       console.log(`Group ${key}: ${trips.length} duplicates`);
-      console.log('Trip IDs:', trips.map(t => t.id));
+      console.log('Trip IDs:', trips.map((t: any) => t.id));
       
       // Keep the first trip, mark others for deletion
       const [keepTrip, ...deleteTrips] = trips;
-      console.log(`Keeping trip ${keepTrip.id}, will delete:`, deleteTrips.map(t => t.id));
+      console.log(`Keeping trip ${keepTrip.id}, will delete:`, deleteTrips.map((t: any) => t.id));
       
       // Delete the duplicates
       for (const trip of deleteTrips) {
