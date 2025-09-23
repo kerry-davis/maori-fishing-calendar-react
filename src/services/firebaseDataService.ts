@@ -106,7 +106,6 @@ export class FirebaseDataService {
 
         const docRef = await addDoc(collection(firestore, 'trips'), {
           ...tripWithUser,
-          id: tripId, // Store the local ID in Firestore for deletion queries
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
@@ -140,7 +139,7 @@ export class FirebaseDataService {
 
           if (docSnap.exists()) {
             const data = docSnap.data();
-            return this.convertFromFirestore(data, id);
+            return this.convertFromFirestore(data, id, docSnap.id);
           }
         }
       } catch (error) {
@@ -175,7 +174,7 @@ export class FirebaseDataService {
          querySnapshot.forEach((doc) => {
            const data = doc.data();
            const localId = this.generateLocalId(doc.id);
-           trips.push(this.convertFromFirestore(data, localId));
+           trips.push(this.convertFromFirestore(data, localId, doc.id));
          });
 
          console.log('Returning', trips.length, 'trips from Firestore');
@@ -276,26 +275,26 @@ export class FirebaseDataService {
            batch.delete(doc(firestore, 'trips', firebaseDocId));
 
            // Delete associated weather logs
-           const weatherQuery = query(
-             collection(firestore, 'weatherLogs'),
-             where('userId', '==', this.userId),
-             where('tripId', '==', id)
-           );
-           const weatherSnapshot = await getDocs(weatherQuery);
-           weatherSnapshot.forEach((doc) => {
-             batch.delete(doc.ref);
-           });
+            const weatherQuery = query(
+                collection(firestore, 'weatherLogs'),
+                where('userId', '==', this.userId),
+                where('tripId', '==', id),
+            );
+            const weatherSnapshot = await getDocs(weatherQuery);
+            weatherSnapshot.forEach(doc => {
+                batch.delete(doc.ref);
+            });
 
-           // Delete associated fish caught
-           const fishQuery = query(
-             collection(firestore, 'fishCaught'),
-             where('userId', '==', this.userId),
-             where('tripId', '==', id)
-           );
-           const fishSnapshot = await getDocs(fishQuery);
-           fishSnapshot.forEach((doc) => {
-             batch.delete(doc.ref);
-           });
+            // Delete associated fish caught
+            const fishQuery = query(
+                collection(firestore, 'fishCaught'),
+                where('userId', '==', this.userId),
+                where('tripId', '==', id),
+            );
+            const fishSnapshot = await getDocs(fishQuery);
+            fishSnapshot.forEach(doc => {
+                batch.delete(doc.ref);
+            });
 
            await batch.commit();
            console.log('Trip and associated data deleted from Firestore using document ID');
@@ -314,26 +313,26 @@ export class FirebaseDataService {
            batch.delete(doc(firestore, 'trips', firebaseId));
 
            // Delete associated weather logs
-           const weatherQuery = query(
-             collection(firestore, 'weatherLogs'),
-             where('userId', '==', this.userId),
-             where('tripId', '==', id)
-           );
-           const weatherSnapshot = await getDocs(weatherQuery);
-           weatherSnapshot.forEach((doc) => {
-             batch.delete(doc.ref);
-           });
+            const weatherQuery = query(
+                collection(firestore, 'weatherLogs'),
+                where('userId', '==', this.userId),
+                where('tripId', '==', id),
+            );
+            const weatherSnapshot = await getDocs(weatherQuery);
+            weatherSnapshot.forEach(doc => {
+                batch.delete(doc.ref);
+            });
 
-           // Delete associated fish caught
-           const fishQuery = query(
-             collection(firestore, 'fishCaught'),
-             where('userId', '==', this.userId),
-             where('tripId', '==', id)
-           );
-           const fishSnapshot = await getDocs(fishQuery);
-           fishSnapshot.forEach((doc) => {
-             batch.delete(doc.ref);
-           });
+            // Delete associated fish caught
+            const fishQuery = query(
+                collection(firestore, 'fishCaught'),
+                where('userId', '==', this.userId),
+                where('tripId', '==', id),
+            );
+            const fishSnapshot = await getDocs(fishQuery);
+            fishSnapshot.forEach(doc => {
+                batch.delete(doc.ref);
+            });
 
            await batch.commit();
            console.log('Trip and associated data deleted from Firestore');
@@ -353,7 +352,12 @@ export class FirebaseDataService {
 
              if (!tripSnapshot.empty) {
                console.log(`Found ${tripSnapshot.size} trip document(s) by local ID, deleting...`);
-               await this.deleteTripDocuments(tripSnapshot.docs.map(doc => doc.ref));
+                const batch = writeBatch(firestore);
+tripSnapshot.forEach(doc => {
+   batch.delete(doc.ref);
+});
+await batch.commit();
+
                return;
              }
            } catch (error) {
@@ -817,7 +821,7 @@ export class FirebaseDataService {
     return {
       ...cleanData,
       id: localId,
-      firebaseDocId, // Include the Firestore document ID for deletion
+      firebaseDocId: firebaseDocId, // Include the Firestore document ID for deletion
       createdAt: createdAt?.toDate?.()?.toISOString() || createdAt,
       updatedAt: updatedAt?.toDate?.()?.toISOString() || updatedAt
     };
@@ -1324,11 +1328,29 @@ export class FirebaseDataService {
     // Delete trip documents
     tripRefs.forEach(ref => batch.delete(ref));
 
-    // Note: We can't efficiently delete associated weather/fish data without knowing the trip IDs
-    // This would require additional queries. For now, just delete the trips.
-
+    for (const tripRef of tripRefs) {
+      const tripId = tripRef.id;
+      const weatherQuery = query(
+        collection(firestore, 'weatherLogs'),
+        where('userId', '==', this.userId),
+        where('tripId', '==', tripId)
+      );
+      const weatherSnapshot = await getDocs(weatherQuery);
+      weatherSnapshot.forEach((doc) => {
+        batch.delete(doc.ref);
+      });
+      const fishQuery = query(
+        collection(firestore, 'fishCaught'),
+        where('userId', '==', this.userId),
+        where('tripId', '==', tripId)
+      );
+      const fishSnapshot = await getDocs(fishQuery);
+      fishSnapshot.forEach((doc) => {
+        batch.delete(doc.ref);
+      });
+    }
     await batch.commit();
-    console.log(`Deleted ${tripRefs.length} trip document(s) from Firestore`);
+    console.log(`Deleted ${tripRefs.length} trip document(s) and associated data from Firestore`);
   }
 
   /**
