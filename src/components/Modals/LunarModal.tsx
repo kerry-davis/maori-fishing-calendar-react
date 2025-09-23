@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Modal, ModalHeader, ModalBody } from "./Modal";
 import { useLocationContext } from "../../contexts/LocationContext";
-import { useAuth } from "../../contexts/AuthContext";
+// import { useAuth } from "../../contexts/AuthContext"; // Not currently used
 import { useDatabaseService } from "../../contexts/DatabaseContext";
 import {
   getLunarPhase,
