@@ -59,7 +59,7 @@ const Header: FC<HeaderProps> = ({
         >
           <i className="fas fa-box"></i>
         </button>
-        <button 
+        <button
           onClick={onGalleryClick}
           className="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-full w-10 h-10 flex items-center justify-center shadow-md hover:bg-gray-300 dark:hover:bg-gray-600 transition"
           title="Gallery"

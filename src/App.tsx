@@ -1,9 +1,10 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   AppProviders,
   useDatabaseContext,
+  useAuth,
 } from "./contexts";
-import { useIndexedDB } from "./hooks/useIndexedDB";
+import { firebaseDataService } from "./services/firebaseDataService";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { Header, Footer } from "./components/Layout";
 import { Calendar } from "./components/Calendar";
@@ -15,6 +16,7 @@ import {
   SettingsModal,
   SearchModal,
   GalleryModal,
+  DataMigrationModal,
   LunarModal,
   TripLogModal,
   TripFormModal,
@@ -41,18 +43,21 @@ type ModalState =
   | "settings"
   | "search"
   | "gallery"
+  | "dataMigration"
   | "weatherLog"
   | "fishCatch";
 
 function AppContent() {
   const { isReady, error } = useDatabaseContext();
-  const db = useIndexedDB();
+  const { user } = useAuth();
 
   // Modal state management for routing between different views
   const [currentModal, setCurrentModal] = useState<ModalState>("none");
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [editingTripId, setEditingTripId] = useState<number | null>(null);
   const [editingWeatherId, setEditingWeatherId] = useState<number | null>(null);
+  const [tripLogRefreshTrigger, setTripLogRefreshTrigger] = useState(0);
+  const [calendarRefreshTrigger, setCalendarRefreshTrigger] = useState(0);
 
   // Modal handlers
   const handleSearchClick = useCallback(() => {
@@ -88,24 +93,26 @@ function AppContent() {
     }
 
     // Check if trips exist for this date
-    if (date && db?.isReady) {
+    if (date && user) {
       try {
+        const allTrips = await firebaseDataService.getAllTrips();
         const dateStr = date.toLocaleDateString("en-CA");
-        const trips = await db.trips.getByDate(dateStr);
+        const tripsForDate = allTrips.filter(trip => trip.date === dateStr);
 
-        if (trips.length === 0) {
+        if (tripsForDate.length === 0) {
           // No trips exist, open trip form directly
           setCurrentModal("tripForm");
           return;
         }
       } catch (err) {
         console.error("Error checking trips:", err);
+        // On error, default to showing trip log
       }
     }
 
     // Trips exist or error occurred, show trip log
     setCurrentModal("tripLog");
-  }, [db?.isReady, db?.trips]);
+  }, [user]);
 
   const handleNewTrip = useCallback(() => {
     setCurrentModal("tripForm");
@@ -121,24 +128,36 @@ function AppContent() {
   const handleTripCreated = useCallback((trip: any) => {
     console.log('App.tsx: handleTripCreated called with trip:', trip);
     console.log('App.tsx: Current modal before:', currentModal);
-    // Close the trip form modal and refresh the trip log
+    // Close the trip form modal and refresh both trip log and calendar
     setCurrentModal("tripLog");
-    console.log('App.tsx: Set currentModal to tripLog');
+    setTripLogRefreshTrigger(prev => prev + 1); // Trigger trip log refresh
+    setCalendarRefreshTrigger(prev => prev + 1); // Trigger calendar refresh
+    console.log('App.tsx: Set currentModal to tripLog and triggered calendar refresh');
   }, [currentModal]);
+
+  const handleTripDeleted = useCallback(() => {
+    console.log('App.tsx: handleTripDeleted called');
+    // Trigger calendar refresh when a trip is deleted
+    setCalendarRefreshTrigger(prev => prev + 1);
+    console.log('App.tsx: Triggered calendar refresh after trip deletion');
+  }, []);
 
   const handleWeatherLogged = useCallback((_weatherLog: any) => {
     // Close the weather modal and refresh the trip log to show updated weather
     setCurrentModal("tripLog");
+    setTripLogRefreshTrigger(prev => prev + 1); // Trigger refresh
   }, []);
 
   const handleFishCaught = useCallback((_fish: any) => {
     // Close the fish catch modal and refresh the trip log to show new catch
     setCurrentModal("tripLog");
+    setTripLogRefreshTrigger(prev => prev + 1); // Trigger refresh
   }, []);
 
   const handleTripUpdated = useCallback(() => {
     // Navigate back to the trip log modal after trip is updated
     setCurrentModal("tripLog");
+    setTripLogRefreshTrigger(prev => prev + 1); // Trigger refresh
   }, []);
 
   const handleCancelEditTrip = useCallback(() => {
@@ -161,6 +180,31 @@ function AppContent() {
     setEditingWeatherId(null);
     console.log('App.tsx: Modal closed, set to none');
   }, [currentModal]);
+
+  // Check for data migration when user logs in
+  useEffect(() => {
+    const checkDataMigration = async () => {
+      if (user && isReady) {
+        try {
+          // Use the Firebase data service for migration checks
+          const firebaseDb = (await import('./services/firebaseDataService')).firebaseDataService;
+          const [hasLocalData, hasCompletedMigration] = await Promise.all([
+            firebaseDb.hasLocalData(),
+            firebaseDb.hasCompletedMigration()
+          ]);
+
+          if (hasLocalData && !hasCompletedMigration) {
+            // Show migration modal
+            setCurrentModal("dataMigration");
+          }
+        } catch (error) {
+          console.error('Error checking data migration:', error);
+        }
+      }
+    };
+
+    checkDataMigration();
+  }, [user, isReady]);
 
   // Show loading state while database is initializing
   if (!isReady && !error) {
@@ -219,7 +263,7 @@ function AppContent() {
         <main>
           {/* Calendar Component */}
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
-            <Calendar onDateSelect={handleDateSelect} />
+            <Calendar onDateSelect={handleDateSelect} refreshTrigger={calendarRefreshTrigger} />
           </div>
 
           {/* Legend Component */}
@@ -258,6 +302,11 @@ function AppContent() {
           onClose={handleCloseModal}
         />
 
+        <DataMigrationModal
+          isOpen={currentModal === "dataMigration"}
+          onClose={handleCloseModal}
+        />
+
         <LunarModal
           isOpen={currentModal === "lunar"}
           onClose={handleCloseModal}
@@ -271,6 +320,8 @@ function AppContent() {
           selectedDate={selectedDate!}
           onNewTrip={handleNewTrip}
           onEditTrip={handleEditTrip}
+          refreshTrigger={tripLogRefreshTrigger}
+          onTripDeleted={handleTripDeleted}
         />
 
         <TripFormModal
@@ -293,7 +344,7 @@ function AppContent() {
           isOpen={currentModal === "weatherLog"}
           onClose={handleCloseModal}
           tripId={editingTripId || 1} // Use the stored trip ID
-          weatherId={editingWeatherId || undefined}
+          weatherId={editingWeatherId ? editingWeatherId.toString() : undefined}
           onWeatherLogged={handleWeatherLogged}
         />
 

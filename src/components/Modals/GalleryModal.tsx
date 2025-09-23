@@ -4,7 +4,8 @@ import type {
   ModalProps,
   GallerySortOrder,
 } from "../../types";
-import { databaseService } from "../../services/databaseService";
+import { useDatabaseService } from "../../contexts/DatabaseContext";
+import { useAuth } from "../../contexts/AuthContext";
 
 interface PhotoItem {
   id: string;
@@ -42,6 +43,8 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
   selectedYear,
   onPhotoSelect,
 }) => {
+  const db = useDatabaseService();
+  const { user } = useAuth();
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -70,21 +73,27 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
   }, [isOpen]);
 
   const loadPhotos = async () => {
+    if (!user) {
+      setPhotos([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
       const [trips, fishCaught] = await Promise.all([
-        databaseService.getAllTrips(),
-        databaseService.getAllFishCaught(),
+        db.getAllTrips(),
+        db.getAllFishCaught(),
       ]);
 
       // Create photo items from fish catches that have photos
       const photoItems: PhotoItem[] = [];
 
-      fishCaught.forEach((fish) => {
+      fishCaught.forEach((fish: any) => {
         if (fish.photo) {
-          const trip = trips.find((t) => t.id === fish.tripId);
+          const trip = trips.find((t: any) => t.id === fish.tripId);
           if (trip) {
             photoItems.push({
               id: `${fish.id}-${fish.tripId}`,
