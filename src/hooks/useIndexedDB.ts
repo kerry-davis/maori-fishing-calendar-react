@@ -25,22 +25,22 @@ interface UseIndexedDBReturn extends UseIndexedDBState {
 
   // Weather log operations
   weather: {
-    create: (weatherData: Omit<WeatherLog, "id">) => Promise<number>;
-    getById: (id: number) => Promise<WeatherLog | null>;
+    create: (weatherData: Omit<WeatherLog, "id">) => Promise<string>;
+    getById: (id: string) => Promise<WeatherLog | null>;
     getByTripId: (tripId: number) => Promise<WeatherLog[]>;
     getAll: () => Promise<WeatherLog[]>;
     update: (weatherLog: WeatherLog) => Promise<void>;
-    delete: (id: number) => Promise<void>;
+    delete: (id: string) => Promise<void>;
   };
 
   // Fish caught operations
   fish: {
-    create: (fishData: Omit<FishCaught, "id">) => Promise<number>;
-    getById: (id: number) => Promise<FishCaught | null>;
+    create: (fishData: Omit<FishCaught, "id">) => Promise<string>;
+    getById: (id: string) => Promise<FishCaught | null>;
     getByTripId: (tripId: number) => Promise<FishCaught[]>;
     getAll: () => Promise<FishCaught[]>;
     update: (fishCaught: FishCaught) => Promise<void>;
-    delete: (id: number) => Promise<void>;
+    delete: (id: string) => Promise<void>;
     getCountForTrip: (tripId: number) => Promise<number>;
   };
 
@@ -167,7 +167,7 @@ export const useIndexedDB = (): UseIndexedDBReturn => {
     ),
 
     getById: useCallback(
-      (id: number) =>
+      (id: string) =>
         withErrorHandling(() => databaseService.getWeatherLogById(id)),
       [withErrorHandling],
     ),
@@ -190,7 +190,7 @@ export const useIndexedDB = (): UseIndexedDBReturn => {
     ),
 
     delete: useCallback(
-      (id: number) =>
+      (id: string) =>
         withErrorHandling(() => databaseService.deleteWeatherLog(id)),
       [withErrorHandling],
     ),
@@ -205,7 +205,7 @@ export const useIndexedDB = (): UseIndexedDBReturn => {
     ),
 
     getById: useCallback(
-      (id: number) =>
+      (id: string) =>
         withErrorHandling(() => databaseService.getFishCaughtById(id)),
       [withErrorHandling],
     ),
@@ -228,7 +228,7 @@ export const useIndexedDB = (): UseIndexedDBReturn => {
     ),
 
     delete: useCallback(
-      (id: number) =>
+      (id: string) =>
         withErrorHandling(() => databaseService.deleteFishCaught(id)),
       [withErrorHandling],
     ),
