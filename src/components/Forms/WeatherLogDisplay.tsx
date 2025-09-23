@@ -56,7 +56,10 @@ export const WeatherLogDisplay: React.FC<WeatherLogDisplayProps> = ({
   // Handle delete with confirmation
   const handleDelete = (weatherLogId: string) => {
     if (onDelete && confirm('Are you sure you want to delete this weather log?')) {
-      onDelete(parseInt(weatherLogId, 10));
+      const numericId = parseInt(weatherLogId.split('-').pop() || '0', 10);
+      if (numericId > 0) {
+        onDelete(numericId);
+      }
     }
   };
 
