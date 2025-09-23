@@ -269,28 +269,22 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
 
   // Execute fish deletion after confirmation
   const executeFishDeletion = useCallback(async (fishId: string) => {
-    console.log('[Delete Debug] Proceeding with fish deletion...');
-
-    // Find the fish catch to get the correct ID for deletion
-    const fishCatch = fishCatches.find(fish => fish.id === fishId);
-    const correctId = fishCatch ? getCorrectIdForDeletion(fishCatch) : fishId;
-
-    console.log('[Delete Debug] Using correct ID for deletion:', correctId);
-
-    // Final Strategy: Optimistic UI update, and NO reload.
-    // The user's action of closing/re-opening the modal will be the source of truth refresh.
-    setFishCatches(prev => prev.filter(fish => fish.id !== fishId));
-
     try {
-      await db.deleteFishCaught(correctId);
-      console.log('[Delete Debug] Fish deletion successful. UI was updated optimistically.');
+      // The fishId passed here is the one from the UI element, which is what we need to filter the state.
+      // The underlying `deleteFishCaught` service has already been fixed to handle various ID formats.
+      await db.deleteFishCaught(fishId);
+
+      // On successful deletion, update the UI by filtering the state
+      setFishCatches(prevCatches => prevCatches.filter(fish => fish.id.toString() !== fishId.toString()));
+
+      console.log('[Delete] Fish deletion successful.');
     } catch (err) {
       console.error("Error deleting fish catch:", err);
       setError("Failed to delete fish catch. Please try again.");
-      // If error, revert the optimistic update by reloading
+      // If the deletion fails, reload the data to ensure UI consistency
       loadFishCatches();
     }
-  }, [db, loadFishCatches, fishCatches, getCorrectIdForDeletion]);
+  }, [db, loadFishCatches]);
 
   // Handle weather log editing
   const handleEditWeather = useCallback((weatherId: string) => {
@@ -313,57 +307,36 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
 
   // Execute weather deletion after confirmation
   const executeWeatherDeletion = useCallback(async (weatherId: string) => {
-    console.log('[Delete Debug] Proceeding with weather deletion...');
-
-    // Find the weather log to get the correct ID for deletion
-    const weatherLog = weatherLogs.find(log => log.id === weatherId);
-    const correctId = weatherLog ? getCorrectIdForDeletion(weatherLog) : weatherId;
-
-    console.log('[Delete Debug] Using correct ID for deletion:', correctId);
-
-    // Final Strategy: Optimistic UI update, and NO reload.
-    // The user's action of closing/re-opening the modal will be the source of truth refresh.
-    setWeatherLogs(prev => prev.filter(log => log.id !== weatherId));
-
     try {
-      await db.deleteWeatherLog(correctId);
-      console.log('[Delete Debug] Weather deletion successful. UI was updated optimistically.');
+      // The weatherId passed here is the one from the UI element, which is what we need to filter the state.
+      // The underlying `deleteWeatherLog` service has already been fixed to handle various ID formats.
+      await db.deleteWeatherLog(weatherId);
+
+      // On successful deletion, update the UI by filtering the state
+      setWeatherLogs(prevLogs => prevLogs.filter(log => log.id.toString() !== weatherId.toString()));
+
+      console.log('[Delete] Weather deletion successful.');
     } catch (err) {
       console.error("Error deleting weather log:", err);
       setError("Failed to delete weather log. Please try again.");
-      // If error, revert the optimistic update by reloading
+      // If the deletion fails, reload the data to ensure UI consistency
       loadWeatherLogs();
     }
-  }, [db, loadWeatherLogs, weatherLogs, getCorrectIdForDeletion]);
+  }, [db, loadWeatherLogs]);
 
   // Handle confirmation dialog
   const handleConfirmDelete = useCallback(() => {
     if (!deleteTarget) return;
 
-    console.log('[Delete Debug] User confirmed deletion for', deleteTarget.type, 'ID:', deleteTarget.id);
-    console.log('[Delete Debug] Custom confirmation modal - proceeding with deletion');
-
-    // Find the correct item to get the proper ID for deletion
-    let correctId = deleteTarget.id;
     if (deleteTarget.type === 'weather') {
-      const weatherLog = weatherLogs.find(log => log.id === deleteTarget.id);
-      correctId = weatherLog ? getCorrectIdForDeletion(weatherLog) : deleteTarget.id;
+      executeWeatherDeletion(deleteTarget.id);
     } else if (deleteTarget.type === 'fish') {
-      const fishCatch = fishCatches.find(fish => fish.id === deleteTarget.id);
-      correctId = fishCatch ? getCorrectIdForDeletion(fishCatch) : deleteTarget.id;
-    }
-
-    console.log('[Delete Debug] Using correct ID for deletion:', correctId);
-
-    if (deleteTarget.type === 'weather') {
-      executeWeatherDeletion(correctId);
-    } else if (deleteTarget.type === 'fish') {
-      executeFishDeletion(correctId);
+      executeFishDeletion(deleteTarget.id);
     }
 
     setShowDeleteConfirm(false);
     setDeleteTarget(null);
-  }, [deleteTarget, executeWeatherDeletion, executeFishDeletion, weatherLogs, fishCatches, getCorrectIdForDeletion]);
+  }, [deleteTarget, executeWeatherDeletion, executeFishDeletion]);
 
   const handleCancelDelete = useCallback(() => {
     console.log('[Delete Debug] User cancelled deletion in custom modal');
