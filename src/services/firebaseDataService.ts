@@ -197,6 +197,7 @@ export class FirebaseDataService {
          querySnapshot.forEach((doc) => {
            const data = doc.data();
            const localId = this.generateLocalId(doc.id);
+           this.storeLocalMapping('trips', localId.toString(), doc.id);
            trips.push(this.convertFromFirestore(data, localId, doc.id));
          });
 
@@ -234,6 +235,7 @@ export class FirebaseDataService {
         querySnapshot.forEach((doc) => {
           const data = doc.data();
           const localId = this.generateLocalId(doc.id);
+          this.storeLocalMapping('trips', localId.toString(), doc.id);
           trips.push(this.convertFromFirestore(data, localId, doc.id));
         });
 
@@ -521,6 +523,7 @@ await batch.commit();
         querySnapshot.forEach((doc) => {
           const data = doc.data();
           const localId = this.generateLocalId(doc.id);
+          this.storeLocalMapping('weatherLogs', localId.toString(), doc.id);
           weatherLogs.push(this.convertFromFirestore(data, localId) as WeatherLog);
         });
 
@@ -547,6 +550,7 @@ await batch.commit();
         querySnapshot.forEach((doc) => {
           const data = doc.data();
           const localId = this.generateLocalId(doc.id);
+          this.storeLocalMapping('weatherLogs', localId.toString(), doc.id);
           weatherLogs.push(this.convertFromFirestore(data, localId) as WeatherLog);
         });
 
@@ -604,113 +608,29 @@ await batch.commit();
     if (!this.isReady()) throw new Error('Service not initialized');
 
     console.log('[Weather Delete] Starting delete for weather log ID:', id);
-    console.log('[Weather Delete] User ID:', this.userId);
-    console.log('[Weather Delete] Is online:', this.isOnline);
-
-    let firebasePromise: Promise<any> = Promise.resolve();
     let deletedFromFirebase = false;
 
     if (this.isOnline) {
-      firebasePromise = (async () => {
-        try {
-          console.log('[Weather Delete] Attempting Firebase deletion...');
-
-          // First try to get the Firebase document ID from the mapping
-          const firebaseId = await this.getFirebaseId('weatherLogs', id);
-          console.log('[Weather Delete] Firebase ID lookup result:', firebaseId);
-
-          if (firebaseId) {
-            console.log('[Weather Delete] Found Firebase ID via mapping, deleting doc:', firebaseId);
-            await deleteDoc(doc(firestore, 'weatherLogs', firebaseId));
-            console.log('[Weather Delete] Firestore doc deleted via mapping:', firebaseId);
-            deletedFromFirebase = true;
-          } else {
-            console.log('[Weather Delete] No Firebase ID mapping found, trying direct lookup...');
-
-            // Convert string ID to number if it's a numeric string
-            const numericId = parseInt(id, 10);
-            const isNumericId = !isNaN(numericId) && id === numericId.toString();
-
-            if (isNumericId) {
-              // If we have a numeric ID, search for the record in Firestore using the numeric ID in the 'id' field
-              console.log('[Weather Delete] Searching for weather log with numeric ID:', numericId);
-              const weatherQuery = query(
-                collection(firestore, 'weatherLogs'),
-                where('userId', '==', this.userId),
-                where('id', '==', numericId)
-              );
-              const weatherSnapshot = await getDocs(weatherQuery);
-  
-              if (!weatherSnapshot.empty) {
-                console.log(`[Weather Delete] Found ${weatherSnapshot.size} doc(s) by numeric ID, deleting...`);
-                const deletePromises = weatherSnapshot.docs.map(d => deleteDoc(d.ref));
-                await Promise.all(deletePromises);
-                console.log('[Weather Delete] Firestore doc(s) deleted via numeric ID lookup');
-                deletedFromFirebase = true;
-              } else {
-                console.log('[Weather Delete] Weather log not found in Firestore by numeric ID, trying string ID lookup...');
-  
-                // Try to find the record by searching for any weather log with this numeric ID in the 'id' field
-                // The 'id' field in Firestore contains the numeric ID, not the string ID
-                const allWeatherQuery = query(
-                  collection(firestore, 'weatherLogs'),
-                  where('userId', '==', this.userId)
-                );
-                const allWeatherSnapshot = await getDocs(allWeatherQuery);
-  
-                const matchingDoc = allWeatherSnapshot.docs.find(doc => {
-                  const data = doc.data();
-                  return data.id === numericId;
-                });
-  
-                if (matchingDoc) {
-                  console.log('[Weather Delete] Found weather log by searching all records, deleting...');
-                  await deleteDoc(matchingDoc.ref);
-                  console.log('[Weather Delete] Firestore doc deleted via full search');
-                  deletedFromFirebase = true;
-                } else {
-                  console.log('[Weather Delete] Weather log not found in Firestore by any method.');
-                }
-              }
-            } else {
-              // If we have a string ID, try direct lookup
-              const weatherQuery = query(
-                collection(firestore, 'weatherLogs'),
-                where('userId', '==', this.userId),
-                where('id', '==', id)
-              );
-              const weatherSnapshot = await getDocs(weatherQuery);
-
-              if (!weatherSnapshot.empty) {
-                console.log(`[Weather Delete] Found ${weatherSnapshot.size} doc(s) by string ID, deleting...`);
-                const deletePromises = weatherSnapshot.docs.map(d => deleteDoc(d.ref));
-                await Promise.all(deletePromises);
-                console.log('[Weather Delete] Firestore doc(s) deleted via string ID lookup');
-                deletedFromFirebase = true;
-              } else {
-                console.log('[Weather Delete] Weather log not found in Firestore by string ID.');
-              }
-            }
-          }
-        } catch (error) {
-          console.error('[Weather Delete] Firestore delete failed:', error);
+      try {
+        const firebaseId = await this.getFirebaseId('weatherLogs', id);
+        if (firebaseId) {
+          await deleteDoc(doc(firestore, 'weatherLogs', firebaseId));
+          console.log('[Weather Delete] Firestore doc deleted via mapping:', firebaseId);
+          deletedFromFirebase = true;
+        } else {
+          console.warn('[Weather Delete] No Firebase ID mapping found for local ID:', id);
         }
-      })();
+      } catch (error) {
+        console.error('[Weather Delete] Firestore delete failed:', error);
+      }
     }
 
-    const localDbPromise = databaseService.deleteWeatherLog(id).catch(err => {
-      console.error('[Weather Delete] Failed to delete from local storage:', err);
-    });
+    // Always delete from local DB
+    await databaseService.deleteWeatherLog(id);
 
-    // Wait for both Firebase (if online) and local DB deletions to complete
-    await Promise.all([firebasePromise, localDbPromise]);
-    console.log('[Weather Delete] All delete operations (Firebase & local) have settled.');
-
-    if (this.isOnline && !deletedFromFirebase) {
-      console.log('[Weather Delete] Online but Firebase delete failed or record not found, queuing for sync.');
-      this.queueOperation('delete', 'weatherLogs', { id, userId: this.userId });
-    } else if (!this.isOnline) {
-      console.log('[Weather Delete] Offline, queuing for sync.');
+    // Queue for sync if offline or if online deletion failed
+    if (!this.isOnline || (this.isOnline && !deletedFromFirebase)) {
+      console.log('[Weather Delete] Queuing for sync.');
       this.queueOperation('delete', 'weatherLogs', { id, userId: this.userId });
     } else {
       console.log('[Weather Delete] Deletion successful on all stores. No queue needed.');
@@ -817,6 +737,7 @@ await batch.commit();
         querySnapshot.forEach((doc) => {
           const data = doc.data();
           const localId = this.generateLocalId(doc.id);
+          this.storeLocalMapping('fishCaught', localId.toString(), doc.id);
           fishCaught.push(this.convertFromFirestore(data, localId) as FishCaught);
         });
 
@@ -843,6 +764,7 @@ await batch.commit();
         querySnapshot.forEach((doc) => {
           const data = doc.data();
           const localId = this.generateLocalId(doc.id);
+          this.storeLocalMapping('fishCaught', localId.toString(), doc.id);
           fishCaught.push(this.convertFromFirestore(data, localId) as FishCaught);
         });
 
@@ -903,112 +825,29 @@ await batch.commit();
     if (!this.isReady()) throw new Error('Service not initialized');
 
     console.log('[Fish Delete] Starting delete for fish catch ID:', id);
-    console.log('[Fish Delete] User ID:', this.userId);
-    console.log('[Fish Delete] Is online:', this.isOnline);
-
-    let firebasePromise: Promise<any> = Promise.resolve();
     let deletedFromFirebase = false;
 
     if (this.isOnline) {
-      firebasePromise = (async () => {
-        try {
-          console.log('[Fish Delete] Attempting Firebase deletion...');
-
-          // First try to get the Firebase document ID from the mapping
-          const firebaseId = await this.getFirebaseId('fishCaught', id);
-          console.log('[Fish Delete] Firebase ID lookup result:', firebaseId);
-
-          if (firebaseId) {
-            console.log('[Fish Delete] Found Firebase ID via mapping, deleting doc:', firebaseId);
-            await deleteDoc(doc(firestore, 'fishCaught', firebaseId));
-            console.log('[Fish Delete] Firestore doc deleted via mapping:', firebaseId);
-            deletedFromFirebase = true;
-          } else {
-            console.log('[Fish Delete] No Firebase ID mapping found, trying direct lookup...');
-
-            // Convert string ID to number if it's a numeric string
-            const numericId = parseInt(id, 10);
-            const isNumericId = !isNaN(numericId) && id === numericId.toString();
-
-            if (isNumericId) {
-              // If we have a numeric ID, search for the record in Firestore using the numeric ID in the 'id' field
-              console.log('[Fish Delete] Searching for fish catch with numeric ID:', numericId);
-              const fishQuery = query(
-                collection(firestore, 'fishCaught'),
-                where('userId', '==', this.userId),
-                where('id', '==', numericId)
-              );
-              const fishSnapshot = await getDocs(fishQuery);
-
-              if (!fishSnapshot.empty) {
-                console.log(`[Fish Delete] Found ${fishSnapshot.size} doc(s) by numeric ID, deleting...`);
-                const deletePromises = fishSnapshot.docs.map(d => deleteDoc(d.ref));
-                await Promise.all(deletePromises);
-                console.log('[Fish Delete] Firestore doc(s) deleted via numeric ID lookup');
-                deletedFromFirebase = true;
-              } else {
-                console.log('[Fish Delete] Fish catch not found in Firestore by numeric ID, trying full search...');
-
-                // Try to find the record by searching for any fish catch with this numeric ID in the 'id' field
-                const allFishQuery = query(
-                  collection(firestore, 'fishCaught'),
-                  where('userId', '==', this.userId)
-                );
-                const allFishSnapshot = await getDocs(allFishQuery);
-
-                const matchingDoc = allFishSnapshot.docs.find(doc => {
-                  const data = doc.data();
-                  return data.id === numericId;
-                });
-
-                if (matchingDoc) {
-                  console.log('[Fish Delete] Found fish catch by searching all records, deleting...');
-                  await deleteDoc(matchingDoc.ref);
-                  console.log('[Fish Delete] Firestore doc deleted via full search');
-                  deletedFromFirebase = true;
-                } else {
-                  console.log('[Fish Delete] Fish catch not found in Firestore by any method.');
-                }
-              }
-            } else {
-              // If we have a string ID, try direct lookup
-              const fishQuery = query(
-                collection(firestore, 'fishCaught'),
-                where('userId', '==', this.userId),
-                where('id', '==', id)
-              );
-              const fishSnapshot = await getDocs(fishQuery);
-
-              if (!fishSnapshot.empty) {
-                console.log(`[Fish Delete] Found ${fishSnapshot.size} doc(s) by string ID, deleting...`);
-                const deletePromises = fishSnapshot.docs.map(d => deleteDoc(d.ref));
-                await Promise.all(deletePromises);
-                console.log('[Fish Delete] Firestore doc(s) deleted via string ID lookup');
-                deletedFromFirebase = true;
-              } else {
-                console.log('[Fish Delete] Fish catch not found in Firestore by string ID.');
-              }
-            }
-          }
-        } catch (error) {
-          console.error('[Fish Delete] Firestore delete failed:', error);
+      try {
+        const firebaseId = await this.getFirebaseId('fishCaught', id);
+        if (firebaseId) {
+          await deleteDoc(doc(firestore, 'fishCaught', firebaseId));
+          console.log('[Fish Delete] Firestore doc deleted via mapping:', firebaseId);
+          deletedFromFirebase = true;
+        } else {
+          console.warn('[Fish Delete] No Firebase ID mapping found for local ID:', id);
         }
-      })();
+      } catch (error) {
+        console.error('[Fish Delete] Firestore delete failed:', error);
+      }
     }
 
-    const localDbPromise = databaseService.deleteFishCaught(id).catch(err => {
-      console.error('[Fish Delete] Failed to delete from local storage:', err);
-    });
+    // Always delete from local DB
+    await databaseService.deleteFishCaught(id);
 
-    // Wait for both Firebase (if online) and local DB deletions to complete
-    await Promise.all([firebasePromise, localDbPromise]);
-    console.log('[Fish Delete] All delete operations (Firebase & local) have settled.');
-
-    if (this.isOnline && !deletedFromFirebase) {
-      console.log('[Fish Delete] Online but Firebase delete failed or record not found, queuing for sync.');
-      this.queueOperation('delete', 'fishCaught', { id, userId: this.userId });
-    } else if (!this.isOnline) {
-      console.log('[Fish Delete] Offline, queuing for sync.');
+    // Queue for sync if offline or if online deletion failed
+    if (!this.isOnline || (this.isOnline && !deletedFromFirebase)) {
+      console.log('[Fish Delete] Queuing for sync.');
       this.queueOperation('delete', 'fishCaught', { id, userId: this.userId });
     } else {
       console.log('[Fish Delete] Deletion successful on all stores. No queue needed.');
