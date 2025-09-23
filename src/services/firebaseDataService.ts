@@ -22,54 +22,60 @@ import {
  */
 export class FirebaseDataService {
   private userId: string | null = null;
+  private isGuest = true;
   private isOnline = navigator.onLine;
   private syncQueue: any[] = [];
   private isInitialized = false;
 
   constructor() {
-   // Monitor online/offline status
-   window.addEventListener('online', () => {
-     this.isOnline = true;
-     // Temporarily disable sync processing to prevent UI blocking
-     // this.processSyncQueue();
-   });
+    // Monitor online/offline status
+    window.addEventListener('online', () => {
+      this.isOnline = true;
+      // Temporarily disable sync processing to prevent UI blocking
+      // this.processSyncQueue();
+    });
 
-   window.addEventListener('offline', () => {
-     this.isOnline = false;
-   });
+    window.addEventListener('offline', () => {
+      this.isOnline = false;
+    });
 
-   // Add emergency clear method to window for debugging
-   (window as any).clearFirebaseSync = () => this.clearSyncQueue();
-   (window as any).debugIdMappings = () => this.debugIdMappings();
- }
+    // Add emergency clear method to window for debugging
+    (window as any).clearFirebaseSync = () => this.clearSyncQueue();
+    (window as any).debugIdMappings = () => this.debugIdMappings();
+  }
 
   /**
-   * Initialize the service with user authentication
+   * Initialize the service for guest or authenticated user
    */
-  async initialize(userId: string): Promise<void> {
-    this.userId = userId;
+  async initialize(userId?: string): Promise<void> {
+    if (userId) {
+      this.userId = userId;
+      this.isGuest = false;
+      this.loadSyncQueue(); // Load user-specific queue
+      // await this.processSyncQueue();
+      console.log('Firebase Data Service initialized for user:', userId);
+    } else {
+      this.userId = null;
+      this.isGuest = true;
+      console.log('Firebase Data Service initialized for guest');
+    }
     this.isInitialized = true;
-
-    // Clear any stuck sync operations from troubleshooting
-    this.clearSyncQueue();
-
-    // Load any pending operations from localStorage
-    this.loadSyncQueue();
-
-    // Temporarily skip sync processing to prevent UI blocking
-    // If coming back online, process the queue
-    // if (this.isOnline) {
-    //   await this.processSyncQueue();
-    // }
-
-    console.log('Firebase Data Service initialized for user:', userId);
   }
 
   /**
    * Check if service is ready
    */
   isReady(): boolean {
-    return this.isInitialized && this.userId !== null;
+    return this.isInitialized;
+  }
+
+  async switchToUser(userId: string): Promise<void> {
+    if (this.isGuest) {
+      this.userId = userId;
+      this.isGuest = false;
+      this.loadSyncQueue();
+      console.log('Switched to user mode:', userId);
+    }
   }
 
   // TRIP OPERATIONS
@@ -91,6 +97,10 @@ export class FirebaseDataService {
       companions: tripData.companions ? this.sanitizeString(tripData.companions) : tripData.companions,
       notes: tripData.notes ? this.sanitizeString(tripData.notes) : tripData.notes,
     };
+
+    if (this.isGuest) {
+      return databaseService.createTrip(sanitizedTripData);
+    }
 
     console.log('Creating trip with service userId:', this.userId);
     console.log('Auth currentUser UID:', auth.currentUser?.uid);
@@ -129,6 +139,10 @@ export class FirebaseDataService {
    async getTripById(id: number): Promise<Trip | null> {
      if (!this.isReady()) throw new Error('Service not initialized');
 
+     if (this.isGuest) {
+       return databaseService.getTripById(id);
+     }
+
      if (this.isOnline) {
        try {
          const firebaseId = await this.getFirebaseId('trips', id.toString());
@@ -156,6 +170,10 @@ export class FirebaseDataService {
    async getTripByFirebaseId(firebaseId: string): Promise<Trip | null> {
      if (!this.isReady()) throw new Error('Service not initialized');
 
+     if (this.isGuest) {
+      throw new Error("Cannot get trip by Firebase ID in guest mode.");
+     }
+
      if (this.isOnline) {
        try {
          const docRef = doc(firestore, 'trips', firebaseId);
@@ -179,6 +197,10 @@ export class FirebaseDataService {
     */
    async getTripsByDate(date: string): Promise<Trip[]> {
      if (!this.isReady()) throw new Error('Service not initialized');
+
+     if (this.isGuest) {
+       return databaseService.getTripsByDate(date);
+     }
 
      console.log('getTripsByDate called for date:', date, 'online:', this.isOnline);
 
@@ -221,6 +243,10 @@ export class FirebaseDataService {
   async getAllTrips(): Promise<Trip[]> {
     if (!this.isReady()) throw new Error('Service not initialized');
 
+    if (this.isGuest) {
+      return databaseService.getAllTrips();
+    }
+
     if (this.isOnline) {
       try {
         const q = query(
@@ -255,6 +281,10 @@ export class FirebaseDataService {
    async updateTrip(trip: Trip): Promise<void> {
      if (!this.isReady()) throw new Error('Service not initialized');
 
+     if (this.isGuest) {
+       return databaseService.updateTrip(trip);
+     }
+
      const tripWithUser = { ...trip, userId: this.userId };
 
      if (this.isOnline) {
@@ -285,6 +315,11 @@ export class FirebaseDataService {
    async updateTripWithFirebaseId(firebaseId: string, trip: Trip): Promise<void> {
      if (!this.isReady()) throw new Error('Service not initialized');
 
+     if (this.isGuest) {
+       // This function is Firebase-specific, so it should not be called for guests.
+       throw new Error("Cannot update trip with Firebase ID in guest mode.");
+     }
+
      const tripWithUser = { ...trip, userId: this.userId };
 
      if (this.isOnline) {
@@ -311,6 +346,10 @@ export class FirebaseDataService {
     */
    async deleteTrip(id: number, firebaseDocId?: string): Promise<void> {
      if (!this.isReady()) throw new Error('Service not initialized');
+
+     if (this.isGuest) {
+       return databaseService.deleteTrip(id);
+     }
 
      console.log('deleteTrip called with id:', id, 'firebaseDocId:', firebaseDocId);
 
@@ -438,6 +477,10 @@ await batch.commit();
   async createWeatherLog(weatherData: Omit<WeatherLog, "id">): Promise<number> {
     if (!this.isReady()) throw new Error('Service not initialized');
 
+    if (this.isGuest) {
+      return databaseService.createWeatherLog(weatherData);
+    }
+
     // Data integrity checks
     this.validateWeatherLogData(weatherData);
 
@@ -472,6 +515,11 @@ await batch.commit();
   }
 
   async getWeatherLogById(id: number): Promise<WeatherLog | null> {
+    if (!this.isReady()) throw new Error('Service not initialized');
+    if (this.isGuest) {
+      return databaseService.getWeatherLogById(id);
+    }
+
     if (this.isOnline) {
       try {
         const firebaseId = await this.getFirebaseId('weatherLogs', id.toString());
@@ -509,6 +557,11 @@ await batch.commit();
   }
 
   async getWeatherLogsByTripId(tripId: number): Promise<WeatherLog[]> {
+    if (!this.isReady()) throw new Error('Service not initialized');
+    if (this.isGuest) {
+      return databaseService.getWeatherLogsByTripId(tripId);
+    }
+
     if (this.isOnline) {
       try {
         const q = query(
@@ -537,6 +590,11 @@ await batch.commit();
   }
 
   async getAllWeatherLogs(): Promise<WeatherLog[]> {
+    if (!this.isReady()) throw new Error('Service not initialized');
+    if (this.isGuest) {
+      return databaseService.getAllWeatherLogs();
+    }
+
     if (this.isOnline) {
       try {
         const q = query(
@@ -565,6 +623,10 @@ await batch.commit();
 
   async updateWeatherLog(weatherLog: WeatherLog): Promise<void> {
     if (!this.isReady()) throw new Error('Service not initialized');
+
+    if (this.isGuest) {
+      return databaseService.updateWeatherLog(weatherLog);
+    }
 
     const weatherWithUser = { ...weatherLog, userId: this.userId };
 
@@ -607,6 +669,11 @@ await batch.commit();
   async deleteWeatherLog(id: string): Promise<void> {
     if (!this.isReady()) throw new Error('Service not initialized');
 
+    if (this.isGuest) {
+      // The 'id' for weather logs can be a string, databaseService handles it.
+      return databaseService.deleteWeatherLog(id);
+    }
+
     console.log('[Weather Delete] Starting delete for weather log ID:', id);
     let deletedFromFirebase = false;
 
@@ -641,6 +708,10 @@ await batch.commit();
 
   async createFishCaught(fishData: Omit<FishCaught, "id">): Promise<number> {
     if (!this.isReady()) throw new Error('Service not initialized');
+
+    if (this.isGuest) {
+      return databaseService.createFishCaught(fishData);
+    }
 
     // Data integrity checks
     this.validateFishCatchData(fishData);
@@ -686,6 +757,11 @@ await batch.commit();
   }
 
   async getFishCaughtById(id: number): Promise<FishCaught | null> {
+    if (!this.isReady()) throw new Error('Service not initialized');
+    if (this.isGuest) {
+      return databaseService.getFishCaughtById(id);
+    }
+
     if (this.isOnline) {
       try {
         const firebaseId = await this.getFirebaseId('fishCaught', id.toString());
@@ -723,6 +799,11 @@ await batch.commit();
   }
 
   async getFishCaughtByTripId(tripId: number): Promise<FishCaught[]> {
+    if (!this.isReady()) throw new Error('Service not initialized');
+    if (this.isGuest) {
+      return databaseService.getFishCaughtByTripId(tripId);
+    }
+
     if (this.isOnline) {
       try {
         const q = query(
@@ -751,6 +832,11 @@ await batch.commit();
   }
 
   async getAllFishCaught(): Promise<FishCaught[]> {
+    if (!this.isReady()) throw new Error('Service not initialized');
+    if (this.isGuest) {
+      return databaseService.getAllFishCaught();
+    }
+
     if (this.isOnline) {
       try {
         const q = query(
@@ -779,6 +865,11 @@ await batch.commit();
 
   async updateFishCaught(fishCaught: FishCaught): Promise<void> {
     if (!this.isReady()) throw new Error('Service not initialized');
+
+    if (this.isGuest) {
+      return databaseService.updateFishCaught(fishCaught);
+    }
+
 
     const fishWithUser = { ...fishCaught, userId: this.userId };
     console.log('[Fish Update] Starting update for fish ID:', fishCaught.id);
@@ -824,6 +915,11 @@ await batch.commit();
   async deleteFishCaught(id: string): Promise<void> {
     if (!this.isReady()) throw new Error('Service not initialized');
 
+    if (this.isGuest) {
+      // The 'id' for fish caught can be a string, databaseService handles it.
+      return databaseService.deleteFishCaught(id);
+    }
+
     console.log('[Fish Delete] Starting delete for fish catch ID:', id);
     let deletedFromFirebase = false;
 
@@ -851,6 +947,58 @@ await batch.commit();
       this.queueOperation('delete', 'fishCaught', { id, userId: this.userId });
     } else {
       console.log('[Fish Delete] Deletion successful on all stores. No queue needed.');
+    }
+  }
+
+  async mergeLocalDataForUser(): Promise<void> {
+    if (this.isGuest) {
+      console.warn("Cannot merge local data in guest mode.");
+      return;
+    }
+
+    console.log("Starting local data merge for user:", this.userId);
+
+    const localTrips = await databaseService.getAllTrips();
+    const localWeatherLogs = await databaseService.getAllWeatherLogs();
+    const localFishCaught = await databaseService.getAllFishCaught();
+
+    if (localTrips.length === 0 && localWeatherLogs.length === 0 && localFishCaught.length === 0) {
+      console.log("No local data to merge.");
+      return;
+    }
+
+    console.log(`Merging ${localTrips.length} trips, ${localWeatherLogs.length} weather logs, and ${localFishCaught.length} fish caught.`);
+
+    const batch = writeBatch(firestore);
+
+    // Merge trips
+    localTrips.forEach(trip => {
+      const tripRef = doc(collection(firestore, 'trips'));
+      batch.set(tripRef, { ...trip, userId: this.userId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    });
+
+    // Merge weather logs
+    localWeatherLogs.forEach(log => {
+      const logRef = doc(collection(firestore, 'weatherLogs'));
+      batch.set(logRef, { ...log, userId: this.userId, createdAt: serverTimestamp() });
+    });
+
+    // Merge fish caught
+    localFishCaught.forEach(fish => {
+      const fishRef = doc(collection(firestore, 'fishCaught'));
+      batch.set(fishRef, { ...fish, userId: this.userId, createdAt: serverTimestamp() });
+    });
+
+    try {
+      await batch.commit();
+      console.log("Successfully merged local data to Firestore.");
+
+      // Clear local data after successful merge
+      await databaseService.clearAllData();
+      console.log("Cleared local data after merge.");
+    } catch (error) {
+      console.error("Failed to merge local data to Firestore:", error);
+      // Not clearing local data if merge fails, so we can retry later.
     }
   }
 
