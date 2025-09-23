@@ -70,6 +70,7 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
   }
 
   // Add empty cells for remaining days to complete the grid if needed
+  const totalCells = 42; // 6 rows × 7 days
   const remainingCells = totalCells - calendarDays.length;
   for (let i = 0; i < remainingCells; i++) {
     calendarDays.push({
