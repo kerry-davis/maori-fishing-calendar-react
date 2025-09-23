@@ -24,8 +24,8 @@ export const GearSelectionModal: React.FC<GearSelectionModalProps> = ({
   selectedGear,
   onGearSelected,
 }) => {
-  const [tackleBox, , , tackleBoxError, tackleBoxLoading] = useFirebaseTackleBox();
-  const [gearTypes, , , gearTypesError, gearTypesLoading] = useFirebaseGearTypes();
+  const [tackleBox] = useFirebaseTackleBox();
+  const [gearTypes] = useFirebaseGearTypes();
   const [customGear, setCustomGear] = useState("");
   const [selectedGearItems, setSelectedGearItems] = useState<string[]>(selectedGear);
   const [activeTab, setActiveTab] = useState("tacklebox");

@@ -344,7 +344,7 @@ function AppContent() {
           isOpen={currentModal === "weatherLog"}
           onClose={handleCloseModal}
           tripId={editingTripId || 1} // Use the stored trip ID
-          weatherId={editingWeatherId || undefined}
+          weatherId={editingWeatherId ? editingWeatherId.toString() : undefined}
           onWeatherLogged={handleWeatherLogged}
         />
 
