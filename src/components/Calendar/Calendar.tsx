@@ -3,7 +3,6 @@ import { MONTH_NAMES } from "../../types";
 import type { Trip } from "../../types";
 import { CalendarGrid } from "./CalendarGrid";
 import { useAuth } from "../../contexts/AuthContext";
-import { useDatabaseContext } from "../../contexts/DatabaseContext";
 import { firebaseDataService } from "../../services/firebaseDataService";
 import { databaseService } from "../../services/databaseService";
 
