@@ -52,8 +52,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
+    const unsubscribe = onAuthStateChanged(auth, async (newUser) => {
+      const previousUser = user;
+
+      if (newUser && !previousUser) {
+        // User is logging in
+        console.log('User logging in, merging data...');
+        await firebaseDataService.switchToUser(newUser.uid);
+        await firebaseDataService.mergeLocalDataForUser();
+      } else if (!newUser && previousUser) {
+        // User is logging out
+        console.log('User logging out, switching to guest mode...');
+        await firebaseDataService.initialize(); // Re-initialize in guest mode.
+      }
+
+      setUser(newUser);
       setLoading(false);
     });
 
@@ -71,7 +84,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
     return unsubscribe;
-  }, []);
+  }, [user]);
 
   const login = async (email: string, password: string) => {
     if (!auth) {
