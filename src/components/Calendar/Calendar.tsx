@@ -3,6 +3,7 @@ import { MONTH_NAMES } from "../../types";
 import type { Trip } from "../../types";
 import { CalendarGrid } from "./CalendarGrid";
 import { useAuth } from "../../contexts/AuthContext";
+import { useDatabaseContext } from "../../contexts/DatabaseContext";
 import { firebaseDataService } from "../../services/firebaseDataService";
 import { databaseService } from "../../services/databaseService";
 
@@ -12,6 +13,7 @@ interface CalendarProps {
 
 export const Calendar: React.FC<CalendarProps> = ({ onDateSelect }) => {
   const { user } = useAuth();
+  const { isReady: dbReady } = useDatabaseContext();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentMonth, setCurrentMonth] = useState(currentDate.getMonth());
   const [currentYear, setCurrentYear] = useState(currentDate.getFullYear());
@@ -20,7 +22,7 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect }) => {
 
   // Load trips for the current month
   const loadTripsForMonth = async () => {
-    if (!user) {
+    if (!user || !dbReady) {
       setDaysWithTrips(new Set());
       return;
     }
@@ -73,10 +75,10 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect }) => {
     setCurrentDate(newDate);
   }, [currentMonth, currentYear]);
 
-  // Load trips when month/year changes or user changes
+  // Load trips when month/year changes or user/db readiness changes
   useEffect(() => {
     loadTripsForMonth();
-  }, [currentMonth, currentYear, user]);
+  }, [currentMonth, currentYear, user, dbReady]);
 
   const handlePrevMonth = () => {
     if (currentMonth === 0) {
