@@ -453,16 +453,27 @@ export class DatabaseService {
   async updateWeatherLog(weatherLog: WeatherLog): Promise<void> {
     await this.initialize();
 
+    const numericId = typeof weatherLog.id === 'string'
+        ? parseInt(weatherLog.id.split('-').pop() || '0', 10)
+        : weatherLog.id;
+
+    if (isNaN(numericId) || numericId === 0) {
+        throw new Error('Invalid weatherLog ID for update');
+    }
+
+    const weatherLogToUpdate = { ...weatherLog, id: numericId };
+
+
     return new Promise((resolve, reject) => {
       const transaction = this.getDatabase().transaction(
         [DB_CONFIG.STORES.WEATHER_LOGS],
         "readwrite",
       );
       const store = transaction.objectStore(DB_CONFIG.STORES.WEATHER_LOGS);
-      const request = store.put(weatherLog);
+      const request = store.put(weatherLogToUpdate);
 
       request.onsuccess = () => {
-        console.log("Weather log updated successfully:", weatherLog.id);
+        console.log("Weather log updated successfully:", weatherLogToUpdate.id);
         resolve();
       };
 
@@ -632,16 +643,26 @@ export class DatabaseService {
   async updateFishCaught(fishCaught: FishCaught): Promise<void> {
     await this.initialize();
 
+    const numericId = typeof fishCaught.id === 'string'
+        ? parseInt(fishCaught.id.split('-').pop() || '0', 10)
+        : fishCaught.id;
+
+    if (isNaN(numericId) || numericId === 0) {
+        throw new Error('Invalid fishCaught ID for update');
+    }
+
+    const fishCaughtToUpdate = { ...fishCaught, id: numericId };
+
     return new Promise((resolve, reject) => {
       const transaction = this.getDatabase().transaction(
         [DB_CONFIG.STORES.FISH_CAUGHT],
         "readwrite",
       );
       const store = transaction.objectStore(DB_CONFIG.STORES.FISH_CAUGHT);
-      const request = store.put(fishCaught);
+      const request = store.put(fishCaughtToUpdate);
 
       request.onsuccess = () => {
-        console.log("Fish caught record updated successfully:", fishCaught.id);
+        console.log("Fish caught record updated successfully:", fishCaughtToUpdate.id);
         resolve();
       };
 
