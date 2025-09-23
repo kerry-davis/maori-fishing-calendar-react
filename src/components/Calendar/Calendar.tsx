@@ -77,12 +77,9 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect }) => {
 
   // Load trips when month/year changes and both user and db are ready
   useEffect(() => {
-    console.log('Calendar useEffect triggered - user:', !!user, 'dbReady:', dbReady);
     if (user && dbReady) {
-      console.log('Calendar: Both user and dbReady are true, loading trips');
       loadTripsForMonth();
     } else {
-      console.log('Calendar: Either user or dbReady is false, clearing trips');
       setDaysWithTrips(new Set());
     }
   }, [currentMonth, currentYear, user, dbReady]);
