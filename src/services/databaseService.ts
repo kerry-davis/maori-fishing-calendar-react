@@ -22,15 +22,10 @@ export class DatabaseService {
 
       request.onupgradeneeded = (event) => {
         const db = (event.target as IDBOpenDBRequest).result;
+        const transaction = (event.target as IDBOpenDBRequest).transaction!;
         console.log("Upgrading database schema...");
 
-        // Delete old store if it exists (compatibility with original app)
-        if (db.objectStoreNames.contains("catch_logs")) {
-          db.deleteObjectStore("catch_logs");
-          console.log("Old 'catch_logs' object store deleted.");
-        }
-
-        // Create trips store
+        // Trips store (no changes needed)
         if (!db.objectStoreNames.contains(DB_CONFIG.STORES.TRIPS)) {
           const tripsStore = db.createObjectStore(DB_CONFIG.STORES.TRIPS, {
             keyPath: "id",
@@ -40,31 +35,62 @@ export class DatabaseService {
           console.log(`'${DB_CONFIG.STORES.TRIPS}' object store created.`);
         }
 
-        // Create weather_logs store
-        if (!db.objectStoreNames.contains(DB_CONFIG.STORES.WEATHER_LOGS)) {
-          const weatherStore = db.createObjectStore(
-            DB_CONFIG.STORES.WEATHER_LOGS,
-            {
-              keyPath: "id",
-              autoIncrement: true,
-            },
-          );
-          weatherStore.createIndex("tripId", "tripId", { unique: false });
-          console.log(
-            `'${DB_CONFIG.STORES.WEATHER_LOGS}' object store created.`,
-          );
+        // Non-destructive migration for weather_logs
+        if (db.objectStoreNames.contains(DB_CONFIG.STORES.WEATHER_LOGS)) {
+            const store = transaction.objectStore(DB_CONFIG.STORES.WEATHER_LOGS);
+            if (store.autoIncrement) {
+                console.log('Migrating weather_logs store...');
+                const data: WeatherLog[] = [];
+                store.openCursor().onsuccess = (e) => {
+                    const cursor = (e.target as IDBRequest<IDBCursorWithValue>).result;
+                    if (cursor) {
+                        data.push(cursor.value);
+                        cursor.continue();
+                    } else {
+                        db.deleteObjectStore(DB_CONFIG.STORES.WEATHER_LOGS);
+                        const newStore = db.createObjectStore(DB_CONFIG.STORES.WEATHER_LOGS, { keyPath: 'id' });
+                        newStore.createIndex('tripId', 'tripId', { unique: false });
+                        data.forEach((item: WeatherLog) => {
+                            const newItem = { ...item, id: `${item.tripId}-${Date.now()}` };
+                            newStore.add(newItem);
+                        });
+                        console.log('weather_logs store migration complete.');
+                    }
+                };
+            }
+        } else {
+            const newStore = db.createObjectStore(DB_CONFIG.STORES.WEATHER_LOGS, { keyPath: 'id' });
+            newStore.createIndex('tripId', 'tripId', { unique: false });
+            console.log(`'${DB_CONFIG.STORES.WEATHER_LOGS}' object store created.`);
         }
 
-        // Create fish_caught store
-        if (!db.objectStoreNames.contains(DB_CONFIG.STORES.FISH_CAUGHT)) {
-          const fishStore = db.createObjectStore(DB_CONFIG.STORES.FISH_CAUGHT, {
-            keyPath: "id",
-            autoIncrement: true,
-          });
-          fishStore.createIndex("tripId", "tripId", { unique: false });
-          console.log(
-            `'${DB_CONFIG.STORES.FISH_CAUGHT}' object store created.`,
-          );
+        // Non-destructive migration for fish_caught
+        if (db.objectStoreNames.contains(DB_CONFIG.STORES.FISH_CAUGHT)) {
+            const store = transaction.objectStore(DB_CONFIG.STORES.FISH_CAUGHT);
+            if (store.autoIncrement) {
+                console.log('Migrating fish_caught store...');
+                const data: FishCaught[] = [];
+                store.openCursor().onsuccess = (e) => {
+                    const cursor = (e.target as IDBRequest<IDBCursorWithValue>).result;
+                    if (cursor) {
+                        data.push(cursor.value);
+                        cursor.continue();
+                    } else {
+                        db.deleteObjectStore(DB_CONFIG.STORES.FISH_CAUGHT);
+                        const newStore = db.createObjectStore(DB_CONFIG.STORES.FISH_CAUGHT, { keyPath: 'id' });
+                        newStore.createIndex('tripId', 'tripId', { unique: false });
+                        data.forEach((item: FishCaught) => {
+                            const newItem = { ...item, id: `${item.tripId}-${Date.now()}` };
+                            newStore.add(newItem);
+                        });
+                        console.log('fish_caught store migration complete.');
+                    }
+                };
+            }
+        } else {
+            const newStore = db.createObjectStore(DB_CONFIG.STORES.FISH_CAUGHT, { keyPath: 'id' });
+            newStore.createIndex('tripId', 'tripId', { unique: false });
+            console.log(`'${DB_CONFIG.STORES.FISH_CAUGHT}' object store created.`);
         }
       };
 
@@ -166,7 +192,7 @@ export class DatabaseService {
       const request = store.get(id);
 
       request.onsuccess = () => {
-        resolve(request.result || null);
+        resolve((request.result as Trip) || null);
       };
 
       request.onerror = () => {
@@ -195,7 +221,7 @@ export class DatabaseService {
       const request = index.getAll(date);
 
       request.onsuccess = () => {
-        resolve(request.result || []);
+        resolve((request.result as Trip[]) || []);
       };
 
       request.onerror = () => {
@@ -223,7 +249,7 @@ export class DatabaseService {
       const request = store.getAll();
 
       request.onsuccess = () => {
-        resolve(request.result || []);
+        resolve((request.result as Trip[]) || []);
       };
 
       request.onerror = () => {
@@ -289,7 +315,7 @@ export class DatabaseService {
       transaction.onerror = () => {
         const error = this.createDatabaseError(
           "transaction",
-          `Failed to delete trip: ${transaction.error?.message}`,
+          `Failed to delete trip: ${transaction.error!.message}`,
         );
         reject(error);
       };
@@ -333,8 +359,11 @@ export class DatabaseService {
   /**
    * Create a new weather log
    */
-  async createWeatherLog(weatherData: Omit<WeatherLog, "id">): Promise<number> {
+  async createWeatherLog(weatherData: Omit<WeatherLog, "id">): Promise<string> {
     await this.initialize();
+
+    const newId = `${weatherData.tripId}-${Date.now()}`;
+    const weatherLogWithId: WeatherLog = { ...weatherData, id: newId };
 
     return new Promise((resolve, reject) => {
       const transaction = this.getDatabase().transaction(
@@ -342,12 +371,11 @@ export class DatabaseService {
         "readwrite",
       );
       const store = transaction.objectStore(DB_CONFIG.STORES.WEATHER_LOGS);
-      const request = store.add(weatherData);
+      const request = store.add(weatherLogWithId);
 
       request.onsuccess = () => {
-        const id = request.result as number;
-        console.log("Weather log created successfully with ID:", id);
-        resolve(id);
+        console.log("Weather log created successfully with ID:", newId);
+        resolve(newId);
       };
 
       request.onerror = () => {
@@ -363,10 +391,8 @@ export class DatabaseService {
   /**
    * Get weather log by ID
    */
-  async getWeatherLogById(id: string | number): Promise<WeatherLog | null> {
+  async getWeatherLogById(id: string): Promise<WeatherLog | null> {
     await this.initialize();
-    
-    const numericId = typeof id === 'string' ? parseInt(id.split('-').pop() || '0', 10) : id;
 
     return new Promise((resolve, reject) => {
       const transaction = this.getDatabase().transaction(
@@ -374,7 +400,7 @@ export class DatabaseService {
         "readonly",
       );
       const store = transaction.objectStore(DB_CONFIG.STORES.WEATHER_LOGS);
-      const request = store.get(numericId);
+      const request = store.get(id);
 
       request.onsuccess = () => {
         resolve(request.result || null);
@@ -453,27 +479,16 @@ export class DatabaseService {
   async updateWeatherLog(weatherLog: WeatherLog): Promise<void> {
     await this.initialize();
 
-    const numericId = typeof weatherLog.id === 'string'
-        ? parseInt(weatherLog.id.split('-').pop() || '0', 10)
-        : weatherLog.id;
-
-    if (isNaN(numericId) || numericId === 0) {
-        throw new Error('Invalid weatherLog ID for update');
-    }
-
-    const weatherLogToUpdate = { ...weatherLog, id: numericId };
-
-
     return new Promise((resolve, reject) => {
       const transaction = this.getDatabase().transaction(
         [DB_CONFIG.STORES.WEATHER_LOGS],
         "readwrite",
       );
       const store = transaction.objectStore(DB_CONFIG.STORES.WEATHER_LOGS);
-      const request = store.put(weatherLogToUpdate);
+      const request = store.put(weatherLog);
 
       request.onsuccess = () => {
-        console.log("Weather log updated successfully:", weatherLogToUpdate.id);
+        console.log("Weather log updated successfully:", weatherLog.id);
         resolve();
       };
 
@@ -490,10 +505,8 @@ export class DatabaseService {
   /**
    * Delete a weather log
    */
-  async deleteWeatherLog(id: string | number): Promise<void> {
+  async deleteWeatherLog(id: string): Promise<void> {
     await this.initialize();
-    
-    const numericId = typeof id === 'string' ? parseInt(id.split('-').pop() || '0', 10) : id;
 
     return new Promise((resolve, reject) => {
       const transaction = this.getDatabase().transaction(
@@ -501,10 +514,10 @@ export class DatabaseService {
         "readwrite",
       );
       const store = transaction.objectStore(DB_CONFIG.STORES.WEATHER_LOGS);
-      const request = store.delete(numericId);
+      const request = store.delete(id);
 
       request.onsuccess = () => {
-        console.log("Weather log deleted successfully:", numericId);
+        console.log("Weather log deleted successfully:", id);
         resolve();
       };
 
@@ -523,8 +536,11 @@ export class DatabaseService {
   /**
    * Create a new fish caught record
    */
-  async createFishCaught(fishData: Omit<FishCaught, "id">): Promise<number> {
+  async createFishCaught(fishData: Omit<FishCaught, "id">): Promise<string> {
     await this.initialize();
+
+    const newId = `${fishData.tripId}-${Date.now()}`;
+    const fishCaughtWithId: FishCaught = { ...fishData, id: newId };
 
     return new Promise((resolve, reject) => {
       const transaction = this.getDatabase().transaction(
@@ -532,12 +548,11 @@ export class DatabaseService {
         "readwrite",
       );
       const store = transaction.objectStore(DB_CONFIG.STORES.FISH_CAUGHT);
-      const request = store.add(fishData);
+      const request = store.add(fishCaughtWithId);
 
       request.onsuccess = () => {
-        const id = request.result as number;
-        console.log("Fish caught record created successfully with ID:", id);
-        resolve(id);
+        console.log("Fish caught record created successfully with ID:", newId);
+        resolve(newId);
       };
 
       request.onerror = () => {
@@ -553,10 +568,8 @@ export class DatabaseService {
   /**
    * Get fish caught record by ID
    */
-  async getFishCaughtById(id: string | number): Promise<FishCaught | null> {
+  async getFishCaughtById(id: string): Promise<FishCaught | null> {
     await this.initialize();
-
-    const numericId = typeof id === 'string' ? parseInt(id.split('-').pop() || '0', 10) : id;
 
     return new Promise((resolve, reject) => {
       const transaction = this.getDatabase().transaction(
@@ -564,7 +577,7 @@ export class DatabaseService {
         "readonly",
       );
       const store = transaction.objectStore(DB_CONFIG.STORES.FISH_CAUGHT);
-      const request = store.get(numericId);
+      const request = store.get(id);
 
       request.onsuccess = () => {
         resolve(request.result || null);
@@ -643,26 +656,16 @@ export class DatabaseService {
   async updateFishCaught(fishCaught: FishCaught): Promise<void> {
     await this.initialize();
 
-    const numericId = typeof fishCaught.id === 'string'
-        ? parseInt(fishCaught.id.split('-').pop() || '0', 10)
-        : fishCaught.id;
-
-    if (isNaN(numericId) || numericId === 0) {
-        throw new Error('Invalid fishCaught ID for update');
-    }
-
-    const fishCaughtToUpdate = { ...fishCaught, id: numericId };
-
     return new Promise((resolve, reject) => {
       const transaction = this.getDatabase().transaction(
         [DB_CONFIG.STORES.FISH_CAUGHT],
         "readwrite",
       );
       const store = transaction.objectStore(DB_CONFIG.STORES.FISH_CAUGHT);
-      const request = store.put(fishCaughtToUpdate);
+      const request = store.put(fishCaught);
 
       request.onsuccess = () => {
-        console.log("Fish caught record updated successfully:", fishCaughtToUpdate.id);
+        console.log("Fish caught record updated successfully:", fishCaught.id);
         resolve();
       };
 
@@ -679,10 +682,8 @@ export class DatabaseService {
   /**
    * Delete a fish caught record
    */
-  async deleteFishCaught(id: string | number): Promise<void> {
+  async deleteFishCaught(id: string): Promise<void> {
     await this.initialize();
-    
-    const numericId = typeof id === 'string' ? parseInt(id.split('-').pop() || '0', 10) : id;
 
     return new Promise((resolve, reject) => {
       const transaction = this.getDatabase().transaction(
@@ -690,10 +691,10 @@ export class DatabaseService {
         "readwrite",
       );
       const store = transaction.objectStore(DB_CONFIG.STORES.FISH_CAUGHT);
-      const request = store.delete(numericId);
+      const request = store.delete(id);
 
       request.onsuccess = () => {
-        console.log("Fish caught record deleted successfully:", numericId);
+        console.log("Fish caught record deleted successfully:", id);
         resolve();
       };
 
