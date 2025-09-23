@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { DAY_NAMES } from "../../types";
 import { CalendarDay } from "./CalendarDay";
+import { getLunarPhase } from "../../services/lunarService";
 // import { useIndexedDB } from '../../hooks/useIndexedDB';
 
 interface CalendarGridProps {
@@ -28,33 +29,33 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
   const daysInMonth = lastDayOfMonth.getDate();
   const startingDayOfWeek = (firstDayOfMonth.getDay() + 6) % 7; // 0 = Monday, 1 = Tuesday, etc.
 
-  // Get days from previous month to fill the grid
-  const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
-  const prevYear = currentMonth === 0 ? currentYear - 1 : currentYear;
-  const daysInPrevMonth = new Date(currentYear, currentMonth, 0).getDate();
-
-  // Get days from next month to fill the grid
-  const nextMonth = currentMonth === 11 ? 0 : currentMonth + 1;
-  const nextYear = currentMonth === 11 ? currentYear + 1 : currentYear;
-
-  // Calculate total cells needed (6 rows × 7 days = 42 cells)
-  const totalCells = 42;
-  const daysFromNextMonth = totalCells - startingDayOfWeek - daysInMonth;
+  // We only show current month days, so these calculations are not needed
 
   // Create array of all days to display
   const calendarDays = [];
 
-  // Add days from previous month
-  for (let i = startingDayOfWeek - 1; i >= 0; i--) {
-    const day = daysInPrevMonth - i;
+  // Add empty cells for days before the first day of the month
+  for (let i = 0; i < startingDayOfWeek; i++) {
     calendarDays.push({
-      date: new Date(prevYear, prevMonth, day),
+      date: null,
       isCurrentMonth: false,
-      dayNumber: day,
+      dayNumber: null,
+      isEmpty: true,
     });
   }
 
-  // Add days from current month
+  // Pre-calculate lunar phases for all days in the month to avoid loading states
+  const lunarPhases = useMemo(() => {
+    const phases = new Map();
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(currentYear, currentMonth, day);
+      const phase = getLunarPhase(date);
+      phases.set(day, phase);
+    }
+    return phases;
+  }, [currentYear, currentMonth, daysInMonth]);
+
+  // Add days from current month only
   for (let day = 1; day <= daysInMonth; day++) {
     const date = new Date(currentYear, currentMonth, day);
     const dateString = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
@@ -63,15 +64,20 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
       isCurrentMonth: true,
       dayNumber: day,
       isToday: dateString === todayString,
+      isEmpty: false,
+      lunarPhase: lunarPhases.get(day),
     });
   }
 
-  // Add days from next month
-  for (let day = 1; day <= daysFromNextMonth; day++) {
+  // Add empty cells for remaining days to complete the grid if needed
+  const totalCells = 42; // 6 rows × 7 days
+  const remainingCells = totalCells - calendarDays.length;
+  for (let i = 0; i < remainingCells; i++) {
     calendarDays.push({
-      date: new Date(nextYear, nextMonth, day),
+      date: null,
       isCurrentMonth: false,
-      dayNumber: day,
+      dayNumber: null,
+      isEmpty: true,
     });
   }
 
@@ -91,7 +97,17 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
 
       {/* Calendar days grid */}
       <div id="calendarDays" className="grid grid-cols-7 gap-1">
-        {calendarDays.map((dayData) => {
+        {calendarDays.map((dayData, index) => {
+          // Render empty cell for non-current month days
+          if (dayData.isEmpty || !dayData.date) {
+            return (
+              <div
+                key={`empty-${index}`}
+                className="calendar-day-empty min-h-[80px] rounded-lg"
+              />
+            );
+          }
+
           const dayKey = `${dayData.date.getFullYear()}-${dayData.date.getMonth()}-${dayData.date.getDate()}`;
           const hasTrips = daysWithTrips.has(dayKey);
 
@@ -104,6 +120,7 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
               isToday={dayData.isToday}
               hasTrips={hasTrips}
               onDateSelect={onDateSelect}
+              lunarPhase={dayData.lunarPhase}
             />
           );
         })}
