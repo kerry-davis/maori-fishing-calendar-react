@@ -11,7 +11,7 @@ export interface FishCatchModalProps {
   isOpen: boolean;
   onClose: () => void;
   tripId: number;
-  fishId?: number; // For editing existing fish catch
+  fishId?: string; // For editing existing fish catch
   onFishCaught?: (fish: FishCaught) => void;
 }
 
@@ -45,15 +45,17 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showGearModal, setShowGearModal] = useState(false);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [_uploadingPhoto, setUploadingPhoto] = useState(false);
   const isEditing = fishId !== undefined;
 
   // Load existing fish data when editing
-  const loadFishData = async (id: number) => {
+  const loadFishData = async (id: string) => {
     setError(null);
 
     try {
-      const fish = await db.getFishCaughtById(id);
+      // Convert string ID to number for database lookup
+      const numericId = parseInt(id.split('-').pop() || '0', 10);
+      const fish = await db.getFishCaughtById(numericId);
       if (fish) {
         setFormData({
           species: fish.species,
@@ -157,7 +159,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
         const newFishId = await db.createFishCaught(fishData);
 
         const newFish: FishCaught = {
-          id: newFishId,
+          id: newFishId.toString(),
           ...fishData,
         };
 
