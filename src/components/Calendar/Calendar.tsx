@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { MONTH_NAMES } from "../../types";
+import type { Trip } from "../../types";
 import { CalendarGrid } from "./CalendarGrid";
 import { useAuth } from "../../contexts/AuthContext";
 import { firebaseDataService } from "../../services/firebaseDataService";
+import { databaseService } from "../../services/databaseService";
 
 interface CalendarProps {
   onDateSelect: (date: Date) => void;
@@ -25,7 +27,7 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect }) => {
 
     setLoadingTrips(true);
     try {
-      // Get all trips for the user (Firebase will handle filtering)
+      // Try Firebase first
       const allTrips = await firebaseDataService.getAllTrips();
 
       // Filter trips for the current month
@@ -40,8 +42,26 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect }) => {
 
       setDaysWithTrips(daysWithTripsSet);
     } catch (error) {
-      console.error('Error loading trips for calendar:', error);
-      setDaysWithTrips(new Set());
+      console.error('Firebase trip loading failed, trying local fallback:', error);
+      try {
+        // Fallback to local IndexedDB
+        const localTrips = await databaseService.getAllTrips();
+
+        // Filter trips for the current month
+        const daysWithTripsSet = new Set<string>();
+        localTrips.forEach((trip: Trip) => {
+          const tripDate = new Date(trip.date);
+          if (tripDate.getMonth() === currentMonth && tripDate.getFullYear() === currentYear) {
+            const dayKey = `${tripDate.getFullYear()}-${tripDate.getMonth()}-${tripDate.getDate()}`;
+            daysWithTripsSet.add(dayKey);
+          }
+        });
+
+        setDaysWithTrips(daysWithTripsSet);
+      } catch (localError) {
+        console.error('Local fallback also failed:', localError);
+        setDaysWithTrips(new Set());
+      }
     } finally {
       setLoadingTrips(false);
     }
