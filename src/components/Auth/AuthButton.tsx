@@ -61,10 +61,10 @@ export const AuthButton: React.FC = () => {
             console.log('=== BUTTON CLICK DETECTED ===');
             handleLogout();
           }}
-          className="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-full w-10 h-10 flex items-center justify-center shadow-md hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200"
+          className="icon-btn"
           title="Logout"
         >
-          <i className="fas fa-sign-out-alt text-gray-800 dark:text-gray-200"></i>
+          <i className="fas fa-sign-out-alt"></i>
         </button>
 
         {/* Standardized Logout Confirmation */}
@@ -93,20 +93,20 @@ export const AuthButton: React.FC = () => {
       <div className="flex items-center gap-2">
         <button
           onClick={() => alert('Firebase authentication is not configured. Please set up your Firebase environment variables.')}
-          className="bg-yellow-200 dark:bg-yellow-800 text-yellow-800 dark:text-yellow-200 rounded-full w-10 h-10 flex items-center justify-center shadow-md hover:bg-yellow-300 dark:hover:bg-yellow-700 transition"
+          className="icon-btn text-yellow-700 dark:text-yellow-300"
           title="Auth not configured - Click for details"
         >
-          <i className="fas fa-exclamation-triangle text-yellow-800 dark:text-yellow-200"></i>
+          <i className="fas fa-exclamation-triangle"></i>
         </button>
         <button
           onClick={() => {
             console.log('Force logout button clicked');
             forceLogout();
           }}
-          className="bg-red-200 dark:bg-red-800 text-red-800 dark:text-red-200 rounded-full w-10 h-10 flex items-center justify-center shadow-md hover:bg-red-300 dark:hover:bg-red-700 transition"
+          className="icon-btn text-red-700 dark:text-red-300"
           title="Force Logout (Debug)"
         >
-          <i className="fas fa-sign-out-alt text-red-800 dark:text-red-200"></i>
+          <i className="fas fa-sign-out-alt"></i>
         </button>
         <div className="hidden md:block text-sm text-gray-600 dark:text-gray-400">
           Auth not configured
@@ -119,10 +119,10 @@ export const AuthButton: React.FC = () => {
     <>
       <button
         onClick={() => setShowLoginModal(true)}
-        className="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-full w-10 h-10 flex items-center justify-center shadow-md hover:bg-gray-300 dark:hover:bg-gray-600 transition"
+        className="icon-btn"
         title="Sign In"
       >
-        <i className="fas fa-user text-gray-800 dark:text-gray-200"></i>
+        <i className="fas fa-user"></i>
       </button>
 
       <LoginModal

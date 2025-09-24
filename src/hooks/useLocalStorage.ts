@@ -30,7 +30,7 @@ export function useLocalStorage<T>(
       console.error(errorMessage);
       setError(errorMessage);
     }
-  }, [key, storedValue]);
+  }, [key]);
 
   const removeValue = useCallback(() => {
     try {
@@ -67,34 +67,45 @@ export function useLocalStorage<T>(
 
 // Specific hook for theme management
 export function useTheme(): [boolean, () => void, string | null] {
-  // Use string storage to match original app format ('dark' | 'light')
-  const [themeString, setThemeString, , error] = useLocalStorage<string>('theme', '');
+  const [themeString, setThemeString, , error] = useLocalStorage<string>('theme', 'light');
 
-  // Convert string theme to boolean
   const isDark = themeString === 'dark';
 
   const toggleTheme = useCallback(() => {
+    console.log('toggleTheme called, current isDark:', isDark, 'current themeString:', themeString);
     const newTheme = isDark ? 'light' : 'dark';
+    console.log('Setting theme to:', newTheme);
     setThemeString(newTheme);
-  }, [isDark, setThemeString]);
+  }, [isDark, themeString, setThemeString]);
 
-  // Apply theme to document element when it changes
+  // Apply theme class
   useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+
+    console.log('Applying theme in useEffect, isDark:', isDark, 'themeString:', themeString);
+
     if (isDark) {
-      document.documentElement.classList.add('dark');
+      // Apply to both html and body for compatibility
+      html.classList.add('dark');
+      body.classList.add('dark-theme');
+      html.dataset.theme = 'dark';
+      body.dataset.theme = 'dark';
+      console.log('Added dark class to html and dark-theme class to body');
     } else {
-      document.documentElement.classList.remove('dark');
+      // Remove from both html and body for compatibility
+      html.classList.remove('dark');
+      body.classList.remove('dark-theme');
+      html.dataset.theme = 'light';
+      body.dataset.theme = 'light';
+      console.log('Removed dark class from html and dark-theme class from body');
     }
-  }, [isDark]);
 
-  // Initialize theme on first load based on system preference if no saved theme
-  useEffect(() => {
-    const savedTheme = window.localStorage.getItem('theme');
-    if (!savedTheme) {
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      setThemeString(prefersDark ? 'dark' : 'light');
-    }
-  }, [setThemeString]);
+    console.log('Current html classes:', html.className);
+    console.log('Current body classes:', body.className);
+    console.log('Current html data-theme:', html.dataset.theme);
+    console.log('Current body data-theme:', body.dataset.theme);
+  }, [isDark, themeString]);
 
   return [isDark, toggleTheme, error];
 }

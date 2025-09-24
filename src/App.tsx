@@ -8,6 +8,7 @@ import { firebaseDataService } from "./services/firebaseDataService";
 import "./utils/cleanupDuplicates"; // Load cleanup utilities
 import ErrorBoundary from "./components/ErrorBoundary";
 import { Header, Footer } from "./components/Layout";
+import { Card, Container } from "./components/UI";
 import { Calendar } from "./components/Calendar";
 import { CurrentMoonInfo } from "./components/MoonInfo";
 import { Legend } from "./components/Legend";
@@ -210,10 +211,10 @@ function AppContent() {
   // Show loading state while database is initializing
   if (!isReady && !error) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--primary-background)', color: 'var(--primary-text)' }}>
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">
+          <p style={{ color: 'var(--secondary-text)' }}>
             Initializing application...
           </p>
         </div>
@@ -224,21 +225,23 @@ function AppContent() {
   // Show error state if database failed to initialize
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-4">
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 max-w-md w-full">
+      <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--primary-background)', color: 'var(--primary-text)' }}>
+        <div className="rounded-lg shadow-md p-6 max-w-md w-full" style={{ backgroundColor: 'var(--card-background)', border: '1px solid var(--card-border)' }}>
           <div className="text-center">
             <div className="text-red-500 text-4xl mb-4">
               <i className="fas fa-database"></i>
             </div>
-            <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100 mb-2">
+            <h2 className="text-xl font-semibold mb-2" style={{ color: 'var(--primary-text)' }}>
               Database Error
             </h2>
-            <p className="text-gray-600 dark:text-gray-400 mb-4">
+            <p className="mb-4" style={{ color: 'var(--secondary-text)' }}>
               Failed to initialize the database: {error}
             </p>
             <button
               onClick={() => window.location.reload()}
-              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition"
+              className="px-4 py-2 rounded transition" style={{ backgroundColor: 'var(--button-primary)', color: 'white' }}
+              onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--button-primary-hover)'}
+              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'var(--button-primary)'}
             >
               Retry
             </button>
@@ -249,11 +252,8 @@ function AppContent() {
   }
 
   return (
-    <div
-      className={`min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200`}
-    >
-      <div className="responsive-container container mx-auto px-4 py-8 max-w-6xl">
-        <Header
+    <div className={`min-h-screen transition-colors duration-200`} style={{ backgroundColor: 'var(--primary-background)', color: 'var(--primary-text)' }}>
+      <Header
           onSearchClick={handleSearchClick}
           onAnalyticsClick={handleAnalyticsClick}
           onSettingsClick={handleSettingsClick}
@@ -261,11 +261,12 @@ function AppContent() {
           onGalleryClick={handleGalleryClick}
         />
 
-        <main>
+      <Container className="py-8">
+        <main className="space-y-6">
           {/* Calendar Component */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+          <Card>
             <Calendar onDateSelect={handleDateSelect} refreshTrigger={calendarRefreshTrigger} />
-          </div>
+          </Card>
 
           {/* Legend Component */}
           <Legend />
@@ -274,8 +275,9 @@ function AppContent() {
           <CurrentMoonInfo />
 
         </main>
+      </Container>
 
-        <Footer />
+      <Footer />
 
         {/* Modal components - Basic integration for UAT */}
         <TackleBoxModal
@@ -363,7 +365,6 @@ function AppContent() {
 
         {/* Authentication Success Toast */}
         <SuccessToast />
-      </div>
     </div>
   );
 }
