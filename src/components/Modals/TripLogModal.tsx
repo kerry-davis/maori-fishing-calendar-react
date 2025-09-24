@@ -381,10 +381,10 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
       <ModalBody className="min-h-[400px] max-h-[70vh] overflow-y-auto">
         {/* Error display */}
         {error && (
-          <div className="mb-4 p-4 bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-lg">
+          <div className="mb-4 p-4 rounded-lg" style={{ backgroundColor: 'var(--error-background)', border: '1px solid var(--error-border)' }}>
             <div className="flex items-center">
-              <i className="fas fa-exclamation-triangle text-red-500 mr-2"></i>
-              <span className="text-red-700 dark:text-red-300">{error}</span>
+              <i className="fas fa-exclamation-triangle mr-2" style={{ color: 'var(--error-text)' }}></i>
+              <span style={{ color: 'var(--error-text)' }}>{error}</span>
             </div>
           </div>
         )}
@@ -393,7 +393,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
         {isLoading && (
           <div className="flex items-center justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-            <span className="ml-3 text-gray-600 dark:text-gray-400">
+            <span className="ml-3" style={{ color: 'var(--secondary-text)' }}>
               Loading trips...
             </span>
           </div>
@@ -402,11 +402,11 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
         {/* No trips message - This should rarely be seen now since we skip TripLogModal when no trips exist */}
         {!isLoading && trips.length === 0 && !error && (
           <div className="text-center py-8">
-            <i className="fas fa-fish text-4xl text-gray-400 dark:text-gray-600 mb-4"></i>
-            <h3 className="text-lg font-medium text-gray-600 dark:text-gray-400 mb-2">
+            <i className="fas fa-fish text-4xl mb-4" style={{ color: 'var(--secondary-text)' }}></i>
+            <h3 className="text-lg font-medium mb-2" style={{ color: 'var(--secondary-text)' }}>
               No trips logged for this date
             </h3>
-            <p className="text-gray-500 dark:text-gray-500">
+            <p style={{ color: 'var(--secondary-text)' }}>
               Start by creating your first trip log for{" "}
               {selectedDate ? formatDateForDisplay(selectedDate) : "this date"}
             </p>
@@ -590,13 +590,13 @@ const TripCard: React.FC<TripCardProps> = ({
   };
 
   return (
-    <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-600">
+    <div className="rounded-lg p-4" style={{ backgroundColor: 'var(--card-background)', border: '1px solid var(--border-color)' }}>
       <div className="flex justify-between items-start mb-3">
         <div className="flex-1">
-          <h4 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-1">
+          <h4 className="text-lg font-semibold mb-1" style={{ color: 'var(--primary-text)' }}>
             {trip.water} - {trip.location}
           </h4>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
+          <p className="text-sm" style={{ color: 'var(--secondary-text)' }}>
             # Fish Caught: {fishCatches.length}
           </p>
         </div>
@@ -624,18 +624,18 @@ const TripCard: React.FC<TripCardProps> = ({
 
       <div className="grid grid-cols-2 gap-4 text-sm">
         <div>
-          <span className="text-gray-500 dark:text-gray-400">Duration:</span>
-          <span className="ml-2 text-gray-700 dark:text-gray-300">
+          <span style={{ color: 'var(--secondary-text)' }}>Duration:</span>
+          <span className="ml-2" style={{ color: 'var(--primary-text)' }}>
             {formatHours(trip.hours)}
           </span>
         </div>
 
         {trip.companions && (
           <div>
-            <span className="text-gray-500 dark:text-gray-400">
+            <span style={{ color: 'var(--secondary-text)' }}>
               Companions:
             </span>
-            <span className="ml-2 text-gray-700 dark:text-gray-300">
+            <span className="ml-2" style={{ color: 'var(--primary-text)' }}>
               {trip.companions}
             </span>
           </div>
@@ -643,31 +643,31 @@ const TripCard: React.FC<TripCardProps> = ({
       </div>
 
       {trip.notes && (
-        <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
-          <p className="text-sm text-gray-600 dark:text-gray-400">
+        <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--border-color)' }}>
+          <p className="text-sm" style={{ color: 'var(--secondary-text)' }}>
             <span className="font-medium">Notes:</span> {trip.notes}
           </p>
         </div>
       )}
 
       {/* Weather and Fish Catch Sections */}
-      <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
+      <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--border-color)' }}>
         <div className="space-y-6">
           {/* Weather Conditions Section */}
           <div className="w-full">
-            <h5 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+            <h5 className="text-sm font-medium mb-3" style={{ color: 'var(--primary-text)' }}>
               Weather Conditions
             </h5>
             {weatherLogs.length > 0 ? (
               <div className="space-y-2">
                 {weatherLogs.map((log) => (
-                  <div key={log.id} className="text-xs p-3 bg-gray-50 dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600">
+                  <div key={log.id} className="text-xs p-3 rounded" style={{ backgroundColor: 'var(--card-background)', border: '1px solid var(--border-color)' }}>
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
-                        <div className="font-medium text-gray-800 dark:text-gray-200">
+                        <div className="font-medium" style={{ color: 'var(--primary-text)' }}>
                           Time: {log.timeOfDay}{log.sky && log.sky.trim() ? ` - ${log.sky}` : ''}
                         </div>
-                        <div className="text-gray-600 dark:text-gray-400 mt-1">
+                        <div className="mt-1" style={{ color: 'var(--secondary-text)' }}>
                           {formatWeatherDisplay(log)}
                         </div>
                       </div>
@@ -712,7 +712,7 @@ const TripCard: React.FC<TripCardProps> = ({
               </div>
             ) : (
               <div className="text-center py-4">
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                <p className="text-sm mb-3" style={{ color: 'var(--secondary-text)' }}>
                   No weather logs for this trip yet.
                 </p>
                 <button
@@ -726,18 +726,18 @@ const TripCard: React.FC<TripCardProps> = ({
           </div>
 
           {/* Separator Line */}
-          <div className="border-t border-gray-200 dark:border-gray-600"></div>
+          <div style={{ borderTop: '1px solid var(--border-color)' }}></div>
 
           {/* Catch Section */}
           <div className="w-full">
-            <h5 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+            <h5 className="text-sm font-medium mb-3" style={{ color: 'var(--primary-text)' }}>
               Catch
             </h5>
 
             {fishCatches.length > 0 ? (
               <div className="space-y-2">
                 {fishCatches.map((fish) => (
-                  <div key={fish.id} className="p-3 bg-gray-50 dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600">
+                  <div key={fish.id} className="p-3 rounded" style={{ backgroundColor: 'var(--card-background)', border: '1px solid var(--border-color)' }}>
                     <div className="flex items-start justify-between">
                       <div className="flex items-start gap-3 flex-1">
                         {fish.photo && (
@@ -745,13 +745,14 @@ const TripCard: React.FC<TripCardProps> = ({
                             src={fish.photo}
                             alt={`${fish.species} photo`}
                             className="w-8 h-8 object-cover rounded border flex-shrink-0"
+                            style={{ borderColor: 'var(--border-color)' }}
                           />
                         )}
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium text-gray-800 dark:text-gray-200">
+                          <div className="font-medium" style={{ color: 'var(--primary-text)' }}>
                             {fish.species}
                           </div>
-                          <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                          <div className="text-xs mt-1" style={{ color: 'var(--secondary-text)' }}>
                             {[
                               fish.length && fish.length.trim(),
                               fish.weight && fish.weight.trim(),
@@ -759,12 +760,12 @@ const TripCard: React.FC<TripCardProps> = ({
                             ].filter(Boolean).join(" • ")}
                           </div>
                           {fish.gear.length > 0 && (
-                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            <div className="text-xs mt-1" style={{ color: 'var(--secondary-text)' }}>
                               Gear: {fish.gear.join(", ")}
                             </div>
                           )}
                           {fish.details && fish.details.trim() && (
-                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 italic">
+                            <div className="text-xs mt-1 italic" style={{ color: 'var(--secondary-text)' }}>
                               "{fish.details}"
                             </div>
                           )}
@@ -809,7 +810,7 @@ const TripCard: React.FC<TripCardProps> = ({
               </div>
             ) : (
               <div className="text-center py-4">
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                <p className="text-sm mb-3" style={{ color: 'var(--secondary-text)' }}>
                   No fish logged for this trip yet.
                 </p>
               </div>

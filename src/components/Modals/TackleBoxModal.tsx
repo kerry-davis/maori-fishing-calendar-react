@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Modal } from './Modal';
+import { Modal, ModalHeader, ModalBody } from './Modal';
+import { Button } from '../UI';
 import { GearForm } from './GearForm';
 import { GearTypeForm } from './GearTypeForm';
 import { useFirebaseTackleBox, useFirebaseGearTypes } from '../../hooks/useFirebaseTackleBox';
@@ -140,20 +141,17 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} className="max-w-4xl">
-      <div className="p-6 border-b dark:border-gray-700">
-        <h3 className="text-2xl font-bold text-gray-800 dark:text-gray-100">
-          My Tackle Box
-        </h3>
-      </div>
-      
-      <div className="p-6 overflow-y-auto max-h-[70vh]">
+      <ModalHeader title="My Tackle Box" onClose={onClose} />
+
+      <ModalBody className="overflow-y-auto max-h-[70vh]">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Left side: Dropdowns and Add buttons */}
           <div>
             <div className="mb-4">
-              <label 
-                htmlFor="gear-item-select" 
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+              <label
+                htmlFor="gear-item-select"
+                className="block text-sm font-medium mb-2"
+                style={{ color: 'var(--primary-text)' }}
               >
                 Edit Existing Gear
               </label>
@@ -161,7 +159,12 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
                 id="gear-item-select"
                 value={selectedGearId}
                 onChange={(e) => handleGearSelect(e.target.value)}
-                className="w-full p-2 border rounded-md dark:bg-gray-600 dark:border-gray-500 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                style={{
+                  backgroundColor: 'var(--input-background)',
+                  borderColor: 'var(--input-border)',
+                  color: 'var(--primary-text)'
+                }}
               >
                 <option value="">Select Gear...</option>
                 {sortedGear.map(item => (
@@ -173,9 +176,10 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
             </div>
 
             <div className="mb-4">
-              <label 
-                htmlFor="gear-type-select" 
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+              <label
+                htmlFor="gear-type-select"
+                className="block text-sm font-medium mb-2"
+                style={{ color: 'var(--primary-text)' }}
               >
                 Edit Existing Gear Type
               </label>
@@ -183,7 +187,12 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
                 id="gear-type-select"
                 value={selectedGearType}
                 onChange={(e) => handleGearTypeSelect(e.target.value)}
-                className="w-full p-2 border rounded-md dark:bg-gray-600 dark:border-gray-500 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                style={{
+                  backgroundColor: 'var(--input-background)',
+                  borderColor: 'var(--input-border)',
+                  color: 'var(--primary-text)'
+                }}
               >
                 <option value="">Select Type...</option>
                 {sortedGearTypes.map(type => (
@@ -195,23 +204,17 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
             </div>
 
             <div className="flex space-x-2">
-              <button
-                onClick={handleAddNewGear}
-                className="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
+              <Button onClick={handleAddNewGear} className="flex-1">
                 Add New Gear
-              </button>
-              <button
-                onClick={handleAddNewGearType}
-                className="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
+              </Button>
+              <Button onClick={handleAddNewGearType} className="flex-1">
                 Add New Type
-              </button>
+              </Button>
             </div>
           </div>
 
           {/* Right side: Details and Forms */}
-          <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-lg">
+          <div className="p-4 rounded-lg" style={{ backgroundColor: 'var(--secondary-background)' }}>
             {activeForm === 'gear' && (
               <GearForm
                 gear={editingGear}
@@ -221,7 +224,7 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
                 onCancel={resetFormState}
               />
             )}
-            
+
             {activeForm === 'gearType' && (
               <GearTypeForm
                 gearType={editingGearType}
@@ -230,15 +233,17 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
                 onCancel={resetFormState}
               />
             )}
-            
+
             {!activeForm && (
-              <div className="text-center text-gray-500 dark:text-gray-400 py-8">
-                <p>Select an item or type to view details, or add a new one.</p>
+              <div className="text-center py-8">
+                <p style={{ color: 'var(--secondary-text)' }}>
+                  Select an item or type to view details, or add a new one.
+                </p>
               </div>
             )}
           </div>
         </div>
-      </div>
+      </ModalBody>
     </Modal>
   );
 };
