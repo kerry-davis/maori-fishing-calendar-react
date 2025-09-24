@@ -10,8 +10,8 @@ export const OfflineIndicator: React.FC = () => {
   const getStatusInfo = () => {
     if (!isOnline) {
       return {
-        bgColor: 'bg-yellow-500',
-        textColor: 'text-yellow-900',
+        bgColor: 'bg-amber-500',
+        textColor: 'text-white',
         icon: '⚠️',
         message: 'You\'re offline. Changes will sync when connection returns.',
         showDetails: true
@@ -20,8 +20,8 @@ export const OfflineIndicator: React.FC = () => {
 
     if (isFirebaseReachable === false) {
       return {
-        bgColor: 'bg-red-500',
-        textColor: 'text-red-100',
+        bgColor: 'bg-red-600',
+        textColor: 'text-white',
         icon: '🔴',
         message: 'Firebase connection issue. Some features may be limited.',
         showDetails: true
@@ -31,7 +31,7 @@ export const OfflineIndicator: React.FC = () => {
     if (syncQueueLength > 0) {
       return {
         bgColor: 'bg-blue-500',
-        textColor: 'text-blue-100',
+        textColor: 'text-white',
         icon: '🔄',
         message: `Syncing ${syncQueueLength} change${syncQueueLength > 1 ? 's' : ''}...`,
         showDetails: true

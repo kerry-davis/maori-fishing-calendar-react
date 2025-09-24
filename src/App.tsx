@@ -8,6 +8,7 @@ import { firebaseDataService } from "./services/firebaseDataService";
 import "./utils/cleanupDuplicates"; // Load cleanup utilities
 import ErrorBoundary from "./components/ErrorBoundary";
 import { Header, Footer } from "./components/Layout";
+import { Card, Container } from "./components/UI";
 import { Calendar } from "./components/Calendar";
 import { CurrentMoonInfo } from "./components/MoonInfo";
 import { Legend } from "./components/Legend";
@@ -249,11 +250,8 @@ function AppContent() {
   }
 
   return (
-    <div
-      className={`min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200`}
-    >
-      <div className="responsive-container container mx-auto px-4 py-8 max-w-6xl">
-        <Header
+    <div className={`min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200`}>
+      <Header
           onSearchClick={handleSearchClick}
           onAnalyticsClick={handleAnalyticsClick}
           onSettingsClick={handleSettingsClick}
@@ -261,11 +259,12 @@ function AppContent() {
           onGalleryClick={handleGalleryClick}
         />
 
-        <main>
+      <Container className="py-8">
+        <main className="space-y-6">
           {/* Calendar Component */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+          <Card>
             <Calendar onDateSelect={handleDateSelect} refreshTrigger={calendarRefreshTrigger} />
-          </div>
+          </Card>
 
           {/* Legend Component */}
           <Legend />
@@ -274,8 +273,9 @@ function AppContent() {
           <CurrentMoonInfo />
 
         </main>
+      </Container>
 
-        <Footer />
+      <Footer />
 
         {/* Modal components - Basic integration for UAT */}
         <TackleBoxModal
@@ -363,7 +363,6 @@ function AppContent() {
 
         {/* Authentication Success Toast */}
         <SuccessToast />
-      </div>
     </div>
   );
 }

@@ -31,28 +31,28 @@ const ContextualConfirmation: React.FC<ContextualConfirmationProps> = ({
         return {
           iconBg: 'bg-red-100 dark:bg-red-900',
           iconColor: 'text-red-600 dark:text-red-400',
-          confirmButton: 'bg-red-500 hover:bg-red-600',
+          confirmButton: 'btn btn-danger',
           icon: '🗑️'
         };
       case 'warning':
         return {
           iconBg: 'bg-yellow-100 dark:bg-yellow-900',
           iconColor: 'text-yellow-600 dark:text-yellow-400',
-          confirmButton: 'bg-yellow-500 hover:bg-yellow-600',
+          confirmButton: 'btn btn-warning',
           icon: '⚠️'
         };
       case 'info':
         return {
           iconBg: 'bg-blue-100 dark:bg-blue-900',
           iconColor: 'text-blue-600 dark:text-blue-400',
-          confirmButton: 'bg-blue-500 hover:bg-blue-600',
+          confirmButton: 'btn btn-primary',
           icon: 'ℹ️'
         };
       default:
         return {
           iconBg: 'bg-red-100 dark:bg-red-900',
           iconColor: 'text-red-600 dark:text-red-400',
-          confirmButton: 'bg-red-500 hover:bg-red-600',
+          confirmButton: 'btn btn-danger',
           icon: '🗑️'
         };
     }
@@ -94,13 +94,13 @@ const ContextualConfirmation: React.FC<ContextualConfirmationProps> = ({
             <div className="flex space-x-2">
               <button
                 onClick={onCancel}
-                className="px-3 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                className="btn btn-ghost px-3 py-1.5 text-xs"
               >
                 {cancelText}
               </button>
               <button
                 onClick={onConfirm}
-                className={`px-3 py-1.5 text-xs ${styles.confirmButton} text-white rounded transition-colors`}
+                className={`${styles.confirmButton} px-3 py-1.5 text-xs`}
               >
                 {confirmText}
               </button>
