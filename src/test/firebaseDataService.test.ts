@@ -12,29 +12,37 @@ vi.mock('../services/firebase', () => ({
   }
 }));
 
-vi.mock('firebase/firestore', () => ({
-  collection: vi.fn(),
-  doc: vi.fn(),
-  getDoc: vi.fn(),
-  getDocs: vi.fn(),
-  addDoc: vi.fn(),
-  updateDoc: vi.fn(),
-  deleteDoc: vi.fn(),
-  query: vi.fn(),
-  where: vi.fn(),
-  orderBy: vi.fn(),
-  serverTimestamp: vi.fn(() => ({ seconds: 1234567890, nanoseconds: 0 })),
-  writeBatch: vi.fn(() => ({
-    update: vi.fn(),
-    set: vi.fn(),
-    delete: vi.fn(),
-    commit: vi.fn(() => Promise.resolve())
-  })),
-  onSnapshot: vi.fn(),
-  Timestamp: {
-    fromDate: vi.fn(),
-  },
-}));
+vi.mock('firebase/firestore', () => {
+  const originalModule = vi.importActual('firebase/firestore');
+  return {
+    ...originalModule,
+    collection: vi.fn(),
+    doc: vi.fn((...args) => ({
+      id: 'mock-doc-id',
+      path: args.join('/'),
+      withConverter: vi.fn(),
+    })),
+    getDoc: vi.fn(),
+    getDocs: vi.fn(),
+    addDoc: vi.fn(),
+    updateDoc: vi.fn(),
+    deleteDoc: vi.fn(),
+    query: vi.fn(),
+    where: vi.fn(),
+    orderBy: vi.fn(),
+    serverTimestamp: vi.fn(() => ({ seconds: 1234567890, nanoseconds: 0 })),
+    writeBatch: vi.fn(() => ({
+      update: vi.fn(),
+      set: vi.fn(),
+      delete: vi.fn(),
+      commit: vi.fn(() => Promise.resolve())
+    })),
+    onSnapshot: vi.fn(),
+    Timestamp: {
+      fromDate: vi.fn(),
+    },
+  };
+});
 
 // Mock databaseService
 vi.mock('../services/databaseService', () => ({
@@ -202,21 +210,38 @@ describe('FirebaseDataService', () => {
       // Mock existing trip in Firestore
       const mockDocSnap = {
         exists: () => true,
-        data: () => ({ ...mockTrips[0], userId: 'test-user-id' })
+        data: () => ({ ...mockTrips[0], userId: 'test-user-id' }),
+        id: 'mock-id',
+        ref: 'mock-ref',
+        metadata: {},
+        get: vi.fn(),
+        toJSON: vi.fn(),
       };
 
       const mockGetDoc = vi.fn(() => Promise.resolve(mockDocSnap));
-      const mockGetDocs = vi.fn(() => Promise.resolve({ empty: true, docs: [] }));
+      const mockGetDocs = vi.fn(() => Promise.resolve({
+        empty: true,
+        docs: [],
+        forEach: vi.fn(),
+        metadata: {},
+        query: {},
+        size: 0,
+        docChanges: [],
+        toJSON: vi.fn(),
+      }));
       const mockUpdate = vi.fn(() => Promise.resolve());
       const mockCommit = vi.fn(() => Promise.resolve());
 
-      vi.mocked(require('firebase/firestore').getDoc).mockImplementation(mockGetDoc);
-      vi.mocked(require('firebase/firestore').getDocs).mockImplementation(mockGetDocs);
-      vi.mocked(require('firebase/firestore').updateDoc).mockImplementation(mockUpdate);
-      vi.mocked(require('firebase/firestore').writeBatch).mockImplementation(() => ({
-        update: vi.fn(),
+      const firestore = await import('firebase/firestore');
+      vi.spyOn(firestore, 'getDoc').mockImplementation(mockGetDoc);
+      vi.spyOn(firestore, 'getDocs').mockImplementation(mockGetDocs);
+      vi.spyOn(firestore, 'updateDoc').mockImplementation(mockUpdate);
+      const mockBatchUpdate = vi.fn();
+      vi.spyOn(firestore, 'writeBatch').mockImplementation(() => ({
+        update: mockBatchUpdate,
         set: vi.fn(),
-        commit: mockCommit
+        commit: mockCommit,
+        delete: vi.fn(),
       }));
 
       // Mock existing ID mapping
@@ -231,7 +256,7 @@ describe('FirebaseDataService', () => {
       await service.mergeLocalDataForUser();
 
       // Verify that update was called instead of create
-      expect(mockUpdate).toHaveBeenCalled();
+      expect(mockBatchUpdate).toHaveBeenCalled();
 
       Storage.prototype.getItem = originalGetItem;
     });
@@ -247,17 +272,34 @@ describe('FirebaseDataService', () => {
       (databaseService.getAllFishCaught as any) = mockGetAllFishCaught;
 
       // Mock no existing records in Firestore
-      const mockGetDocs = vi.fn(() => Promise.resolve({ empty: true, docs: [] }));
-      const mockAddDoc = vi.fn(() => Promise.resolve({ id: 'new-firebase-id' }));
+      const mockGetDocs = vi.fn(() => Promise.resolve({
+        empty: true,
+        docs: [],
+        forEach: vi.fn(),
+        metadata: {},
+        query: {},
+        size: 0,
+        docChanges: [],
+        toJSON: vi.fn(),
+      }));
+      const mockAddDoc = vi.fn(() => Promise.resolve({
+        id: 'new-firebase-id',
+        converter: {},
+        type: 'document',
+        firestore: {},
+        path: 'mock/path',
+      }));
       const mockSet = vi.fn(() => Promise.resolve());
       const mockCommit = vi.fn(() => Promise.resolve());
 
-      vi.mocked(require('firebase/firestore').getDocs).mockImplementation(mockGetDocs);
-      vi.mocked(require('firebase/firestore').addDoc).mockImplementation(mockAddDoc);
-      vi.mocked(require('firebase/firestore').writeBatch).mockImplementation(() => ({
+      const firestore = await import('firebase/firestore');
+      vi.spyOn(firestore, 'getDocs').mockImplementation(mockGetDocs);
+      vi.spyOn(firestore, 'addDoc').mockImplementation(mockAddDoc);
+      vi.spyOn(firestore, 'writeBatch').mockImplementation(() => ({
         update: vi.fn(),
         set: mockSet,
-        commit: mockCommit
+        commit: mockCommit,
+        delete: vi.fn(),
       }));
 
       // Mock no existing ID mappings
@@ -285,23 +327,36 @@ describe('FirebaseDataService', () => {
       // Mock stale mapping (document doesn't exist)
       const mockDocSnap = {
         exists: () => false,
-        data: () => ({})
+        data: () => ({}),
+        id: 'mock-id',
+        ref: 'mock-ref',
+        metadata: {},
+        get: vi.fn(),
+        toJSON: vi.fn(),
       };
 
       const mockGetDoc = vi.fn(() => Promise.resolve(mockDocSnap));
       const mockGetDocs = vi.fn(() => Promise.resolve({
         empty: false,
-        docs: [{ id: 'fallback-firebase-id', data: () => ({ ...mockTrips[0], userId: 'test-user-id' }) }]
+        docs: [{ id: 'fallback-firebase-id', data: () => ({ ...mockTrips[0], userId: 'test-user-id' }) }],
+        forEach: vi.fn(),
+        metadata: {},
+        query: {},
+        size: 0,
+        docChanges: [],
+        toJSON: vi.fn(),
       }));
       const mockSet = vi.fn(() => Promise.resolve());
       const mockCommit = vi.fn(() => Promise.resolve());
 
-      vi.mocked(require('firebase/firestore').getDoc).mockImplementation(mockGetDoc);
-      vi.mocked(require('firebase/firestore').getDocs).mockImplementation(mockGetDocs);
-      vi.mocked(require('firebase/firestore').writeBatch).mockImplementation(() => ({
+      const firestore = await import('firebase/firestore');
+      vi.spyOn(firestore, 'getDoc').mockImplementation(mockGetDoc);
+      vi.spyOn(firestore, 'getDocs').mockImplementation(mockGetDocs);
+      vi.spyOn(firestore, 'writeBatch').mockImplementation(() => ({
         update: vi.fn(),
         set: mockSet,
-        commit: mockCommit
+        commit: mockCommit,
+        delete: vi.fn(),
       }));
 
       // Mock stale ID mapping
@@ -353,15 +408,26 @@ describe('FirebaseDataService', () => {
       (databaseService.getAllWeatherLogs as any) = mockGetAllWeatherLogs;
       (databaseService.getAllFishCaught as any) = mockGetAllFishCaught;
 
-      const mockGetDocs = vi.fn(() => Promise.resolve({ empty: true, docs: [] }));
+      const mockGetDocs = vi.fn(() => Promise.resolve({
+        empty: true,
+        docs: [],
+        forEach: vi.fn(),
+        metadata: {},
+        query: {},
+        size: 0,
+        docChanges: [],
+        toJSON: vi.fn(),
+      }));
       const mockSet = vi.fn(() => Promise.resolve());
       const mockCommit = vi.fn(() => Promise.resolve());
 
-      vi.mocked(require('firebase/firestore').getDocs).mockImplementation(mockGetDocs);
-      vi.mocked(require('firebase/firestore').writeBatch).mockImplementation(() => ({
+      const firestore = await import('firebase/firestore');
+      vi.spyOn(firestore, 'getDocs').mockImplementation(mockGetDocs);
+      vi.spyOn(firestore, 'writeBatch').mockImplementation(() => ({
         update: vi.fn(),
         set: mockSet,
-        commit: mockCommit
+        commit: mockCommit,
+        delete: vi.fn(),
       }));
 
       await service.mergeLocalDataForUser();
