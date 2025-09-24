@@ -440,7 +440,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
         <div className="flex justify-between items-center w-full">
           <button
             onClick={handleNewTrip}
-            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors flex items-center"
+            className="btn btn-primary"
           >
             <i className="fas fa-plus mr-2"></i>
             Log a New Trip
@@ -451,7 +451,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
               console.log('[UI Debug] Close button clicked - testing if any buttons work');
               onClose();
             }}
-            className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors"
+            className="btn btn-secondary"
           >
             Close
           </button>
@@ -604,7 +604,7 @@ const TripCard: React.FC<TripCardProps> = ({
         <div className="flex space-x-2">
           <button
             onClick={onEdit}
-            className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded text-sm font-medium transition-colors"
+            className="btn btn-warning px-3 py-1 text-xs"
             title="Edit trip"
           >
             Edit Trip
@@ -614,7 +614,7 @@ const TripCard: React.FC<TripCardProps> = ({
               console.log('Delete button clicked for trip:', trip.id, 'firebaseDocId:', trip.firebaseDocId);
               onDelete(trip.firebaseDocId);
             }}
-            className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm font-medium transition-colors"
+            className="btn btn-danger px-3 py-1 text-xs"
             title="Delete trip"
           >
             Delete Trip
@@ -674,7 +674,7 @@ const TripCard: React.FC<TripCardProps> = ({
                       <div className="flex space-x-2 ml-2">
                         <button
                           onClick={() => onEditWeather(log.id)}
-                          className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded text-xs font-medium transition-colors"
+                          className="btn btn-warning px-3 py-1 text-xs"
                           title="Edit weather log"
                         >
                           Edit
@@ -686,7 +686,7 @@ const TripCard: React.FC<TripCardProps> = ({
                             console.log('[UI Debug] Button is disabled?', e.currentTarget.disabled);
                             onDeleteWeather(log.id);
                           }}
-                          className="bg-red-500 hover:bg-red-600 active:bg-red-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors cursor-pointer select-none"
+                          className="btn btn-danger px-3 py-1 text-xs cursor-pointer select-none"
                           title="Delete weather log"
                           onMouseDown={(e) => {
                             console.log('[UI Debug] Weather delete button mouse down');
@@ -717,8 +717,7 @@ const TripCard: React.FC<TripCardProps> = ({
                 </p>
                 <button
                   onClick={() => onAddWeather(trip.id)}
-                  className="w-full px-4 py-2 text-white rounded text-sm font-medium transition"
-                  style={{ backgroundColor: "#0AA689" }}
+                  className="btn btn-primary w-full"
                 >
                   Add Weather
                 </button>
@@ -774,7 +773,7 @@ const TripCard: React.FC<TripCardProps> = ({
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <button
                           onClick={() => onEditFish(fish.id)}
-                          className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded text-xs font-medium transition-colors"
+                          className="btn btn-warning px-3 py-1 text-xs"
                         >
                           Edit
                         </button>
@@ -785,7 +784,7 @@ const TripCard: React.FC<TripCardProps> = ({
                             console.log('[UI Debug] Button is disabled?', e.currentTarget.disabled);
                             onDeleteFish(fish.id);
                           }}
-                          className="bg-red-500 hover:bg-red-600 active:bg-red-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors cursor-pointer select-none"
+                          className="btn btn-danger px-3 py-1 text-xs cursor-pointer select-none"
                           onMouseDown={(e) => {
                             console.log('[UI Debug] Fish delete button mouse down');
                             e.currentTarget.style.transform = 'scale(0.95)';
@@ -819,8 +818,7 @@ const TripCard: React.FC<TripCardProps> = ({
             <div className="pt-2">
               <button
                 onClick={() => onAddFish(trip.id)}
-                className="w-full px-4 py-2 text-white rounded text-sm font-medium transition"
-                style={{ backgroundColor: "#0AA689" }}
+                className="btn btn-primary w-full"
               >
                 Add Fish
               </button>

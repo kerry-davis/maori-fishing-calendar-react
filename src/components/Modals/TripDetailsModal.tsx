@@ -404,24 +404,8 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
 
       <ModalFooter>
         <div className="flex justify-end space-x-3">
-          <button
-            type="button"
-            onClick={handleCancel}
-            disabled={isSaving}
-            className="px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg transition-colors disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          
-          <button
-            type="submit"
-            onClick={handleSubmit}
-            disabled={isSaving || isLoading}
-            className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center"
-          >
-            {isSaving && (
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-            )}
+          <button type="button" onClick={handleCancel} disabled={isSaving} className="btn btn-secondary">Cancel</button>
+          <button type="submit" onClick={handleSubmit} disabled={isSaving || isLoading} className="btn btn-primary">
             {isEditing ? 'Update Trip' : 'Create Trip'}
           </button>
         </div>

@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from "react";
+import { Button } from "../UI";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "./Modal";
 import { useDatabaseService } from "../../contexts/DatabaseContext";
 import type { Trip } from "../../types";
@@ -227,28 +228,12 @@ export const TripFormModal: React.FC<TripFormModalProps> = ({
 
         <ModalFooter>
           <div className="flex justify-end space-x-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors"
-              disabled={isSubmitting}
-            >
+            <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-            >
-              {isSubmitting ? (
-                <>
-                  <i className="fas fa-spinner fa-spin mr-2"></i>
-                  Saving...
-                </>
-              ) : (
-                "Save Trip"
-              )}
-            </button>
+            </Button>
+            <Button type="submit" loading={isSubmitting} disabled={isSubmitting}>
+              {isSubmitting ? "Saving…" : "Save Trip"}
+            </Button>
           </div>
         </ModalFooter>
       </form>

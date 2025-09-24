@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './Modal';
 import { useDatabaseService } from '../../contexts/DatabaseContext';
+import { Button } from '../UI';
 import { useAuth } from '../../contexts/AuthContext';
 
 export interface DataMigrationModalProps {
@@ -189,40 +190,17 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
       <ModalFooter>
         <div className="flex justify-end space-x-3">
           {!migrationResults && (
-            <button
-              type="button"
-              onClick={handleSkipMigration}
-              className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors"
-              disabled={isMigrating}
-            >
-              Skip for Now
-            </button>
+              <Button variant="secondary" onClick={handleSkipMigration} disabled={isMigrating}>
+                Skip for Now
+              </Button>
           )}
 
           {migrationResults ? (
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
-            >
-              Get Started
-            </button>
+              <Button variant="primary" onClick={onClose}>Get Started</Button>
           ) : (
-            <button
-              type="button"
-              onClick={handleMigrateData}
-              disabled={isMigrating || isChecking}
-              className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-            >
-              {isMigrating ? (
-                <>
-                  <i className="fas fa-spinner fa-spin mr-2"></i>
-                  Migrating...
-                </>
-              ) : (
-                'Migrate Data'
-              )}
-            </button>
+              <Button onClick={handleMigrateData} loading={isMigrating} disabled={isMigrating || isChecking}>
+                {isMigrating ? 'Migrating...' : 'Migrate Data'}
+              </Button>
           )}
         </div>
       </ModalFooter>

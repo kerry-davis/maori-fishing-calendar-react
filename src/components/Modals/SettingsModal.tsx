@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { Button } from '../UI';
 import { Modal, ModalHeader, ModalBody } from './Modal';
 import { dataExportService } from '../../services/dataExportService';
 
@@ -116,41 +117,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
           </p>
           
           <div className="flex flex-col sm:flex-row gap-3">
-            <button
-              onClick={handleExportJSON}
-              disabled={isExportingJSON || isExportingCSV}
-              className="flex items-center justify-center px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg transition-colors duration-200"
-            >
-              {isExportingJSON ? (
-                <>
-                  <i className="fas fa-spinner fa-spin mr-2"></i>
-                  Exporting JSON...
-                </>
-              ) : (
+            <Button onClick={handleExportJSON} disabled={isExportingJSON || isExportingCSV} loading={isExportingJSON}>
+              {isExportingJSON ? 'Exporting JSON…' : (
                 <>
                   <i className="fas fa-download mr-2"></i>
                   Export as ZIP (JSON)
                 </>
               )}
-            </button>
+            </Button>
             
-            <button
-              onClick={handleExportCSV}
-              disabled={isExportingJSON || isExportingCSV}
-              className="flex items-center justify-center px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg transition-colors duration-200"
-            >
-              {isExportingCSV ? (
-                <>
-                  <i className="fas fa-spinner fa-spin mr-2"></i>
-                  Exporting CSV...
-                </>
-              ) : (
+            <Button onClick={handleExportCSV} disabled={isExportingJSON || isExportingCSV} loading={isExportingCSV}>
+              {isExportingCSV ? 'Exporting CSV…' : (
                 <>
                   <i className="fas fa-file-csv mr-2"></i>
                   Export as CSV
                 </>
               )}
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -164,23 +147,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
           </p>
           
           <div className="flex flex-col gap-3">
-            <button
-              onClick={handleImportClick}
-              disabled={isImporting}
-              className="flex items-center justify-center px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white rounded-lg transition-colors duration-200"
-            >
-              {isImporting ? (
-                <>
-                  <i className="fas fa-spinner fa-spin mr-2"></i>
-                  Importing...
-                </>
-              ) : (
+            <Button onClick={handleImportClick} disabled={isImporting} loading={isImporting}>
+              {isImporting ? 'Importing…' : (
                 <>
                   <i className="fas fa-upload mr-2"></i>
                   Import Data File
                 </>
               )}
-            </button>
+            </Button>
             
             <input
               ref={fileInputRef}
