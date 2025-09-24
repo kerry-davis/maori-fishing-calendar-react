@@ -126,11 +126,15 @@ export const Modal: React.FC<ModalProps> = ({
       <div
         ref={modalRef}
         className={`
-          relative bg-white dark:bg-gray-800 rounded-lg shadow-xl 
-          ${getMaxWidthClass()} w-full mx-4 
+          relative rounded-lg shadow-xl
+          ${getMaxWidthClass()} w-full mx-4
           ${className}
         `}
-        style={{ maxHeight }}
+        style={{
+          maxHeight,
+          backgroundColor: 'var(--card-background)',
+          border: '1px solid var(--border-color)'
+        }}
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
@@ -161,15 +165,32 @@ export const ModalHeader: React.FC<ModalHeaderProps> = ({
   children,
   className = ''
 }) => {
+  // Use darker background in dark mode
+  const getHeaderBackground = () => {
+    if (typeof window !== 'undefined') {
+      const isDark = document.documentElement.classList.contains('dark') ||
+                    document.body.classList.contains('dark-theme');
+      return isDark ? '#0f172a' : 'var(--card-background)';
+    }
+    return 'var(--card-background)';
+  };
+
   return (
-    <div className={`p-6 border-b dark:border-gray-700 ${className}`}>
+    <div
+      className={`p-6 ${className} modal-header`}
+      style={{
+        borderBottom: '1px solid var(--border-color)',
+        backgroundColor: getHeaderBackground()
+      }}
+      data-modal-header="true"
+    >
       <div className="flex justify-between items-center">
         <div className="flex-1">
-          <h3 className="text-2xl font-bold text-gray-800 dark:text-gray-100">
+          <h3 className="text-2xl font-bold" style={{ color: 'var(--primary-text)' }}>
             {title}
           </h3>
           {subtitle && (
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            <p className="text-sm mt-1" style={{ color: 'var(--secondary-text)' }}>
               {subtitle}
             </p>
           )}
@@ -179,7 +200,14 @@ export const ModalHeader: React.FC<ModalHeaderProps> = ({
           {onClose && (
             <button
               onClick={onClose}
-              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+              className="transition-colors"
+              style={{ color: 'var(--secondary-text)' }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'var(--primary-text)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'var(--secondary-text)';
+              }}
               aria-label="Close modal"
             >
               <i className="fas fa-times text-xl"></i>
@@ -221,7 +249,7 @@ export const ModalFooter: React.FC<ModalFooterProps> = ({
   className = ''
 }) => {
   return (
-    <div className={`p-6 border-t dark:border-gray-700 ${className}`}>
+    <div className={`p-6 ${className}`} style={{ borderTop: '1px solid var(--border-color)' }}>
       {children}
     </div>
   );

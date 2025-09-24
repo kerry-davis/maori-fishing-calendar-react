@@ -32,13 +32,13 @@ const LEGEND_ITEMS: LegendItem[] = [
 
 export const Legend: React.FC = () => {
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 mb-6">
-      <h3 className="text-lg font-semibold mb-3 dark:text-gray-100">
+    <div className="rounded-lg shadow-md p-4 mb-6" style={{ backgroundColor: 'var(--card-background)', border: '1px solid var(--card-border)' }}>
+      <h3 className="text-lg font-semibold mb-3" style={{ color: 'var(--primary-text)' }}>
         Fishing Quality Legend
       </h3>
-      
+
       {/* Legend items grid - responsive layout */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 dark:text-gray-300">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2" style={{ color: 'var(--secondary-text)' }}>
         {LEGEND_ITEMS.map((item) => (
           <div key={item.quality} className="flex items-center">
             <div
@@ -52,7 +52,7 @@ export const Legend: React.FC = () => {
       </div>
       
       {/* Helper text */}
-      <p className="text-sm text-gray-600 dark:text-gray-400 mt-3">
+      <p className="text-sm mt-3" style={{ color: 'var(--tertiary-text)' }}>
         Hover over any day to see the fishing quality. Click for more details.
       </p>
     </div>
