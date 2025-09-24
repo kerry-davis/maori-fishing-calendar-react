@@ -223,28 +223,29 @@ export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
     return phaseIconMap[phaseName] || "🌙";
   };
 
-  // Get quality color class
-  const getQualityColor = (quality: string): string => {
+  // Get quality color style
+  const getQualityColor = (quality: string): React.CSSProperties => {
     const colorMap: Record<string, string> = {
-      Excellent: "text-green-600 dark:text-green-400",
-      Good: "text-blue-600 dark:text-blue-400",
-      Average: "text-yellow-600 dark:text-yellow-400",
-      Poor: "text-red-600 dark:text-red-400",
+      Excellent: "var(--quality-excellent)",
+      Good: "var(--quality-good)",
+      Average: "var(--quality-average)",
+      Poor: "var(--quality-poor)",
     };
-    return colorMap[quality] || "text-gray-600 dark:text-gray-400";
+    return { color: colorMap[quality] || "var(--secondary-text)" };
   };
 
   if (!moonInfo) {
     return (
       <div
-        className={`bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 ${className}`}
+        className={`rounded-lg shadow-md p-4 ${className}`}
+        style={{ backgroundColor: 'var(--card-background)', border: '1px solid var(--card-border)' }}
       >
-        <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">
+        <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--primary-text)' }}>
           Current Moon Info
         </h3>
         <div className="animate-pulse">
-          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-2"></div>
-          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
+          <div className="h-4 rounded w-3/4 mb-2" style={{ backgroundColor: 'var(--tertiary-background)' }}></div>
+          <div className="h-4 rounded w-1/2" style={{ backgroundColor: 'var(--tertiary-background)' }}></div>
         </div>
       </div>
     );
@@ -252,9 +253,10 @@ export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
 
   return (
     <div
-      className={`bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 ${className}`}
+      className={`rounded-lg shadow-md p-4 ${className}`}
+      style={{ backgroundColor: 'var(--card-background)', border: '1px solid var(--card-border)' }}
     >
-      <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">
+      <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--primary-text)' }}>
         Current Moon Info
       </h3>
 
@@ -264,11 +266,12 @@ export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
           {getMoonPhaseIcon(moonInfo.phase.name)}
         </div>
         <div>
-          <h4 className="font-semibold text-gray-800 dark:text-gray-100">
+          <h4 className="font-semibold" style={{ color: 'var(--primary-text)' }}>
             {moonInfo.phase.name}
           </h4>
           <p
-            className={`text-sm font-medium ${getQualityColor(moonInfo.phase.quality)}`}
+            className="text-sm font-medium"
+            style={getQualityColor(moonInfo.phase.quality)}
           >
             {moonInfo.phase.quality} Fishing
           </p>
@@ -276,34 +279,34 @@ export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
       </div>
 
       {/* Moon Phase Description */}
-      <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+      <p className="text-sm mb-4" style={{ color: 'var(--secondary-text)' }}>
         {moonInfo.phase.description}
       </p>
 
       {/* Moon Data */}
       <div className="grid grid-cols-2 gap-4 mb-4">
         <div>
-          <p className="text-xs text-gray-500 dark:text-gray-500 uppercase tracking-wide">
+          <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--tertiary-text)' }}>
             Moon Age
           </p>
-          <p className="text-sm font-medium text-gray-800 dark:text-gray-100">
+          <p className="text-sm font-medium" style={{ color: 'var(--primary-text)' }}>
             {moonInfo.formattedAge} days
           </p>
         </div>
         <div>
-          <p className="text-xs text-gray-500 dark:text-gray-500 uppercase tracking-wide">
+          <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--tertiary-text)' }}>
             Illumination
           </p>
-          <p className="text-sm font-medium text-gray-800 dark:text-gray-100">
+          <p className="text-sm font-medium" style={{ color: 'var(--primary-text)' }}>
             {moonInfo.formattedIllumination}
           </p>
         </div>
       </div>
 
       {/* Location Section */}
-      <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+      <div className="border-t pt-4" style={{ borderColor: 'var(--border-color)' }}>
         <div className="flex items-center justify-between mb-2">
-          <h5 className="text-sm font-medium text-gray-800 dark:text-gray-100">
+          <h5 className="text-sm font-medium" style={{ color: 'var(--primary-text)' }}>
             Location
           </h5>
           {!userLocation && (
@@ -329,7 +332,7 @@ export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
 
         {userLocation ? (
           <div>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+            <p className="text-sm mb-3" style={{ color: 'var(--secondary-text)' }}>
               <i className="fas fa-map-marker-alt mr-1"></i>
               {userLocation.name}
             </p>
@@ -338,21 +341,21 @@ export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
             {sunMoonTimes && (
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div>
-                  <p className="text-gray-500 dark:text-gray-500">
+                  <p style={{ color: 'var(--tertiary-text)' }}>
                     <i className="fas fa-sun mr-1"></i>
                     Sunrise: {sunMoonTimes.sunrise}
                   </p>
-                  <p className="text-gray-500 dark:text-gray-500">
+                  <p style={{ color: 'var(--tertiary-text)' }}>
                     <i className="fas fa-sun mr-1"></i>
                     Sunset: {sunMoonTimes.sunset}
                   </p>
                 </div>
                 <div>
-                  <p className="text-gray-500 dark:text-gray-500">
+                  <p style={{ color: 'var(--tertiary-text)' }}>
                     <i className="fas fa-moon mr-1"></i>
                     Moonrise: {sunMoonTimes.moonrise}
                   </p>
-                  <p className="text-gray-500 dark:text-gray-500">
+                  <p style={{ color: 'var(--tertiary-text)' }}>
                     <i className="fas fa-moon mr-1"></i>
                     Moonset: {sunMoonTimes.moonset}
                   </p>
@@ -362,7 +365,10 @@ export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
 
             <button
               onClick={() => setLocation(null)}
-              className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 mt-2"
+              className="text-xs mt-2"
+              style={{ color: 'var(--tertiary-text)' }}
+              onMouseOver={(e) => e.currentTarget.style.color = 'var(--secondary-text)'}
+              onMouseOut={(e) => e.currentTarget.style.color = 'var(--tertiary-text)'}
             >
               <i className="fas fa-times mr-1"></i>
               Clear location
@@ -370,12 +376,12 @@ export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
           </div>
         ) : (
           <div>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
+            <p className="text-sm mb-2" style={{ color: 'var(--tertiary-text)' }}>
               Set your location to see sun and moon times
             </p>
 
             {locationError && (
-              <p className="text-xs text-red-500 mb-2">
+              <p className="text-xs mb-2" style={{ color: 'var(--quality-poor)' }}>
                 <i className="fas fa-exclamation-triangle mr-1"></i>
                 {locationError}
               </p>
@@ -393,14 +399,22 @@ export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
                     onFocus={() => locationInput.trim().length >= 2 && setShowSuggestions(true)}
                     onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                     placeholder="Enter a location"
-                    className="w-full text-xs px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-l bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full text-xs px-2 py-1 border rounded-l focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    style={{
+                      borderColor: 'var(--input-border)',
+                      backgroundColor: 'var(--input-background)',
+                      color: 'var(--primary-text)'
+                    }}
                   />
 
                   {/* Location Suggestions Dropdown */}
                   {showSuggestions && (
-                    <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                    <div className="absolute z-50 w-full mt-1 border rounded-md shadow-lg max-h-60 overflow-y-auto" style={{
+                      backgroundColor: 'var(--card-background)',
+                      borderColor: 'var(--card-border)'
+                    }}>
                       {isLoadingSuggestions ? (
-                        <div className="px-2 py-1 text-xs text-gray-500 dark:text-gray-400">
+                        <div className="px-2 py-1 text-xs" style={{ color: 'var(--secondary-text)' }}>
                           <i className="fas fa-spinner fa-spin mr-1"></i>
                           Searching locations...
                         </div>
@@ -409,20 +423,23 @@ export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
                           <div
                             key={`${suggestion.lat}-${suggestion.lon}`}
                             onClick={() => handleSuggestionSelect(suggestion)}
-                            className={`px-2 py-1 cursor-pointer text-xs hover:bg-gray-100 dark:hover:bg-gray-700 ${
-                              index === selectedSuggestionIndex ? 'bg-blue-50 dark:bg-blue-900' : ''
-                            }`}
+                            className="px-2 py-1 cursor-pointer text-xs"
+                            style={{
+                              backgroundColor: index === selectedSuggestionIndex ? 'var(--secondary-background)' : 'transparent'
+                            }}
+                            onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--tertiary-background)'}
+                            onMouseOut={(e) => e.currentTarget.style.backgroundColor = index === selectedSuggestionIndex ? 'var(--secondary-background)' : 'transparent'}
                           >
-                            <div className="font-medium text-gray-900 dark:text-gray-100">
+                            <div className="font-medium" style={{ color: 'var(--primary-text)' }}>
                               {suggestion.name}
                             </div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                            <div className="text-xs" style={{ color: 'var(--tertiary-text)' }}>
                               {suggestion.lat.toFixed(4)}, {suggestion.lon.toFixed(4)}
                             </div>
                           </div>
                         ))
                       ) : locationInput.trim().length >= 2 ? (
-                        <div className="px-2 py-1 text-xs text-gray-500 dark:text-gray-400">
+                        <div className="px-2 py-1 text-xs" style={{ color: 'var(--secondary-text)' }}>
                           No locations found
                         </div>
                       ) : null}
@@ -432,13 +449,16 @@ export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
                 <button
                   onClick={handleLocationSearch}
                   disabled={isSearchingLocation}
-                  className="px-2 py-1 bg-gray-500 text-white hover:bg-gray-600 transition disabled:opacity-50 disabled:cursor-not-allowed rounded-r"
+                  className="px-2 py-1 rounded-r transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ backgroundColor: 'var(--button-secondary)', color: 'white' }}
+                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--button-secondary-hover)'}
+                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'var(--button-secondary)'}
                   title="Search location"
                 >
                   <i className={`fas ${isSearchingLocation ? "fa-spinner fa-spin" : "fa-search"} text-xs`}></i>
                 </button>
               </div>
-              <p className="text-xs text-gray-400 dark:text-gray-500">
+              <p className="text-xs" style={{ color: 'var(--tertiary-text)' }}>
                 Start typing to see location suggestions
               </p>
             </div>

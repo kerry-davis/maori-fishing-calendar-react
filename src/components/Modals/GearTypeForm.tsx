@@ -148,7 +148,7 @@ export const GearTypeForm: React.FC<GearTypeFormProps> = ({
         <button
           type="submit"
           disabled={isSubmitting}
-          className="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="btn btn-primary flex-1"
         >
           {isSubmitting ? 'Saving...' : 'Save'}
         </button>
@@ -158,7 +158,7 @@ export const GearTypeForm: React.FC<GearTypeFormProps> = ({
             type="button"
             onClick={handleDelete}
             disabled={isSubmitting}
-            className="flex-1 px-4 py-2 bg-red-500 hover:bg-red-600 disabled:bg-red-300 text-white rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-red-500"
+            className="btn btn-danger flex-1 disabled:opacity-50"
           >
             Delete
           </button>
@@ -168,7 +168,7 @@ export const GearTypeForm: React.FC<GearTypeFormProps> = ({
           type="button"
           onClick={onCancel}
           disabled={isSubmitting}
-          className="flex-1 px-4 py-2 bg-gray-500 hover:bg-gray-600 disabled:bg-gray-300 text-white rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500"
+          className="btn btn-secondary flex-1"
         >
           Cancel
         </button>

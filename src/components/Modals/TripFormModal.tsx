@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from "react";
+import { Button } from "../UI";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "./Modal";
 import { useDatabaseService } from "../../contexts/DatabaseContext";
 import type { Trip } from "../../types";
@@ -136,17 +137,17 @@ export const TripFormModal: React.FC<TripFormModalProps> = ({
         <ModalBody className="space-y-4">
           {/* Error display */}
           {error && (
-            <div className="p-3 bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-lg">
+            <div className="p-3 rounded-lg" style={{ backgroundColor: 'var(--error-background)', border: '1px solid var(--error-border)' }}>
               <div className="flex items-center">
-                <i className="fas fa-exclamation-triangle text-red-500 mr-2"></i>
-                <span className="text-red-700 dark:text-red-300 text-sm">{error}</span>
+                <i className="fas fa-exclamation-triangle mr-2" style={{ color: 'var(--error-text)' }}></i>
+                <span className="text-sm" style={{ color: 'var(--error-text)' }}>{error}</span>
               </div>
             </div>
           )}
 
           {/* Water Body */}
           <div>
-            <label htmlFor="water" className="form-label">
+            <label htmlFor="water" className="form-label" style={{ color: 'var(--primary-text)' }}>
               Water Body
             </label>
             <input
@@ -155,14 +156,19 @@ export const TripFormModal: React.FC<TripFormModalProps> = ({
               value={formData.water}
               onChange={(e) => handleInputChange("water", e.target.value)}
               placeholder="Water Body (e.g., Lake Taupo)"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              style={{
+                backgroundColor: 'var(--input-background)',
+                border: '1px solid var(--border-color)',
+                color: 'var(--primary-text)'
+              }}
               required
             />
           </div>
 
           {/* Specific Location */}
           <div>
-            <label htmlFor="location" className="form-label">
+            <label htmlFor="location" className="form-label" style={{ color: 'var(--primary-text)' }}>
               Specific Location
             </label>
             <input
@@ -171,7 +177,12 @@ export const TripFormModal: React.FC<TripFormModalProps> = ({
               value={formData.location}
               onChange={(e) => handleInputChange("location", e.target.value)}
               placeholder="Specific Location (e.g., Stump Bay)"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              style={{
+                backgroundColor: 'var(--input-background)',
+                border: '1px solid var(--border-color)',
+                color: 'var(--primary-text)'
+              }}
               required
             />
           </div>
@@ -179,7 +190,7 @@ export const TripFormModal: React.FC<TripFormModalProps> = ({
           {/* Hours Fished and Fished With */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label htmlFor="hours" className="form-label">
+              <label htmlFor="hours" className="form-label" style={{ color: 'var(--primary-text)' }}>
                 Hours Fished
               </label>
               <input
@@ -189,13 +200,18 @@ export const TripFormModal: React.FC<TripFormModalProps> = ({
                 step="0.5"
                 value={formData.hours}
                 onChange={(e) => handleInputChange("hours", parseFloat(e.target.value) || 0)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                style={{
+                  backgroundColor: 'var(--input-background)',
+                  border: '1px solid var(--border-color)',
+                  color: 'var(--primary-text)'
+                }}
                 required
               />
             </div>
 
             <div>
-              <label htmlFor="companions" className="form-label">
+              <label htmlFor="companions" className="form-label" style={{ color: 'var(--primary-text)' }}>
                 Fished with
               </label>
               <input
@@ -204,14 +220,19 @@ export const TripFormModal: React.FC<TripFormModalProps> = ({
                 value={formData.companions}
                 onChange={(e) => handleInputChange("companions", e.target.value)}
                 placeholder="Fished with"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                style={{
+                  backgroundColor: 'var(--input-background)',
+                  border: '1px solid var(--border-color)',
+                  color: 'var(--primary-text)'
+                }}
               />
             </div>
           </div>
 
           {/* Best Times / Notes */}
           <div>
-            <label htmlFor="notes" className="form-label">
+            <label htmlFor="notes" className="form-label" style={{ color: 'var(--primary-text)' }}>
               Best Times / Notes
             </label>
             <textarea
@@ -220,35 +241,24 @@ export const TripFormModal: React.FC<TripFormModalProps> = ({
               onChange={(e) => handleInputChange("notes", e.target.value)}
               placeholder="Best Times / Notes"
               rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              style={{
+                backgroundColor: 'var(--input-background)',
+                border: '1px solid var(--border-color)',
+                color: 'var(--primary-text)'
+              }}
             />
           </div>
         </ModalBody>
 
         <ModalFooter>
           <div className="flex justify-end space-x-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors"
-              disabled={isSubmitting}
-            >
+            <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-            >
-              {isSubmitting ? (
-                <>
-                  <i className="fas fa-spinner fa-spin mr-2"></i>
-                  Saving...
-                </>
-              ) : (
-                "Save Trip"
-              )}
-            </button>
+            </Button>
+            <Button type="submit" loading={isSubmitting} disabled={isSubmitting}>
+              {isSubmitting ? "Saving…" : "Save Trip"}
+            </Button>
           </div>
         </ModalFooter>
       </form>
