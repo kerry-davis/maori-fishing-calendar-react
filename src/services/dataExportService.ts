@@ -405,6 +405,16 @@ export class DataExportService {
 
     if (dbData.trips && Array.isArray(dbData.trips)) {
       for (const trip of dbData.trips) {
+        // Data cleaning for 'hours'
+        if (trip.hours && typeof trip.hours === 'string') {
+          const parsedHours = parseFloat(trip.hours);
+          trip.hours = isNaN(parsedHours) ? undefined : Math.abs(parsedHours);
+        } else if (typeof trip.hours === 'number' && trip.hours < 0) {
+          trip.hours = Math.abs(trip.hours);
+        } else if (trip.hours === null || trip.hours === '') {
+          trip.hours = undefined;
+        }
+
         await firebaseDataService.createTrip(trip);
       }
     }
@@ -448,6 +458,16 @@ export class DataExportService {
 
     if (dbData.trips && Array.isArray(dbData.trips)) {
       for (const trip of dbData.trips) {
+        // Data cleaning for 'hours'
+        if (trip.hours && typeof trip.hours === 'string') {
+          const parsedHours = parseFloat(trip.hours);
+          trip.hours = isNaN(parsedHours) ? undefined : Math.abs(parsedHours);
+        } else if (typeof trip.hours === 'number' && trip.hours < 0) {
+          trip.hours = Math.abs(trip.hours);
+        } else if (trip.hours === null || trip.hours === '') {
+          trip.hours = undefined;
+        }
+
         await databaseService.createTrip(trip);
       }
     }
