@@ -12,32 +12,37 @@ vi.mock('../services/firebase', () => ({
   }
 }));
 
-vi.mock('firebase/firestore', () => ({
-  collection: vi.fn(),
-  doc: vi.fn((...args) => ({
-    id: 'mock-doc-id',
-    path: args.join('/'),
-  })),
-  getDoc: vi.fn(),
-  getDocs: vi.fn(),
-  addDoc: vi.fn(),
-  updateDoc: vi.fn(),
-  deleteDoc: vi.fn(),
-  query: vi.fn(),
-  where: vi.fn(),
-  orderBy: vi.fn(),
-  serverTimestamp: vi.fn(() => ({ seconds: 1234567890, nanoseconds: 0 })),
-  writeBatch: vi.fn(() => ({
-    update: vi.fn(),
-    set: vi.fn(),
-    delete: vi.fn(),
-    commit: vi.fn(() => Promise.resolve())
-  })),
-  onSnapshot: vi.fn(),
-  Timestamp: {
-    fromDate: vi.fn(),
-  },
-}));
+vi.mock('firebase/firestore', () => {
+  const originalModule = vi.importActual('firebase/firestore');
+  return {
+    ...originalModule,
+    collection: vi.fn(),
+    doc: vi.fn((...args) => ({
+      id: 'mock-doc-id',
+      path: args.join('/'),
+      withConverter: vi.fn(),
+    })),
+    getDoc: vi.fn(),
+    getDocs: vi.fn(),
+    addDoc: vi.fn(),
+    updateDoc: vi.fn(),
+    deleteDoc: vi.fn(),
+    query: vi.fn(),
+    where: vi.fn(),
+    orderBy: vi.fn(),
+    serverTimestamp: vi.fn(() => ({ seconds: 1234567890, nanoseconds: 0 })),
+    writeBatch: vi.fn(() => ({
+      update: vi.fn(),
+      set: vi.fn(),
+      delete: vi.fn(),
+      commit: vi.fn(() => Promise.resolve())
+    })),
+    onSnapshot: vi.fn(),
+    Timestamp: {
+      fromDate: vi.fn(),
+    },
+  };
+});
 
 // Mock databaseService
 vi.mock('../services/databaseService', () => ({
@@ -205,7 +210,12 @@ describe('FirebaseDataService', () => {
       // Mock existing trip in Firestore
       const mockDocSnap = {
         exists: () => true,
-        data: () => ({ ...mockTrips[0], userId: 'test-user-id' })
+        data: () => ({ ...mockTrips[0], userId: 'test-user-id' }),
+        id: 'mock-id',
+        ref: 'mock-ref',
+        metadata: {},
+        get: vi.fn(),
+        toJSON: vi.fn(),
       };
 
       const mockGetDoc = vi.fn(() => Promise.resolve(mockDocSnap));
@@ -213,6 +223,11 @@ describe('FirebaseDataService', () => {
         empty: true,
         docs: [],
         forEach: vi.fn(),
+        metadata: {},
+        query: {},
+        size: 0,
+        docChanges: [],
+        toJSON: vi.fn(),
       }));
       const mockUpdate = vi.fn(() => Promise.resolve());
       const mockCommit = vi.fn(() => Promise.resolve());
@@ -261,8 +276,19 @@ describe('FirebaseDataService', () => {
         empty: true,
         docs: [],
         forEach: vi.fn(),
+        metadata: {},
+        query: {},
+        size: 0,
+        docChanges: [],
+        toJSON: vi.fn(),
       }));
-      const mockAddDoc = vi.fn(() => Promise.resolve({ id: 'new-firebase-id' }));
+      const mockAddDoc = vi.fn(() => Promise.resolve({
+        id: 'new-firebase-id',
+        converter: {},
+        type: 'document',
+        firestore: {},
+        path: 'mock/path',
+      }));
       const mockSet = vi.fn(() => Promise.resolve());
       const mockCommit = vi.fn(() => Promise.resolve());
 
@@ -301,16 +327,24 @@ describe('FirebaseDataService', () => {
       // Mock stale mapping (document doesn't exist)
       const mockDocSnap = {
         exists: () => false,
-        data: () => ({})
+        data: () => ({}),
+        id: 'mock-id',
+        ref: 'mock-ref',
+        metadata: {},
+        get: vi.fn(),
+        toJSON: vi.fn(),
       };
 
       const mockGetDoc = vi.fn(() => Promise.resolve(mockDocSnap));
       const mockGetDocs = vi.fn(() => Promise.resolve({
         empty: false,
         docs: [{ id: 'fallback-firebase-id', data: () => ({ ...mockTrips[0], userId: 'test-user-id' }) }],
-        forEach: (callback: (doc: any) => void) => {
-          callback({ id: 'fallback-firebase-id', data: () => ({ ...mockTrips[0], userId: 'test-user-id' }) });
-        },
+        forEach: vi.fn(),
+        metadata: {},
+        query: {},
+        size: 0,
+        docChanges: [],
+        toJSON: vi.fn(),
       }));
       const mockSet = vi.fn(() => Promise.resolve());
       const mockCommit = vi.fn(() => Promise.resolve());
@@ -378,6 +412,11 @@ describe('FirebaseDataService', () => {
         empty: true,
         docs: [],
         forEach: vi.fn(),
+        metadata: {},
+        query: {},
+        size: 0,
+        docChanges: [],
+        toJSON: vi.fn(),
       }));
       const mockSet = vi.fn(() => Promise.resolve());
       const mockCommit = vi.fn(() => Promise.resolve());
