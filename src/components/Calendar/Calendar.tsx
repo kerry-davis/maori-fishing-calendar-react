@@ -123,7 +123,8 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect, refreshTrigger
       <div className="flex items-center justify-between mb-4">
         <h2
           id="currentMonth"
-          className="text-xl font-semibold text-gray-800 dark:text-gray-200"
+          className="text-xl font-semibold"
+          style={{ color: 'var(--primary-text)' }}
         >
           {MONTH_NAMES[currentMonth]} {currentYear}
         </h2>

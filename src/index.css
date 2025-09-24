@@ -3,20 +3,137 @@
 @source "../index.html";
 @source "./**/*.{js,ts,jsx,tsx}";
 
-/* Dark mode variant is built-in in Tailwind v4; no custom variant needed */
+/* CSS Variables for Theme System */
+:root {
+  /* Light theme variables */
+  --primary-background: #ffffff;
+  --secondary-background: #f9fafb;
+  --tertiary-background: #f3f4f6;
+  --primary-text: #111827;
+  --secondary-text: #6b7280;
+  --tertiary-text: #9ca3af;
+  --accent-color: #10b981;
+  --accent-hover: #059669;
+  --border-color: #e5e7eb;
+  --border-focus: #d1d5db;
+  --card-background: #ffffff;
+  --card-border: #e5e7eb;
+  --button-primary: #10b981;
+  --button-primary-hover: #059669;
+  --button-secondary: #6b7280;
+  --button-secondary-hover: #4b5563;
+  --input-background: #ffffff;
+  --input-border: #d1d5db;
+  --input-focus: #10b981;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  /* Fishing quality colors */
+  --quality-excellent: #10b981;
+  --quality-good: #3b82f6;
+  --quality-average: #f59e0b;
+  --quality-poor: #ef4444;
+  /* Error and success colors */
+  --error-background: #fef2f2;
+  --error-border: #fecaca;
+  --error-text: #dc2626;
+  --success-background: #f0fdf4;
+  --success-border: #bbf7d0;
+  --success-text: #16a34a;
+}
+
+/* Ensure CSS variables are applied to all elements */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+/* Dark theme variables - support both body.dark-theme and html.dark */
+body.dark-theme,
+html.dark body {
+  --primary-background: #111827 !important;
+  --secondary-background: #1f2937 !important;
+  --tertiary-background: #374151 !important;
+  --primary-text: #f9fafb !important;
+  --secondary-text: #d1d5db !important;
+  --tertiary-text: #9ca3af !important;
+  --accent-color: #34d399 !important;
+  --accent-hover: #10b981 !important;
+  --border-color: #374151 !important;
+  --border-focus: #4b5563 !important;
+  --card-background: #1f2937 !important;
+  --card-border: #374151 !important;
+  --button-primary: #34d399 !important;
+  --button-primary-hover: #10b981 !important;
+  --button-secondary: #6b7280 !important;
+  --button-secondary-hover: #9ca3af !important;
+  --input-background: #374151 !important;
+  --input-border: #4b5563 !important;
+  --input-focus: #34d399 !important;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3) !important;
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3) !important;
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3) !important;
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.3), 0 8px 10px -6px rgb(0 0 0 / 0.3) !important;
+  /* Fishing quality colors - same for both themes */
+  --quality-excellent: #10b981 !important;
+  --quality-good: #3b82f6 !important;
+  --quality-average: #f59e0b !important;
+  --quality-poor: #ef4444 !important;
+  /* Error and success colors - dark theme */
+  --error-background: #7f1d1d !important;
+  --error-border: #991b1b !important;
+  --error-text: #fca5a5 !important;
+  --success-background: #14532d !important;
+  --success-border: #166534 !important;
+  --success-text: #86efac !important;
+}
+
+/* Ensure body element always uses CSS variables with highest specificity */
+body {
+  background-color: var(--primary-background) !important;
+  color: var(--primary-text) !important;
+}
+
+/* Dark mode uses class strategy; html.dark enables dark: variants */
 
 /* Base typography and smoothing */
 @layer base {
-    html { font-feature-settings: "cv02","cv03","cv04","cv11"; }
-    body { @apply text-gray-800 dark:text-gray-100; }
-    h1 { @apply font-semibold tracking-tight; }
-    h2 { @apply font-semibold tracking-tight; }
+    html {
+        font-feature-settings: "cv02","cv03","cv04","cv11";
+        transition: background-color 0.3s ease, color 0.3s ease;
+    }
+    body {
+        background-color: var(--primary-background) !important;
+        color: var(--primary-text) !important;
+        transition: background-color 0.3s ease, color 0.3s ease;
+        min-height: 100vh;
+    }
+    h1 {
+        color: var(--primary-text) !important;
+        @apply font-semibold tracking-tight;
+    }
+    h2 {
+        color: var(--primary-text) !important;
+        @apply font-semibold tracking-tight;
+    }
 }
 
 /* Custom styles from the original application */
 @layer components {
     .form-label {
-        @apply block mb-2 font-medium text-gray-700 dark:text-gray-300;
+        @apply block mb-2 font-medium;
+        color: var(--primary-text) !important;
     }
 }
 
@@ -24,14 +141,25 @@
     .calendar-day {
         @apply min-h-[80px] cursor-pointer flex flex-col items-center justify-around p-1;
         transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        background-color: var(--card-background) !important;
+        border: 1px solid var(--card-border) !important;
+        color: var(--primary-text) !important;
     }
 
     .calendar-day:hover {
-        @apply -translate-y-0.5 shadow-lg;
+        @apply -translate-y-0.5;
+        box-shadow: var(--shadow-lg) !important;
+    }
+
+    .calendar-day-empty {
+        @apply min-h-[80px] rounded-lg;
+        background-color: var(--secondary-background) !important;
+        border: 1px solid var(--border-color) !important;
     }
 
     .day-number {
         @apply text-lg font-semibold;
+        color: var(--primary-text) !important;
     }
 
     .quality-indicator {
@@ -52,19 +180,19 @@
 
 @layer components {
     .quality-excellent {
-        @apply bg-emerald-500;
+        background-color: var(--quality-excellent) !important;
     }
 
     .quality-good {
-        @apply bg-blue-500;
+        background-color: var(--quality-good) !important;
     }
 
     .quality-average {
-        @apply bg-amber-500;
+        background-color: var(--quality-average) !important;
     }
 
     .quality-poor {
-        @apply bg-red-500;
+        background-color: var(--quality-poor) !important;
     }
 
     .quality-text {
@@ -155,30 +283,57 @@
 @layer components {
     .container-pro { @apply mx-auto max-w-7xl px-4 sm:px-6 lg:px-8; }
         .card {
-            @apply bg-white dark:bg-gray-800/80 backdrop-blur rounded-2xl shadow-sm ring-1 ring-gray-200/60 dark:ring-white/10;
+            background-color: var(--card-background);
+            border: 1px solid var(--card-border);
+            box-shadow: var(--shadow-sm);
+            @apply backdrop-blur rounded-2xl;
         }
     .card-padding { @apply p-6 sm:p-8; }
 
             .btn {
-                @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow;
+                @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+                box-shadow: var(--shadow-sm);
             }
             .btn-primary {
-                @apply bg-emerald-600 text-white hover:bg-emerald-500 active:bg-emerald-700;
+                background-color: var(--button-primary);
+                color: white;
+                @apply hover:shadow;
+            }
+            .btn-primary:hover {
+                background-color: var(--button-primary-hover);
             }
     .btn-secondary {
-        @apply bg-gray-900/80 text-white hover:bg-gray-900 focus-visible:ring-gray-900 dark:bg-gray-700 dark:hover:bg-gray-600;
+        background-color: var(--button-secondary);
+        color: white;
+        @apply focus-visible:ring-gray-900;
+    }
+    .btn-secondary:hover {
+        background-color: var(--button-secondary-hover);
     }
     .btn-ghost {
-        @apply bg-transparent text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/10;
+        background-color: transparent;
+        color: var(--primary-text);
+        @apply hover:bg-gray-100 dark:hover:bg-white/10;
     }
     .btn-warning {
-        @apply bg-amber-500 text-white hover:bg-amber-400 active:bg-amber-600;
+        background-color: #f59e0b;
+        color: white;
+        @apply hover:bg-amber-400 active:bg-amber-600;
     }
     .btn-danger {
-        @apply bg-red-600 text-white hover:bg-red-500 active:bg-red-700;
+        background-color: #ef4444;
+        color: white;
+        @apply hover:bg-red-500 active:bg-red-700;
     }
             .icon-btn {
-                @apply inline-flex items-center justify-center w-10 h-10 rounded-full bg-white/70 dark:bg-gray-800/80 ring-1 ring-gray-200/70 dark:ring-white/10 shadow-sm hover:shadow hover:-translate-y-0.5 transition-all text-gray-700 dark:text-gray-200 hover:text-emerald-600 dark:hover:text-emerald-400;
+                background-color: var(--card-background);
+                border: 1px solid var(--card-border);
+                color: var(--primary-text);
+                box-shadow: var(--shadow-sm);
+                @apply hover:shadow hover:-translate-y-0.5 transition-all rounded-full w-10 h-10 inline-flex items-center justify-center;
+            }
+            .icon-btn:hover {
+                color: var(--accent-color);
             }
 }
 
@@ -243,6 +398,12 @@
 }
 
 @layer components {
+    .moon-info-container {
+        background-color: var(--card-background) !important;
+        border: 1px solid var(--card-border) !important;
+        color: var(--primary-text) !important;
+    }
+
     .best-performing-insights p {
         @apply mb-2;
     }
@@ -255,7 +416,7 @@
     }
 
     .current-day-highlight {
-        box-shadow: 0 0 0 2px #0aa689;
+        box-shadow: 0 0 0 2px var(--accent-color) !important;
     }
 }
 
@@ -267,5 +428,23 @@
 
     .tacklebox-form.active {
         @apply block;
+    }
+
+    .data-filters-section {
+        background-color: var(--secondary-background) !important;
+    }
+
+    /* Dark mode - make data filters section darker */
+    body.dark-theme .data-filters-section,
+    html.dark .data-filters-section {
+        background-color: #111827 !important; /* Darker than modal background */
+    }
+
+    /* Dark mode - make modal headers darker than calendar background */
+    body.dark-theme .modal-header,
+    html.dark .modal-header,
+    body.dark-theme [data-modal-header="true"],
+    html.dark [data-modal-header="true"] {
+        background-color: #0f172a !important; /* Much darker than card background #1f2937 */
     }
 }
