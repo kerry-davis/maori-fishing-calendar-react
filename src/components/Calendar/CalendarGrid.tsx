@@ -29,20 +29,10 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
   const daysInMonth = lastDayOfMonth.getDate();
   const startingDayOfWeek = (firstDayOfMonth.getDay() + 6) % 7; // 0 = Monday, 1 = Tuesday, etc.
 
-  // We only show current month days, so these calculations are not needed
 
   // Create array of all days to display
   const calendarDays = [];
 
-  // Add empty cells for days before the first day of the month
-  for (let i = 0; i < startingDayOfWeek; i++) {
-    calendarDays.push({
-      date: null,
-      isCurrentMonth: false,
-      dayNumber: null,
-      isEmpty: true,
-    });
-  }
 
   // Pre-calculate lunar phases for all days in the month to avoid loading states
   const lunarPhases = useMemo(() => {
@@ -69,17 +59,6 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
     });
   }
 
-  // Add empty cells for remaining days to complete the grid if needed
-  const totalCells = 42; // 6 rows × 7 days
-  const remainingCells = totalCells - calendarDays.length;
-  for (let i = 0; i < remainingCells; i++) {
-    calendarDays.push({
-      date: null,
-      isCurrentMonth: false,
-      dayNumber: null,
-      isEmpty: true,
-    });
-  }
 
   return (
     <div className="calendar-grid">
@@ -88,7 +67,8 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
         {DAY_NAMES.map((dayName) => (
           <div
             key={dayName}
-            className="text-center text-sm font-semibold text-gray-600 dark:text-gray-400 py-2"
+            className="text-center text-sm font-semibold py-2"
+            style={{ color: 'var(--secondary-text)' }}
           >
             {dayName}
           </div>
@@ -98,18 +78,11 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
       {/* Calendar days grid */}
       <div id="calendarDays" className="grid grid-cols-7 gap-1">
         {calendarDays.map((dayData, index) => {
-          // Render empty cell for non-current month days
-          if (dayData.isEmpty || !dayData.date) {
-            return (
-              <div
-                key={`empty-${index}`}
-                className="calendar-day-empty min-h-[80px] rounded-lg"
-              />
-            );
-          }
-
           const dayKey = `${dayData.date.getFullYear()}-${dayData.date.getMonth()}-${dayData.date.getDate()}`;
           const hasTrips = daysWithTrips.has(dayKey);
+
+          // Calculate grid column start position for the first day of the month
+          const gridColumnStart = index === 0 ? startingDayOfWeek + 1 : 'auto';
 
           return (
             <CalendarDay
@@ -121,6 +94,7 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
               hasTrips={hasTrips}
               onDateSelect={onDateSelect}
               lunarPhase={dayData.lunarPhase}
+              style={index === 0 ? { gridColumnStart } : undefined}
             />
           );
         })}
