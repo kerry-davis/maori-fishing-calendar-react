@@ -957,30 +957,32 @@ await batch.commit();
     console.log("Checking for orphaned data in Firestore...");
 
     try {
-      // Get all trips for this user
+      // Get all trips for this user - collect both local IDs and Firebase document IDs
       const tripsQuery = query(
         collection(firestore, 'trips'),
         where('userId', '==', this.userId)
       );
       const tripsSnapshot = await getDocs(tripsQuery);
-      const validTripIds = new Set();
+      const validLocalTripIds = new Set();
+      const validFirebaseTripIds = new Set();
 
       tripsSnapshot.forEach(doc => {
         const tripData = doc.data();
         if (tripData.id) {
-          validTripIds.add(tripData.id);
+          validLocalTripIds.add(tripData.id); // Local trip ID
         }
+        validFirebaseTripIds.add(doc.id); // Firebase document ID
       });
 
-      console.log(`Found ${validTripIds.size} valid trips in Firestore`);
+      console.log(`Found ${validLocalTripIds.size} valid trips in Firestore (local IDs: ${Array.from(validLocalTripIds).join(', ')})`);
 
       // Only proceed with cleanup if we have trips to validate against
-      if (validTripIds.size === 0) {
+      if (validLocalTripIds.size === 0) {
         console.log("No trips found - skipping orphaned data cleanup to avoid removing valid data");
         return;
       }
 
-      // Check weather logs
+      // Check weather logs - they should have local trip IDs
       const weatherQuery = query(
         collection(firestore, 'weatherLogs'),
         where('userId', '==', this.userId)
@@ -990,15 +992,16 @@ await batch.commit();
 
       weatherSnapshot.forEach(doc => {
         const data = doc.data();
-        // Only consider as orphaned if tripId is missing OR if it's not in our valid trips
-        // But be more lenient - only remove if we're confident it's orphaned
-        if (!data.tripId || !validTripIds.has(data.tripId)) {
+        // Weather logs should have local trip IDs, not Firebase document IDs
+        if (!data.tripId || !validLocalTripIds.has(data.tripId)) {
           console.log(`Found potentially orphaned weather log: ${doc.id} with tripId: ${data.tripId}`);
+          console.log(`  Valid local trip IDs: ${Array.from(validLocalTripIds).join(', ')}`);
+          console.log(`  Valid Firebase trip IDs: ${Array.from(validFirebaseTripIds).join(', ')}`);
           orphanedWeatherDocs.push(doc.id);
         }
       });
 
-      // Check fish caught
+      // Check fish caught - they should have local trip IDs
       const fishQuery = query(
         collection(firestore, 'fishCaught'),
         where('userId', '==', this.userId)
@@ -1008,10 +1011,11 @@ await batch.commit();
 
       fishSnapshot.forEach(doc => {
         const data = doc.data();
-        // Only consider as orphaned if tripId is missing OR if it's not in our valid trips
-        // But be more lenient - only remove if we're confident it's orphaned
-        if (!data.tripId || !validTripIds.has(data.tripId)) {
+        // Fish caught should have local trip IDs, not Firebase document IDs
+        if (!data.tripId || !validLocalTripIds.has(data.tripId)) {
           console.log(`Found potentially orphaned fish caught: ${doc.id} with tripId: ${data.tripId}`);
+          console.log(`  Valid local trip IDs: ${Array.from(validLocalTripIds).join(', ')}`);
+          console.log(`  Valid Firebase trip IDs: ${Array.from(validFirebaseTripIds).join(', ')}`);
           orphanedFishDocs.push(doc.id);
         }
       });
@@ -1238,9 +1242,10 @@ await batch.commit();
 
     for (const log of validWeatherLogs) {
       const { id: localId, tripId: localTripId, ...logData } = log;
-      const newTripId = tripIdMap.get(localTripId);
+      // Keep the original local trip ID - don't replace with Firebase document ID
+      const originalTripId = localTripId;
 
-      if (newTripId) {
+      if (originalTripId) {
         // Check if weather log already exists in Firestore
         const existingFirebaseId = await getExistingWeatherLogFirebaseId(localId);
 
@@ -1249,13 +1254,13 @@ await batch.commit();
           console.log(`Weather log ${localId} already exists in Firestore, updating...`);
           const logRef = doc(firestore, 'weatherLogs', existingFirebaseId);
           const cleanLog = cleanForFirebase(logData);
-          batch.update(logRef, { ...cleanLog, tripId: newTripId, userId: this.userId, updatedAt: serverTimestamp() });
+          batch.update(logRef, { ...cleanLog, tripId: originalTripId, userId: this.userId, updatedAt: serverTimestamp() });
         } else {
           // Weather log doesn't exist, create new one
           console.log(`Weather log ${localId} doesn't exist in Firestore, creating...`);
           const newLogRef = doc(collection(firestore, 'weatherLogs'));
           const cleanLog = cleanForFirebase(logData);
-          batch.set(newLogRef, { ...cleanLog, tripId: newTripId, userId: this.userId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+          batch.set(newLogRef, { ...cleanLog, tripId: originalTripId, userId: this.userId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
         }
       }
     }
@@ -1271,9 +1276,10 @@ await batch.commit();
 
     for (const fish of validFishCaught) {
       const { id: localId, tripId: localTripId, ...fishData } = fish;
-      const newTripId = tripIdMap.get(localTripId);
+      // Keep the original local trip ID - don't replace with Firebase document ID
+      const originalTripId = localTripId;
 
-      if (newTripId) {
+      if (originalTripId) {
         // Check if fish caught already exists in Firestore
         const existingFirebaseId = await getExistingFishCaughtFirebaseId(localId);
 
@@ -1282,13 +1288,13 @@ await batch.commit();
           console.log(`Fish caught ${localId} already exists in Firestore, updating...`);
           const fishRef = doc(firestore, 'fishCaught', existingFirebaseId);
           const cleanFish = cleanForFirebase(fishData);
-          batch.update(fishRef, { ...cleanFish, tripId: newTripId, userId: this.userId, updatedAt: serverTimestamp() });
+          batch.update(fishRef, { ...cleanFish, tripId: originalTripId, userId: this.userId, updatedAt: serverTimestamp() });
         } else {
           // Fish caught doesn't exist, create new one
           console.log(`Fish caught ${localId} doesn't exist in Firestore, creating...`);
           const newFishRef = doc(collection(firestore, 'fishCaught'));
           const cleanFish = cleanForFirebase(fishData);
-          batch.set(newFishRef, { ...cleanFish, tripId: newTripId, userId: this.userId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+          batch.set(newFishRef, { ...cleanFish, tripId: originalTripId, userId: this.userId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
         }
       }
     }
@@ -1407,17 +1413,20 @@ await batch.commit();
       // Clear local storage first to avoid duplicates
       await databaseService.clearAllData();
 
-      // Store Firebase data locally for guest mode access
+      // Store Firebase data locally for guest mode access - preserving original IDs
       for (const trip of firebaseTrips) {
-        await databaseService.createTrip(trip);
+        // Use updateTrip which uses put() internally - preserves original ID
+        await databaseService.updateTrip(trip);
       }
 
       for (const weatherLog of firebaseWeatherLogs) {
-        await databaseService.createWeatherLog(weatherLog);
+        // Use updateWeatherLog which uses put() internally - preserves original ID
+        await databaseService.updateWeatherLog(weatherLog);
       }
 
       for (const fishCaught of firebaseFishCaught) {
-        await databaseService.createFishCaught(fishCaught);
+        // Use updateFishCaught which uses put() internally - preserves original ID
+        await databaseService.updateFishCaught(fishCaught);
       }
 
       console.log("Successfully downloaded Firebase data to local storage for guest mode access");
