@@ -1,6 +1,7 @@
 import type { FC } from 'react';
 import { useThemeContext } from '../../contexts';
 import { AuthButton } from '../Auth/AuthButton';
+import { Container } from '../UI';
 
 interface HeaderProps {
   onSearchClick: () => void;
@@ -19,62 +20,61 @@ const Header: FC<HeaderProps> = ({
 }) => {
   const { isDark, toggleTheme } = useThemeContext();
 
+  // Debug logging for theme toggle
+  const handleThemeToggle = () => {
+    console.log('Header: Theme toggle clicked, current isDark:', isDark);
+    console.log('Header: Calling toggleTheme function');
+    toggleTheme();
+    console.log('Header: toggleTheme function called');
+  };
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-center mb-8">
-      <div className="hidden md:block"></div>
-      <header className="text-center md:col-span-2">
-        <h1 className="responsive-title text-3xl md:text-4xl font-bold text-gray-800 dark:text-gray-100 mb-2">
-          Māori Fishing Calendar
-        </h1>
-        <p className="text-gray-600 dark:text-gray-400">
-          Find the best fishing days based on the Māori lunar calendar
-        </p>
-      </header>
-      <div className="flex space-x-2 justify-center md:justify-end">
-        <button 
-          onClick={onSearchClick}
-          className="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-full w-10 h-10 flex items-center justify-center shadow-md hover:bg-gray-300 dark:hover:bg-gray-600 transition"
-          title="Search Logs"
-        >
-          <i className="fas fa-search"></i>
-        </button>
-        <button 
-          onClick={onAnalyticsClick}
-          className="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-full w-10 h-10 flex items-center justify-center shadow-md hover:bg-gray-300 dark:hover:bg-gray-600 transition"
-          title="Analytics"
-        >
-          <i className="fas fa-chart-line"></i>
-        </button>
-        <button 
-          onClick={onSettingsClick}
-          className="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-full w-10 h-10 flex items-center justify-center shadow-md hover:bg-gray-300 dark:hover:bg-gray-600 transition"
-          title="Settings"
-        >
-          <i className="fas fa-cog"></i>
-        </button>
-        <button 
-          onClick={onTackleBoxClick}
-          className="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-full w-10 h-10 flex items-center justify-center shadow-md hover:bg-gray-300 dark:hover:bg-gray-600 transition"
-          title="Tackle Box"
-        >
-          <i className="fas fa-box"></i>
-        </button>
-        <button
-          onClick={onGalleryClick}
-          className="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-full w-10 h-10 flex items-center justify-center shadow-md hover:bg-gray-300 dark:hover:bg-gray-600 transition"
-          title="Gallery"
-        >
-          <i className="fas fa-images"></i>
-        </button>
-        <button
-          onClick={toggleTheme}
-          className="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-full w-10 h-10 flex items-center justify-center shadow-md hover:bg-gray-300 dark:hover:bg-gray-600 transition"
-          title="Toggle Theme"
-        >
-          <i className={`fas ${isDark ? 'fa-sun' : 'fa-moon'}`}></i>
-        </button>
-        <AuthButton />
-      </div>
+    <div className="sticky top-0 z-40 backdrop-blur supports-[backdrop-filter]:bg-white/70 bg-white/90 dark:bg-gray-900/70 ring-1 ring-gray-200/60 dark:ring-white/10 rounded-b-2xl shadow-sm mb-8" style={{ backgroundColor: 'var(--card-background)' }}>
+      <Container className="py-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="text-left">
+            <h1 className="responsive-title text-2xl sm:text-3xl md:text-4xl font-semibold tracking-tight" style={{ color: 'var(--primary-text)' }}>
+              Māori Fishing Calendar
+            </h1>
+            <p className="hidden sm:block text-sm" style={{ color: 'var(--secondary-text)' }}>
+              Find the best fishing days based on the Māori lunar calendar
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={onSearchClick} className="icon-btn" title="Search Logs">
+              <i className="fas fa-search" />
+            </button>
+            <button onClick={onAnalyticsClick} className="icon-btn" title="Analytics">
+              <i className="fas fa-chart-line" />
+            </button>
+            <button onClick={onSettingsClick} className="icon-btn" title="Settings">
+              <i className="fas fa-cog" />
+            </button>
+            <button onClick={onTackleBoxClick} className="icon-btn" title="Tackle Box">
+              <i className="fas fa-box" />
+            </button>
+            <button onClick={onGalleryClick} className="icon-btn" title="Gallery">
+              <i className="fas fa-images" />
+            </button>
+            <button
+              type="button"
+              onClick={handleThemeToggle}
+              className="icon-btn"
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'var(--accent-color)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'var(--primary-text)';
+              }}
+              aria-pressed={isDark}
+              title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              <i className={`fas ${isDark ? 'fa-sun' : 'fa-moon'}`} />
+            </button>
+            <AuthButton />
+          </div>
+        </div>
+      </Container>
     </div>
   );
 };

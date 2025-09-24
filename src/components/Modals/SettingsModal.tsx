@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { Button } from '../UI';
 import { Modal, ModalHeader, ModalBody } from './Modal';
 import { dataExportService } from '../../services/dataExportService';
 
@@ -107,80 +108,53 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       <ModalBody>
         <div className="space-y-6">
         {/* Data Export Section */}
-        <div className="border-b border-gray-200 dark:border-gray-700 pb-6">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+        <div className="pb-6" style={{ borderBottom: '1px solid var(--border-color)' }}>
+          <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--primary-text)' }}>
             Export Data
           </h3>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+          <p className="text-sm mb-4" style={{ color: 'var(--secondary-text)' }}>
             Export your fishing logs, weather data, and tackle box information.
           </p>
           
           <div className="flex flex-col sm:flex-row gap-3">
-            <button
-              onClick={handleExportJSON}
-              disabled={isExportingJSON || isExportingCSV}
-              className="flex items-center justify-center px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg transition-colors duration-200"
-            >
-              {isExportingJSON ? (
-                <>
-                  <i className="fas fa-spinner fa-spin mr-2"></i>
-                  Exporting JSON...
-                </>
-              ) : (
+            <Button onClick={handleExportJSON} disabled={isExportingJSON || isExportingCSV} loading={isExportingJSON}>
+              {isExportingJSON ? 'Exporting JSON…' : (
                 <>
                   <i className="fas fa-download mr-2"></i>
                   Export as ZIP (JSON)
                 </>
               )}
-            </button>
+            </Button>
             
-            <button
-              onClick={handleExportCSV}
-              disabled={isExportingJSON || isExportingCSV}
-              className="flex items-center justify-center px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg transition-colors duration-200"
-            >
-              {isExportingCSV ? (
-                <>
-                  <i className="fas fa-spinner fa-spin mr-2"></i>
-                  Exporting CSV...
-                </>
-              ) : (
+            <Button onClick={handleExportCSV} disabled={isExportingJSON || isExportingCSV} loading={isExportingCSV}>
+              {isExportingCSV ? 'Exporting CSV…' : (
                 <>
                   <i className="fas fa-file-csv mr-2"></i>
                   Export as CSV
                 </>
               )}
-            </button>
+            </Button>
           </div>
         </div>
 
         {/* Data Import Section */}
-        <div className="border-b border-gray-200 dark:border-gray-700 pb-6">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+        <div className="pb-6" style={{ borderBottom: '1px solid var(--border-color)' }}>
+          <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--primary-text)' }}>
             Import Data
           </h3>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+          <p className="text-sm mb-4" style={{ color: 'var(--secondary-text)' }}>
             Import data from a previously exported ZIP file or JSON file. This will replace all existing data.
           </p>
           
           <div className="flex flex-col gap-3">
-            <button
-              onClick={handleImportClick}
-              disabled={isImporting}
-              className="flex items-center justify-center px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white rounded-lg transition-colors duration-200"
-            >
-              {isImporting ? (
-                <>
-                  <i className="fas fa-spinner fa-spin mr-2"></i>
-                  Importing...
-                </>
-              ) : (
+            <Button onClick={handleImportClick} disabled={isImporting} loading={isImporting}>
+              {isImporting ? 'Importing…' : (
                 <>
                   <i className="fas fa-upload mr-2"></i>
                   Import Data File
                 </>
               )}
-            </button>
+            </Button>
             
             <input
               ref={fileInputRef}
@@ -190,7 +164,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               className="hidden"
             />
             
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+            <p className="text-xs" style={{ color: 'var(--secondary-text)' }}>
               Supported formats: ZIP files (exported from this app) or JSON files
             </p>
           </div>
@@ -200,20 +174,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         {(exportError || importError || importSuccess) && (
           <div className="space-y-3">
             {exportError && (
-              <div className="p-3 bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-lg">
+              <div className="p-3 rounded-lg" style={{ backgroundColor: 'var(--error-background)', border: '1px solid var(--error-border)' }}>
                 <div className="flex items-start">
-                  <i className="fas fa-exclamation-triangle text-red-600 dark:text-red-400 mr-2 mt-0.5"></i>
+                  <i className="fas fa-exclamation-triangle mr-2 mt-0.5" style={{ color: 'var(--error-text)' }}></i>
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-red-800 dark:text-red-200">
+                    <p className="text-sm font-medium" style={{ color: 'var(--error-text)' }}>
                       Export Error
                     </p>
-                    <p className="text-sm text-red-700 dark:text-red-300 mt-1">
+                    <p className="text-sm mt-1" style={{ color: 'var(--error-text)' }}>
                       {exportError}
                     </p>
                   </div>
                   <button
                     onClick={clearErrors}
-                    className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200"
+                    className="transition-colors"
+                    style={{ color: 'var(--error-text)' }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.color = 'var(--error-text)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.color = 'var(--error-text)';
+                    }}
                   >
                     <i className="fas fa-times"></i>
                   </button>
@@ -222,20 +203,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             )}
 
             {importError && (
-              <div className="p-3 bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-lg">
+              <div className="p-3 rounded-lg" style={{ backgroundColor: 'var(--error-background)', border: '1px solid var(--error-border)' }}>
                 <div className="flex items-start">
-                  <i className="fas fa-exclamation-triangle text-red-600 dark:text-red-400 mr-2 mt-0.5"></i>
+                  <i className="fas fa-exclamation-triangle mr-2 mt-0.5" style={{ color: 'var(--error-text)' }}></i>
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-red-800 dark:text-red-200">
+                    <p className="text-sm font-medium" style={{ color: 'var(--error-text)' }}>
                       Import Error
                     </p>
-                    <p className="text-sm text-red-700 dark:text-red-300 mt-1">
+                    <p className="text-sm mt-1" style={{ color: 'var(--error-text)' }}>
                       {importError}
                     </p>
                   </div>
                   <button
                     onClick={clearErrors}
-                    className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200"
+                    className="transition-colors"
+                    style={{ color: 'var(--error-text)' }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.color = 'var(--error-text)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.color = 'var(--error-text)';
+                    }}
                   >
                     <i className="fas fa-times"></i>
                   </button>
@@ -244,20 +232,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             )}
 
             {importSuccess && (
-              <div className="p-3 bg-green-100 dark:bg-green-900/20 border border-green-300 dark:border-green-700 rounded-lg">
+              <div className="p-3 rounded-lg" style={{ backgroundColor: 'var(--success-background)', border: '1px solid var(--success-border)' }}>
                 <div className="flex items-start">
-                  <i className="fas fa-check-circle text-green-600 dark:text-green-400 mr-2 mt-0.5"></i>
+                  <i className="fas fa-check-circle mr-2 mt-0.5" style={{ color: 'var(--success-text)' }}></i>
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-green-800 dark:text-green-200">
+                    <p className="text-sm font-medium" style={{ color: 'var(--success-text)' }}>
                       Import Successful
                     </p>
-                    <p className="text-sm text-green-700 dark:text-green-300 mt-1">
+                    <p className="text-sm mt-1" style={{ color: 'var(--success-text)' }}>
                       {importSuccess}
                     </p>
                   </div>
                   <button
                     onClick={clearErrors}
-                    className="text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-200"
+                    className="transition-colors"
+                    style={{ color: 'var(--success-text)' }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.color = 'var(--success-text)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.color = 'var(--success-text)';
+                    }}
                   >
                     <i className="fas fa-times"></i>
                   </button>
@@ -269,10 +264,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
         {/* App Information */}
         <div>
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--primary-text)' }}>
             About
           </h3>
-          <div className="text-sm text-gray-600 dark:text-gray-400 space-y-2">
+          <div className="text-sm space-y-2" style={{ color: 'var(--secondary-text)' }}>
             <p>
               <strong>Māori Fishing Calendar</strong> - React Version
             </p>

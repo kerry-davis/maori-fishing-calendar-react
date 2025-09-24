@@ -377,7 +377,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                         handleInputChange("photo", "");
                         handleInputChange("photoPath", "");
                       }}
-                      className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs font-medium transition-colors"
+                      className="absolute top-2 right-2 btn btn-danger px-2 py-1 text-xs"
                     >
                       Delete Photo
                     </button>
