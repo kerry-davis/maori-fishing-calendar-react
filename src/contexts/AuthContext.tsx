@@ -65,8 +65,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await firebaseDataService.mergeLocalDataForUser();
         
         // Now clear local data to prevent duplicates with Firebase data
-        console.log('Clearing local data after merge to prevent duplicates');
-        await firebaseDataService.clearAllData();
+        // console.log('Clearing local data after merge to prevent duplicates');
+        // await firebaseDataService.clearAllData();
         
         console.log('Login completed - local data merged and Firebase data will be loaded fresh');
       } else if (!newUser && previousUser) {
