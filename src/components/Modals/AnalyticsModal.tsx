@@ -318,10 +318,13 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
       <ModalBody className="min-h-[600px]">
         {/* Error display */}
         {error && (
-          <div className="mb-4 p-4 bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-lg">
+          <div className="mb-4 p-4 border rounded-lg" style={{
+            backgroundColor: 'var(--error-background)',
+            borderColor: 'var(--error-border)'
+          }}>
             <div className="flex items-center">
               <i className="fas fa-exclamation-triangle text-red-500 mr-2"></i>
-              <span className="text-red-700 dark:text-red-300">{error}</span>
+              <span className="text-red-700 dark:text-red-300" style={{ color: 'var(--error-text)' }}>{error}</span>
             </div>
           </div>
         )}
@@ -330,7 +333,7 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
         {isLoading && (
           <div className="flex items-center justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-            <span className="ml-3 text-gray-600 dark:text-gray-400">Loading analytics...</span>
+            <span className="ml-3" style={{ color: 'var(--secondary-text)' }}>Loading analytics...</span>
           </div>
         )}
 
@@ -338,20 +341,25 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
         {!isLoading && !error && fishCaught.length > 0 && (
           <div className="space-y-8">
             {/* Chart type selection and filters */}
-            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-              <h4 className="text-lg font-semibold mb-4 text-gray-800 dark:text-gray-200">
+            <div className="rounded-lg p-4 data-filters-section">
+              <h4 className="text-lg font-semibold mb-4" style={{ color: 'var(--primary-text)' }}>
                 Data Filters
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="species-filter" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="species-filter" className="block text-sm font-medium mb-1" style={{ color: 'var(--primary-text)' }}>
                     Filter by Species
                   </label>
                   <select
                     id="species-filter"
                     value={selectedSpecies}
                     onChange={(e) => setSelectedSpecies(e.target.value)}
-                    className="w-full p-2 border rounded-md dark:bg-gray-600 dark:border-gray-500 dark:text-gray-100"
+                    className="w-full p-2 border rounded-md"
+                    style={{
+                      backgroundColor: 'var(--input-background)',
+                      borderColor: 'var(--input-border)',
+                      color: 'var(--primary-text)'
+                    }}
                   >
                     <option value="all">All Species</option>
                     {uniqueSpecies.map(species => (
@@ -360,14 +368,19 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
                   </select>
                 </div>
                 <div>
-                  <label htmlFor="gear-filter" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="gear-filter" className="block text-sm font-medium mb-1" style={{ color: 'var(--primary-text)' }}>
                     Filter by Gear Type
                   </label>
                   <select
                     id="gear-filter"
                     value={selectedGearType}
                     onChange={(e) => setSelectedGearType(e.target.value)}
-                    className="w-full p-2 border rounded-md dark:bg-gray-600 dark:border-gray-500 dark:text-gray-100"
+                    className="w-full p-2 border rounded-md"
+                    style={{
+                      backgroundColor: 'var(--input-background)',
+                      borderColor: 'var(--input-border)',
+                      color: 'var(--primary-text)'
+                    }}
                   >
                     <option value="all">All Gear Types</option>
                     {uniqueGearTypes.map(gear => (
@@ -387,7 +400,7 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
 
             {/* Catch Breakdown */}
             <div>
-              <h4 className="text-xl font-semibold mb-4 text-gray-800 dark:text-gray-200">
+              <h4 className="text-xl font-semibold mb-4" style={{ color: 'var(--primary-text)' }}>
                 Catch Breakdown
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
