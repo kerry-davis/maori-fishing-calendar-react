@@ -105,14 +105,12 @@ export class FirebaseDataService {
     console.log('Creating trip with service userId:', this.userId);
     console.log('Auth currentUser UID:', auth.currentUser?.uid);
 
-    const tripWithUser = { ...sanitizedTripData, userId: this.userId };
+    const tripId = Date.now();
+    const tripWithUser = { ...sanitizedTripData, id: tripId, userId: this.userId };
     console.log('Trip data to save:', tripWithUser);
 
     if (this.isOnline) {
       try {
-        // Generate local ID first
-        const tripId = Date.now();
-
         const docRef = await addDoc(collection(firestore, 'trips'), {
           ...tripWithUser,
           createdAt: serverTimestamp(),
@@ -218,7 +216,7 @@ export class FirebaseDataService {
 
          querySnapshot.forEach((doc) => {
            const data = doc.data();
-           const localId = this.generateLocalId(doc.id);
+           const localId = data.id as number;
            this.storeLocalMapping('trips', localId.toString(), doc.id);
            trips.push(this.convertFromFirestore(data, localId, doc.id));
          });
@@ -261,7 +259,7 @@ export class FirebaseDataService {
 
         querySnapshot.forEach((doc) => {
           const data = doc.data();
-          const localId = this.generateLocalId(doc.id);
+          const localId = data.id as number;
           this.storeLocalMapping('trips', localId.toString(), doc.id);
           trips.push(this.convertFromFirestore(data, localId, doc.id));
         });
@@ -1216,14 +1214,14 @@ await batch.commit();
         console.log(`Trip ${localId} already exists in Firestore, updating...`);
         const tripRef = doc(firestore, 'trips', existingFirebaseId);
         const cleanTrip = cleanForFirebase(tripData);
-        batch.update(tripRef, { ...cleanTrip, userId: this.userId, updatedAt: serverTimestamp() });
+        batch.update(tripRef, { ...cleanTrip, id: localId, userId: this.userId, updatedAt: serverTimestamp() });
         tripIdMap.set(localId, existingFirebaseId);
       } else {
         // Trip doesn't exist, create new one
         console.log(`Trip ${localId} doesn't exist in Firestore, creating...`);
         const newTripRef = doc(collection(firestore, 'trips'));
         const cleanTrip = cleanForFirebase(tripData);
-        batch.set(newTripRef, { ...cleanTrip, userId: this.userId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+        batch.set(newTripRef, { ...cleanTrip, id: localId, userId: this.userId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
         tripIdMap.set(localId, newTripRef.id);
       }
     }
@@ -1254,13 +1252,13 @@ await batch.commit();
           console.log(`Weather log ${localId} already exists in Firestore, updating...`);
           const logRef = doc(firestore, 'weatherLogs', existingFirebaseId);
           const cleanLog = cleanForFirebase(logData);
-          batch.update(logRef, { ...cleanLog, tripId: originalTripId, userId: this.userId, updatedAt: serverTimestamp() });
+          batch.update(logRef, { ...cleanLog, id: localId, tripId: originalTripId, userId: this.userId, updatedAt: serverTimestamp() });
         } else {
           // Weather log doesn't exist, create new one
           console.log(`Weather log ${localId} doesn't exist in Firestore, creating...`);
           const newLogRef = doc(collection(firestore, 'weatherLogs'));
           const cleanLog = cleanForFirebase(logData);
-          batch.set(newLogRef, { ...cleanLog, tripId: originalTripId, userId: this.userId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+          batch.set(newLogRef, { ...cleanLog, id: localId, tripId: originalTripId, userId: this.userId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
         }
       }
     }
@@ -1288,13 +1286,13 @@ await batch.commit();
           console.log(`Fish caught ${localId} already exists in Firestore, updating...`);
           const fishRef = doc(firestore, 'fishCaught', existingFirebaseId);
           const cleanFish = cleanForFirebase(fishData);
-          batch.update(fishRef, { ...cleanFish, tripId: originalTripId, userId: this.userId, updatedAt: serverTimestamp() });
+          batch.update(fishRef, { ...cleanFish, id: localId, tripId: originalTripId, userId: this.userId, updatedAt: serverTimestamp() });
         } else {
           // Fish caught doesn't exist, create new one
           console.log(`Fish caught ${localId} doesn't exist in Firestore, creating...`);
           const newFishRef = doc(collection(firestore, 'fishCaught'));
           const cleanFish = cleanForFirebase(fishData);
-          batch.set(newFishRef, { ...cleanFish, tripId: originalTripId, userId: this.userId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+          batch.set(newFishRef, { ...cleanFish, id: localId, tripId: originalTripId, userId: this.userId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
         }
       }
     }
