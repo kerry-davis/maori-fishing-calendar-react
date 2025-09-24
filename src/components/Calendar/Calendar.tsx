@@ -132,19 +132,21 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect, refreshTrigger
           <button
             id="prevMonth"
             onClick={handlePrevMonth}
-            className="p-2 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+            className="p-2 rounded-lg transition-colors"
+            style={{ backgroundColor: "#0AA689" }}
             aria-label="Previous month"
           >
-            <i className="fas fa-chevron-left text-gray-700 dark:text-gray-300"></i>
+            <i className="fas fa-chevron-left text-white"></i>
           </button>
 
           <button
             id="nextMonth"
             onClick={handleNextMonth}
-            className="p-2 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+            className="p-2 rounded-lg transition-colors"
+            style={{ backgroundColor: "#0AA689" }}
             aria-label="Next month"
           >
-            <i className="fas fa-chevron-right text-gray-700 dark:text-gray-300"></i>
+            <i className="fas fa-chevron-right text-white"></i>
           </button>
         </div>
       </div>
