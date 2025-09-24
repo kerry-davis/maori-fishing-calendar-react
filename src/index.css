@@ -1,6 +1,17 @@
 @import "tailwindcss";
+/* Tailwind v4 content sources */
+@source "../index.html";
+@source "./**/*.{js,ts,jsx,tsx}";
 
-@custom-variant dark (&:where(.dark, .dark *));
+/* Dark mode variant is built-in in Tailwind v4; no custom variant needed */
+
+/* Base typography and smoothing */
+@layer base {
+    html { font-feature-settings: "cv02","cv03","cv04","cv11"; }
+    body { @apply text-gray-800 dark:text-gray-100; }
+    h1 { @apply font-semibold tracking-tight; }
+    h2 { @apply font-semibold tracking-tight; }
+}
 
 /* Custom styles from the original application */
 @layer components {
@@ -138,6 +149,42 @@
     .fade-out {
         animation: fadeOut 0.15s ease-in-out;
     }
+}
+
+/* Design System: Container, Card, Buttons */
+@layer components {
+    .container-pro { @apply mx-auto max-w-7xl px-4 sm:px-6 lg:px-8; }
+        .card {
+            @apply bg-white dark:bg-gray-800/80 backdrop-blur rounded-2xl shadow-sm ring-1 ring-gray-200/60 dark:ring-white/10;
+        }
+    .card-padding { @apply p-6 sm:p-8; }
+
+            .btn {
+                @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow;
+            }
+            .btn-primary {
+                @apply bg-emerald-600 text-white hover:bg-emerald-500 active:bg-emerald-700;
+            }
+    .btn-secondary {
+        @apply bg-gray-900/80 text-white hover:bg-gray-900 focus-visible:ring-gray-900 dark:bg-gray-700 dark:hover:bg-gray-600;
+    }
+    .btn-ghost {
+        @apply bg-transparent text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/10;
+    }
+    .btn-warning {
+        @apply bg-amber-500 text-white hover:bg-amber-400 active:bg-amber-600;
+    }
+    .btn-danger {
+        @apply bg-red-600 text-white hover:bg-red-500 active:bg-red-700;
+    }
+            .icon-btn {
+                @apply inline-flex items-center justify-center w-10 h-10 rounded-full bg-white/70 dark:bg-gray-800/80 ring-1 ring-gray-200/70 dark:ring-white/10 shadow-sm hover:shadow hover:-translate-y-0.5 transition-all text-gray-700 dark:text-gray-200 hover:text-emerald-600 dark:hover:text-emerald-400;
+            }
+}
+
+/* Focus visible improvements */
+@layer utilities {
+    .focus-ring { @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2; }
 }
 
 /* Responsive Refinements */
