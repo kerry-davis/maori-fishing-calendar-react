@@ -717,7 +717,8 @@ const TripCard: React.FC<TripCardProps> = ({
                 </p>
                 <button
                   onClick={() => onAddWeather(trip.id)}
-                  className="w-full bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded text-sm font-medium transition-colors"
+                  className="w-full px-4 py-2 text-white rounded text-sm font-medium transition"
+                  style={{ backgroundColor: "#0AA689" }}
                 >
                   Add Weather
                 </button>
@@ -818,7 +819,8 @@ const TripCard: React.FC<TripCardProps> = ({
             <div className="pt-2">
               <button
                 onClick={() => onAddFish(trip.id)}
-                className="w-full bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded text-sm font-medium transition-colors"
+                className="w-full px-4 py-2 text-white rounded text-sm font-medium transition"
+                style={{ backgroundColor: "#0AA689" }}
               >
                 Add Fish
               </button>
