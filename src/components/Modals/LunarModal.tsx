@@ -409,8 +409,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
         <div className="border-t dark:border-gray-700 pt-4 mb-4">
           <button
             onClick={handleTripLogOpen}
-            className="w-full px-4 py-2 bg-main-500 text-white rounded-md hover:bg-main-600 transition"
-            style={{ backgroundColor: "#0AA689" }}
+            className="btn btn-primary w-full"
           >
             <i className="fas fa-book-open mr-2"></i>
             {hasTripsForDate ? "View / Manage Trip Log" : "Create Trip Log"}
