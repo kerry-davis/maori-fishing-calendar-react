@@ -224,6 +224,9 @@ body {
     .modal.is-visible > div {
         @apply opacity-100 scale-100;
     }
+    .lunar-modal-body {
+        color: var(--primary-text);
+    }
 }
 @layer components {
     .modal-close-button {
