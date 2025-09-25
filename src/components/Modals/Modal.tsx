@@ -31,7 +31,7 @@ export const Modal: React.FC<ModalProps> = ({
   children,
   className = '',
   maxWidth = 'lg',
-  maxHeight = '90vh',
+  maxHeight = '85vh',
   closeOnBackdropClick = true,
   closeOnEscape = true,
   zIndex = 50
