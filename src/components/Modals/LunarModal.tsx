@@ -459,21 +459,15 @@ export const LunarModal: React.FC<LunarModalProps> = ({
               >
                 {lunarData.phase.quality}
               </div>
-              <p
-                className="text-sm mt-1"
-                style={{ color: "var(--secondary-text)" }}
-              >
+              <p className="text-sm mt-1" style={{ color: "#000000 !important" }}>
                 Moon age: {lunarData.moonAge.toFixed(1)} days
               </p>
-              <p className="text-sm" style={{ color: "var(--secondary-text)" }}>
+              <p className="text-sm" style={{ color: "#000000 !important" }}>
                 Illumination: {Math.round(lunarData.illumination * 100)}%
               </p>
             </div>
           </div>
-          <p
-            className="text-sm mb-4"
-            style={{ color: "var(--secondary-text)" }}
-          >
+          <p className="text-sm mb-4" style={{ color: "#000000 !important" }}>
             {lunarData.phase.description}
           </p>
           {/* Trip Log Section */}
@@ -488,7 +482,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
           </div>
           {/* Bite Times Section */}
           <div className="border-t dark:border-gray-700 pt-4 mb-4">
-            <h4 className="font-semibold text-lg mb-3 text-gray-900 dark:text-gray-100">
+            <h4 className="form-label text-lg mb-3">
               Bite Times
             </h4>
 
@@ -565,7 +559,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
                 <button
                   onClick={handleLocationRequest}
                   disabled={isRequestingLocation}
-                  className="px-3 py-2 bg-main-500 text-white rounded-r-md hover:bg-main-600 transition disabled:opacity-50"
+                  className="bg-black px-3 py-2 text-white rounded-r-md transition disabled:opacity-50"
                   title="Use current location"
                 >
                   <i
@@ -580,10 +574,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
                 </p>
               )}
               {userLocation && (
-                <p
-                  className="text-sm mt-1"
-                  style={{ color: "var(--secondary-text)" }}
-                >
+                <p className="text-sm mt-1" style={{ color: "#000000 !important" }}>
                   Current: {userLocation.name}
                 </p>
               )}
@@ -593,17 +584,14 @@ export const LunarModal: React.FC<LunarModalProps> = ({
             {biteTimesData ? (
               <>
                 <div className="mb-4">
-                  <h5 className="font-medium text-green-600 dark:text-green-400 mb-2">
+                  <h5 className="form-label text-green-600 dark:text-green-400 mb-2">
                     Major Bites
                   </h5>
                   <div className="space-y-1">
                     {biteTimesData.major.length > 0 ? (
                       biteTimesData.major.map(renderBiteTime)
                     ) : (
-                      <p
-                        className="text-sm"
-                        style={{ color: "var(--secondary-text)" }}
-                      >
+                      <p className="text-sm" style={{ color: "#000000 !important" }}>
                         No major bite times for this day
                       </p>
                     )}
@@ -611,17 +599,14 @@ export const LunarModal: React.FC<LunarModalProps> = ({
                 </div>
 
                 <div>
-                  <h5 className="font-medium text-blue-600 dark:text-blue-400 mb-2">
+                  <h5 className="form-label text-blue-600 dark:text-blue-400 mb-2">
                     Minor Bites
                   </h5>
                   <div className="space-y-1">
                     {biteTimesData.minor.length > 0 ? (
                       biteTimesData.minor.map(renderBiteTime)
                     ) : (
-                      <p
-                        className="text-sm"
-                        style={{ color: "var(--secondary-text)" }}
-                      >
+                      <p className="text-sm" style={{ color: "#000000 !important" }}>
                         No minor bite times for this day
                       </p>
                     )}
@@ -629,17 +614,17 @@ export const LunarModal: React.FC<LunarModalProps> = ({
                 </div>
               </>
             ) : (
-              <p className="text-sm" style={{ color: "var(--secondary-text)" }}>
+              <p className="text-sm" style={{ color: "#000000 !important" }}>
                 Set a location to see bite times
               </p>
             )}
           </div>
           {/* Weather Forecast Section */}
           <div className="border-t dark:border-gray-700 pt-4 mb-4">
-            <h4 className="font-semibold text-lg mb-3 text-gray-900 dark:text-gray-100">
+            <h4 className="form-label text-lg mb-3">
               Weather Forecast
             </h4>
-            <div className="text-sm" style={{ color: "var(--secondary-text)" }}>
+            <div className="text-sm" style={{ color: "#000000 !important" }}>
               {weatherLoading ? (
                 <p>Loading weather...</p>
               ) : weatherError ? (
@@ -662,7 +647,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
                   </p>
                 </div>
               ) : !userLocation ? (
-                <p>Set a location to see weather forecast</p>
+                <p style={{ color: "#000000 !important" }}>Set a location to see weather forecast</p>
               ) : !isWeatherAvailable(currentDate) ? (
                 <p>Weather forecast not available for this date</p>
               ) : (
@@ -672,10 +657,10 @@ export const LunarModal: React.FC<LunarModalProps> = ({
           </div>
           {/* Sun and Moon Times Section */}
           <div className="border-t dark:border-gray-700 pt-4 mb-4">
-            <h4 className="font-semibold text-lg mb-3 text-gray-900 dark:text-gray-100">
+            <h4 className="form-label text-lg mb-3">
               Sun & Moon
             </h4>
-            <div className="text-sm" style={{ color: "var(--secondary-text)" }}>
+            <div className="text-sm" style={{ color: "#000000 !important" }}>
               {sunMoonTimes ? (
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -688,50 +673,50 @@ export const LunarModal: React.FC<LunarModalProps> = ({
                   </div>
                 </div>
               ) : (
-                <p>Set a location to see sun and moon times</p>
+                <p style={{ color: "#000000 !important" }}>Set a location to see sun and moon times</p>
               )}
             </div>{" "}
           </div>
           {/* Bite Time Quality Legend */}
-          <div className="border-t dark:border-gray-700 pt-4">
-            <h5 className="font-semibold mb-2 dark:text-gray-100">
+          <div className="border-t dark:border-gray-700 pt-4" style={{ color: "#000000 !important" }}>
+            <h5 className="form-label mb-2">
               Bite Time Quality Legend
             </h5>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-2 dark:text-gray-300">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2" style={{ color: "#000000 !important" }}>
               <div className="flex items-center">
                 <i
                   className="fas fa-fish mr-2"
                   style={{ color: BITE_QUALITY_COLORS.excellent }}
                 ></i>
-                <span className="text-sm">Excellent</span>
+                <span className="text-sm" style={{ color: "#000000 !important" }}>Excellent</span>
               </div>
               <div className="flex items-center">
                 <i
                   className="fas fa-fish mr-2"
                   style={{ color: BITE_QUALITY_COLORS.good }}
                 ></i>
-                <span className="text-sm">Good</span>
+                <span className="text-sm" style={{ color: "#000000 !important" }}>Good</span>
               </div>
               <div className="flex items-center">
                 <i
                   className="fas fa-fish mr-2"
                   style={{ color: BITE_QUALITY_COLORS.average }}
                 ></i>
-                <span className="text-sm">Average</span>
+                <span className="text-sm" style={{ color: "#000000 !important" }}>Average</span>
               </div>
               <div className="flex items-center">
                 <i
                   className="fas fa-fish mr-2"
                   style={{ color: BITE_QUALITY_COLORS.fair }}
                 ></i>
-                <span className="text-sm">Fair</span>
+                <span className="text-sm" style={{ color: "#000000 !important" }}>Fair</span>
               </div>
               <div className="flex items-center">
                 <i
                   className="fas fa-fish mr-2"
                   style={{ color: BITE_QUALITY_COLORS.poor }}
                 ></i>
-                <span className="text-sm">Poor</span>
+                <span className="text-sm" style={{ color: "#000000 !important" }}>Poor</span>
               </div>
             </div>
           </div>
