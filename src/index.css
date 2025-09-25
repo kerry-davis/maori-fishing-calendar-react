@@ -330,11 +330,30 @@ body {
                 border: 1px solid var(--card-border);
                 color: var(--primary-text);
                 box-shadow: var(--shadow-sm);
-                @apply hover:shadow hover:-translate-y-0.5 transition-all rounded-full w-10 h-10 inline-flex items-center justify-center;
+                @apply hover:shadow hover:-translate-y-0.5 transition-all rounded-lg w-7 h-7 sm:w-8 sm:h-8 md:w-9 md:h-9 lg:w-10 lg:h-10 inline-flex items-center justify-center;
+            }
+
+            /* Mobile menu icon buttons with labels */
+            .mobile-menu .icon-btn {
+                @apply rounded-sm min-h-[24px] flex-col justify-center;
+                border-radius: 2px;
+            }
+
+            /* Mobile menu icon buttons with labels */
+            .mobile-menu .icon-btn {
+                @apply rounded-sm min-h-[24px] flex-col justify-center;
+                border-radius: 2px;
+            }
+
+            /* Mobile menu container */
+            .mobile-menu {
+                @apply shadow-lg;
             }
             .icon-btn:hover {
                 color: var(--accent-color);
+                transform: translateY(-0.5px);
             }
+
 }
 
 /* Focus visible improvements */
@@ -396,6 +415,7 @@ body {
         transform: scale(1);
     }
 }
+
 
 @layer components {
     .moon-info-container {
