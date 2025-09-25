@@ -380,7 +380,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
         className="fas fa-fish mr-2"
         style={{ color: BITE_QUALITY_COLORS[bite.quality] }}
       ></i>
-      <span className="text-sm text-gray-800 dark:text-gray-300">
+      <span className="text-sm">
         {bite.start} - {bite.end}
       </span>
     </div>
@@ -453,7 +453,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
 
         {/* Bite Times Section */}
         <div className="border-t dark:border-gray-700 pt-4 mb-4">
-          <h4 className="font-semibold text-lg mb-3 text-gray-900 dark:text-gray-100">
+          <h4 className="font-semibold text-lg mb-3 dark:text-gray-100">
             Bite Times
           </h4>
 
@@ -473,7 +473,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
                   onFocus={() => locationInput.trim().length >= 2 && setShowSuggestions(true)}
                   onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                   placeholder="Enter a location"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-l-md text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-l-md dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
 
                 {/* Location Suggestions Dropdown */}
@@ -579,7 +579,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
 
         {/* Weather Forecast Section */}
         <div className="border-t dark:border-gray-700 pt-4 mb-4">
-          <h4 className="font-semibold text-lg mb-3 text-gray-900 dark:text-gray-100">
+          <h4 className="font-semibold text-lg mb-3 dark:text-gray-100">
             Weather Forecast
           </h4>
           <div className="text-sm text-gray-700 dark:text-gray-300">
@@ -588,7 +588,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
             ) : weatherError ? (
               <p className="text-red-500">{weatherError}</p>
             ) : weatherData ? (
-              <div className="space-y-2 text-gray-800 dark:text-gray-300">
+              <div className="space-y-2">
                 <p>
                   Temperature:{" "}
                   {formatTemperatureRange(
@@ -605,23 +605,23 @@ export const LunarModal: React.FC<LunarModalProps> = ({
                 </p>
               </div>
             ) : !userLocation ? (
-              <p className="text-gray-800 dark:text-gray-300">Set a location to see weather forecast</p>
+              <p>Set a location to see weather forecast</p>
             ) : !isWeatherAvailable(currentDate) ? (
-              <p className="text-gray-800 dark:text-gray-300">Weather forecast not available for this date</p>
+              <p>Weather forecast not available for this date</p>
             ) : (
-              <p className="text-gray-800 dark:text-gray-300">Weather data unavailable</p>
+              <p>Weather data unavailable</p>
             )}
           </div>
         </div>
 
         {/* Sun and Moon Times Section */}
         <div className="border-t dark:border-gray-700 pt-4 mb-4">
-          <h4 className="font-semibold text-lg mb-3 text-gray-900 dark:text-gray-100">
+          <h4 className="font-semibold text-lg mb-3 dark:text-gray-100">
             Sun & Moon
           </h4>
           <div className="text-sm text-gray-700 dark:text-gray-300">
             {sunMoonTimes ? (
-              <div className="grid grid-cols-2 gap-4 text-gray-800 dark:text-gray-300">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p>
                     Sunrise: {sunMoonTimes.sunrise}
@@ -640,17 +640,17 @@ export const LunarModal: React.FC<LunarModalProps> = ({
                 </div>
               </div>
             ) : (
-              <p className="text-gray-800 dark:text-gray-300">Set a location to see sun and moon times</p>
+              <p>Set a location to see sun and moon times</p>
             )}
           </div>
         </div>
 
         {/* Bite Time Quality Legend */}
         <div className="border-t dark:border-gray-700 pt-4">
-          <h5 className="font-semibold mb-2 text-gray-900 dark:text-gray-100">
+          <h5 className="font-semibold mb-2 dark:text-gray-100">
             Bite Time Quality Legend
           </h5>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-gray-700 dark:text-gray-300">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2 dark:text-gray-300">
             <div className="flex items-center">
               <i
                 className="fas fa-fish mr-2"
