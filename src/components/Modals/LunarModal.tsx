@@ -336,11 +336,11 @@ export const LunarModal: React.FC<LunarModalProps> = ({
     const isRightSwipe = distance < -50;
 
     if (isLeftSwipe) {
-      // Swipe left - go to next day (forwards in time)
-      handleNextDay();
-    } else if (isRightSwipe) {
-      // Swipe right - go to previous day (backwards in time)
+      // Swipe left - go to previous day (backwards in time)
       handlePrevDay();
+    } else if (isRightSwipe) {
+      // Swipe right - go to next day (forwards in time)
+      handleNextDay();
     }
   };
 
