@@ -145,6 +145,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
     const phaseData = getMoonPhaseData(currentDate);
     return {
       phase,
+      phaseIndex: phaseData.phaseIndex,
       moonAge: phaseData.moonAge,
       illumination: phaseData.illumination,
     };
@@ -378,43 +379,17 @@ export const LunarModal: React.FC<LunarModalProps> = ({
     }
   };
 
-  // Get moon phase icon based on phase name
-  const getMoonPhaseIcon = (phaseName: string): string => {
-    // Map Māori phase names to moon phase icons
-    const phaseIconMap: Record<string, string> = {
-      Whiro: "🌑", // New moon
-      Tirea: "🌒", // Waxing crescent
-      Hoata: "🌒", // Waxing crescent
-      Oue: "🌓", // First quarter
-      Okoro: "🌓", // First quarter
-      "Tamatea-a-hotu": "🌔", // Waxing gibbous
-      "Tamatea-a-ngana": "🌔", // Waxing gibbous
-      "Tamatea-whakapau": "🌔", // Waxing gibbous
-      Huna: "🌕", // Full moon
-      Ari: "🌕", // Full moon
-      Hotu: "🌕", // Full moon
-      Mawharu: "🌕", // Full moon
-      Atua: "🌖", // Waning gibbous
-      Ohua: "🌖", // Waning gibbous
-      Oanui: "🌕", // Full moon
-      Oturu: "🌖", // Waning gibbous
-      "Rakau-nui": "🌖", // Waning gibbous
-      "Rakau-matohi": "🌖", // Waning gibbous
-      Takirau: "🌗", // Last quarter
-      Oike: "🌗", // Last quarter
-      "Korekore-te-whiwhia": "🌘", // Waning crescent
-      "Korekore-te-rawea": "🌘", // Waning crescent
-      "Korekore-whakapau": "🌘", // Waning crescent
-      "Tangaroa-a-mua": "🌘", // Waning crescent
-      "Tangaroa-a-roto": "🌘", // Waning crescent
-      "Tangaroa-kiokio": "🌘", // Waning crescent
-      Otane: "🌘", // Waning crescent
-      Orongonui: "🌘", // Waning crescent
-      Mauri: "🌘", // Waning crescent
-      Mutuwhenua: "🌑", // New moon
-    };
-
-    return phaseIconMap[phaseName] || "🌙";
+  // Get moon phase icon based on phase index
+  const getMoonPhaseIcon = (phaseIndex: number): string => {
+    if (phaseIndex === 0 || phaseIndex === 29) return "🌑"; // New Moon
+    if (phaseIndex >= 1 && phaseIndex <= 6) return "🌒"; // Waxing Crescent
+    if (phaseIndex === 7) return "🌓"; // First Quarter
+    if (phaseIndex >= 8 && phaseIndex <= 13) return "🌔"; // Waxing Gibbous
+    if (phaseIndex === 14) return "🌕"; // Full Moon
+    if (phaseIndex >= 15 && phaseIndex <= 21) return "🌖"; // Waning Gibbous
+    if (phaseIndex === 22) return "🌗"; // Last Quarter
+    if (phaseIndex >= 23 && phaseIndex <= 28) return "🌘"; // Waning Crescent
+    return "🌙"; // Default fallback
   };
 
   // Format date for display
@@ -491,7 +466,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
         >
           {/* Moon Phase Info */}
           <div className="flex items-center mb-4">
-            <span className="text-4xl mr-3">{getMoonPhaseIcon(lunarData.phase.name)}</span>
+            <span className="text-4xl mr-3">{getMoonPhaseIcon(lunarData.phaseIndex)}</span>
             <div>
               <div
                 className={`inline-block px-2 py-1 rounded text-white text-sm font-bold ${getQualityColorClass(lunarData.phase.quality)}`}
