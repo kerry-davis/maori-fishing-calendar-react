@@ -232,7 +232,10 @@ export const ModalBody: React.FC<ModalBodyProps> = ({
   scrollable = true
 }) => {
   return (
-    <div className={`p-6 ${scrollable ? 'overflow-y-auto' : ''} ${className} modal-body`}>
+    <div
+      className={`p-6 ${scrollable ? 'overflow-y-auto' : ''} ${className}`}
+      style={{ color: 'var(--primary-text)' }}
+    >
       {children}
     </div>
   );

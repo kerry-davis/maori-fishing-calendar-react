@@ -224,9 +224,6 @@ body {
     .modal.is-visible > div {
         @apply opacity-100 scale-100;
     }
-    .modal-body {
-        color: var(--primary-text) !important;
-    }
 }
 @layer components {
     .modal-close-button {
