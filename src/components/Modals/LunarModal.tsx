@@ -488,7 +488,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
           </div>
           {/* Bite Times Section */}
           <div className="border-t dark:border-gray-700 pt-4 mb-4">
-            <h4 className="font-semibold text-lg mb-3 dark:text-gray-100">
+            <h4 className="font-semibold text-lg mb-3 text-gray-900 dark:text-gray-100">
               Bite Times
             </h4>
 
@@ -593,7 +593,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
             {biteTimesData ? (
               <>
                 <div className="mb-4">
-                  <h5 className="font-medium text-green-600 mb-2">
+                  <h5 className="font-medium text-green-600 dark:text-green-400 mb-2">
                     Major Bites
                   </h5>
                   <div className="space-y-1">
@@ -611,7 +611,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
                 </div>
 
                 <div>
-                  <h5 className="font-medium text-blue-600 mb-2">
+                  <h5 className="font-medium text-blue-600 dark:text-blue-400 mb-2">
                     Minor Bites
                   </h5>
                   <div className="space-y-1">
@@ -636,7 +636,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
           </div>
           {/* Weather Forecast Section */}
           <div className="border-t dark:border-gray-700 pt-4 mb-4">
-            <h4 className="font-semibold text-lg mb-3 dark:text-gray-100">
+            <h4 className="font-semibold text-lg mb-3 text-gray-900 dark:text-gray-100">
               Weather Forecast
             </h4>
             <div className="text-sm" style={{ color: "var(--secondary-text)" }}>
@@ -672,7 +672,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
           </div>
           {/* Sun and Moon Times Section */}
           <div className="border-t dark:border-gray-700 pt-4 mb-4">
-            <h4 className="font-semibold text-lg mb-3 dark:text-gray-100">
+            <h4 className="font-semibold text-lg mb-3 text-gray-900 dark:text-gray-100">
               Sun & Moon
             </h4>
             <div className="text-sm" style={{ color: "var(--secondary-text)" }}>
