@@ -326,6 +326,7 @@ export function minutesToTime(minutes: number): string {
  */
 export function getCurrentMoonInfo(): {
   phase: LunarPhase;
+  phaseIndex: number;
   moonAge: number;
   illumination: number;
   formattedAge: string;
@@ -338,6 +339,7 @@ export function getCurrentMoonInfo(): {
 
   return {
     phase,
+    phaseIndex: phaseData.phaseIndex,
     moonAge: phaseData.moonAge,
     illumination: phaseData.illumination,
     formattedAge: phaseData.moonAge.toFixed(1),
