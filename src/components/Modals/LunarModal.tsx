@@ -64,6 +64,10 @@ export const LunarModal: React.FC<LunarModalProps> = ({
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [hasTripsForDate, setHasTripsForDate] = useState<boolean>(false);
 
+  // Touch/swipe handling for mobile
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
+
   // Debounced search timeout ref
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -314,6 +318,32 @@ export const LunarModal: React.FC<LunarModalProps> = ({
     }
   }, [currentDate, onTripLogOpen]);
 
+  // Touch handlers for swipe navigation
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > 50;
+    const isRightSwipe = distance < -50;
+
+    if (isLeftSwipe) {
+      // Swipe left - go to previous day (backwards in time)
+      handlePrevDay();
+    } else if (isRightSwipe) {
+      // Swipe right - go to next day (forwards in time)
+      handleNextDay();
+    }
+  };
+
   // Format date for display
   const formatDate = (date: Date): string => {
     return date.toLocaleDateString("en-NZ", {
@@ -383,7 +413,12 @@ export const LunarModal: React.FC<LunarModalProps> = ({
       </ModalHeader>
 
       <ModalBody className="max-h-[70vh] overflow-y-auto">
-        {/* Moon Phase Info */}
+        <div
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        >
+          {/* Moon Phase Info */}
         <div className="flex items-center mb-4">
           <span className="text-4xl mr-3">🌙</span>
           <div>
@@ -392,16 +427,16 @@ export const LunarModal: React.FC<LunarModalProps> = ({
             >
               {lunarData.phase.quality}
             </div>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+            <p className="text-sm text-gray-600 mt-1" style={{ color: 'white' }}>
               Moon age: {lunarData.moonAge.toFixed(1)} days
             </p>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
+            <p className="text-sm text-gray-600" style={{ color: 'white' }}>
               Illumination: {Math.round(lunarData.illumination * 100)}%
             </p>
           </div>
         </div>
 
-        <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">
+        <p className="text-sm text-gray-700 mb-4" style={{ color: 'white' }}>
           {lunarData.phase.description}
         </p>
 
@@ -500,7 +535,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
               </p>
             )}
             {userLocation && (
-              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+              <p className="text-sm text-gray-600 mt-1" style={{ color: 'white' }}>
                 Current: {userLocation.name}
               </p>
             )}
@@ -515,7 +550,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
                   {biteTimesData.major.length > 0 ? (
                     biteTimesData.major.map(renderBiteTime)
                   ) : (
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-gray-500 dark:text-white">
                       No major bite times for this day
                     </p>
                   )}
@@ -528,7 +563,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
                   {biteTimesData.minor.length > 0 ? (
                     biteTimesData.minor.map(renderBiteTime)
                   ) : (
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-gray-500 dark:text-white">
                       No minor bite times for this day
                     </p>
                   )}
@@ -536,7 +571,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
               </div>
             </>
           ) : (
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-gray-500 dark:text-white">
               Set a location to see bite times
             </p>
           )}
@@ -549,20 +584,20 @@ export const LunarModal: React.FC<LunarModalProps> = ({
           </h4>
           <div className="text-sm">
             {weatherLoading ? (
-              <p className="text-gray-500">Loading weather...</p>
+              <p className="text-gray-500 dark:text-white">Loading weather...</p>
             ) : weatherError ? (
               <p className="text-red-500">{weatherError}</p>
             ) : weatherData ? (
               <div className="space-y-2">
                 <p>
-                  <strong>Temperature:</strong>{" "}
+                  Temperature:{" "}
                   {formatTemperatureRange(
                     weatherData.temperatureMin,
                     weatherData.temperatureMax,
                   )}
                 </p>
                 <p>
-                  <strong>Wind:</strong>{" "}
+                  Wind:{" "}
                   {formatWindInfo(
                     weatherData.windSpeed,
                     weatherData.windDirectionCardinal,
@@ -570,15 +605,15 @@ export const LunarModal: React.FC<LunarModalProps> = ({
                 </p>
               </div>
             ) : !userLocation ? (
-              <p className="text-gray-500">
+              <p className="text-gray-500 dark:text-white">
                 Set a location to see weather forecast
               </p>
             ) : !isWeatherAvailable(currentDate) ? (
-              <p className="text-gray-500">
+              <p className="text-gray-500 dark:text-white">
                 Weather forecast not available for this date
               </p>
             ) : (
-              <p className="text-gray-500">Weather data unavailable</p>
+              <p className="text-gray-500 dark:text-white">Weather data unavailable</p>
             )}
           </div>
         </div>
@@ -593,23 +628,23 @@ export const LunarModal: React.FC<LunarModalProps> = ({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p>
-                    <strong>Sunrise:</strong> {sunMoonTimes.sunrise}
+                    Sunrise: {sunMoonTimes.sunrise}
                   </p>
                   <p>
-                    <strong>Sunset:</strong> {sunMoonTimes.sunset}
+                    Sunset: {sunMoonTimes.sunset}
                   </p>
                 </div>
                 <div>
                   <p>
-                    <strong>Moonrise:</strong> {sunMoonTimes.moonrise}
+                    Moonrise: {sunMoonTimes.moonrise}
                   </p>
                   <p>
-                    <strong>Moonset:</strong> {sunMoonTimes.moonset}
+                    Moonset: {sunMoonTimes.moonset}
                   </p>
                 </div>
               </div>
             ) : (
-              <p className="text-gray-500">
+              <p className="text-gray-500 dark:text-white">
                 Set a location to see sun and moon times
               </p>
             )}
@@ -658,6 +693,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
               <span className="text-sm">Poor</span>
             </div>
           </div>
+        </div>
         </div>
       </ModalBody>
     </Modal>
