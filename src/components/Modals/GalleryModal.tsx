@@ -413,18 +413,14 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
               <>
                 <button
                   onClick={handlePreviousPhoto}
-                  className="absolute left-4 top-1/2 transform -translate-y-1/2 z-10
-                           bg-black bg-opacity-50 text-white p-3 rounded-full
-                           hover:bg-opacity-75 transition-all duration-200"
+                  className="icon-btn absolute left-4 top-1/2 transform -translate-y-1/2 z-10"
                 >
                   <i className="fas fa-chevron-left"></i>
                 </button>
 
                 <button
                   onClick={handleNextPhoto}
-                  className="absolute right-4 top-1/2 transform -translate-y-1/2 z-10
-                           bg-black bg-opacity-50 text-white p-3 rounded-full
-                           hover:bg-opacity-75 transition-all duration-200"
+                  className="icon-btn absolute right-4 top-1/2 transform -translate-y-1/2 z-10"
                 >
                   <i className="fas fa-chevron-right"></i>
                 </button>
