@@ -53,7 +53,7 @@ export function LocationProvider({ children }: LocationProviderProps) {
       const location: UserLocation = {
         lat: position.coords.latitude,
         lon: position.coords.longitude,
-        name: `${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}`,
+        name: "Current Location", // Default to a user-friendly label
       };
 
       // Try to get a more readable location name using reverse geocoding
@@ -69,18 +69,18 @@ export function LocationProvider({ children }: LocationProviderProps) {
               geoData.address;
             const locality = city || town || village || county || state;
             const locationName = [locality, country].filter(Boolean).join(", ");
-            if (locationName) {
+            if (locationName && locationName !== "undefined, undefined") {
               location.name = locationName;
             }
           }
         } else {
           console.warn(
-            `Reverse geocoding service failed with status ${geoResponse.status}, using coordinates as name.`,
+            `Reverse geocoding service failed with status ${geoResponse.status}, using default label.`,
           );
         }
       } catch (geocodingError) {
         console.warn(
-          "Reverse geocoding call failed, using coordinates as location name:",
+          "Reverse geocoding call failed, using default location label:",
           geocodingError,
         );
       }
