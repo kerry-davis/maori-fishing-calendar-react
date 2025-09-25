@@ -414,6 +414,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
 
       <ModalBody className="max-h-[70vh] overflow-y-auto">
         <div
+          style={{ color: 'var(--primary-text)' }}
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}

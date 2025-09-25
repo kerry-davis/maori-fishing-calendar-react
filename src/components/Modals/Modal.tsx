@@ -132,7 +132,7 @@ export const Modal: React.FC<ModalProps> = ({
         `}
         style={{
           maxHeight,
-          backgroundColor: 'var(--primary-background)',
+          backgroundColor: 'var(--card-background)',
           border: '1px solid var(--border-color)'
         }}
         tabIndex={-1}
@@ -232,10 +232,7 @@ export const ModalBody: React.FC<ModalBodyProps> = ({
   scrollable = true
 }) => {
   return (
-    <div
-      className={`p-6 ${scrollable ? 'overflow-y-auto' : ''} ${className}`}
-      style={{ color: 'var(--primary-text)' }}
-    >
+    <div className={`p-6 ${scrollable ? 'overflow-y-auto' : ''} ${className}`}>
       {children}
     </div>
   );
