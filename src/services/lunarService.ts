@@ -332,6 +332,7 @@ export function getCurrentMoonInfo(): {
   formattedIllumination: string;
 } {
   const now = new Date();
+  now.setHours(0, 0, 0, 0);
   const phaseData = getMoonPhaseData(now);
   const phase = getLunarPhase(now);
 
