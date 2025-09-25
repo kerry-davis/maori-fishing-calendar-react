@@ -429,14 +429,14 @@ export const LunarModal: React.FC<LunarModalProps> = ({
         {/* Navigation buttons */}
         <button
           onClick={handlePrevDay}
-          className="nav-button px-3 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 transition"
+          className="icon-btn"
           aria-label="Previous day"
         >
           <i className="fas fa-chevron-left"></i>
         </button>
         <button
           onClick={handleNextDay}
-          className="nav-button px-3 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 transition ml-2"
+          className="icon-btn ml-2"
           aria-label="Next day"
         >
           <i className="fas fa-chevron-right"></i>
@@ -507,7 +507,12 @@ export const LunarModal: React.FC<LunarModalProps> = ({
                       setTimeout(() => setShowSuggestions(false), 200)
                     }
                     placeholder="Enter a location"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-l-md dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    style={{
+                      backgroundColor: 'var(--input-background)',
+                      border: '1px solid var(--border-color)',
+                      color: 'var(--primary-text)'
+                    }}
                   />
 
                   {/* Location Suggestions Dropdown */}
@@ -559,7 +564,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
                 <button
                   onClick={handleLocationRequest}
                   disabled={isRequestingLocation}
-                  className="bg-black px-3 py-2 text-white rounded-r-md transition disabled:opacity-50"
+                  className="px-3 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition"
                   title="Use current location"
                 >
                   <i
@@ -575,7 +580,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
               )}
               {userLocation && (
                 <p className="text-sm mt-1" style={{ color: "#000000 !important" }}>
-                  Current: {userLocation.name}
+                  {userLocation.name}
                 </p>
               )}
             </div>
