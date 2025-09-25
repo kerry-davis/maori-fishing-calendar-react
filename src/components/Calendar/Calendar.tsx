@@ -139,11 +139,11 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect, refreshTrigger
     const isRightSwipe = distance < -50;
 
     if (isLeftSwipe) {
-      // Swipe left - go to next month (forwards in time)
-      handleNextMonth();
-    } else if (isRightSwipe) {
-      // Swipe right - go to previous month (backwards in time)
+      // Swipe left - go to previous month (backwards in time)
       handlePrevMonth();
+    } else if (isRightSwipe) {
+      // Swipe right - go to next month (forwards in time)
+      handleNextMonth();
     }
   };
 
