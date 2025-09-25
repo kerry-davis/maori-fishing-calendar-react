@@ -261,7 +261,7 @@ function AppContent() {
           onGalleryClick={handleGalleryClick}
         />
 
-      <Container className="py-8">
+      <Container className="py-6">
         <main className="space-y-6">
           {/* Calendar Component */}
           <Card>
