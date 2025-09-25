@@ -132,7 +132,7 @@ export const Modal: React.FC<ModalProps> = ({
         `}
         style={{
           maxHeight,
-          backgroundColor: 'var(--card-background)',
+          backgroundColor: 'var(--primary-background)',
           border: '1px solid var(--border-color)'
         }}
         tabIndex={-1}
