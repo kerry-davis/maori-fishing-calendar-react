@@ -378,7 +378,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
         onClose={onClose}
       />
 
-      <ModalBody className="min-h-[400px] max-h-[70vh] overflow-y-auto">
+      <ModalBody className="min-h-[400px] max-h-[60vh] overflow-y-auto">
         {/* Error display */}
         {error && (
           <div className="mb-4 p-4 rounded-lg" style={{ backgroundColor: 'var(--error-background)', border: '1px solid var(--error-border)' }}>
