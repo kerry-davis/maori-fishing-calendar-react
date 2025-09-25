@@ -4,9 +4,10 @@ import { useAuth } from '../../contexts/AuthContext';
 interface LoginModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onMobileMenuClose?: () => void;
 }
 
-export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
+export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onMobileMenuClose }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isRegister, setIsRegister] = useState(false);
@@ -19,13 +20,17 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
   React.useEffect(() => {
     if (user && isOpen) {
       onClose();
+      // Close mobile menu if function provided
+      if (onMobileMenuClose) {
+        onMobileMenuClose();
+      }
       // Reset form state
       setEmail('');
       setPassword('');
       setError('');
       setLoading(false);
     }
-  }, [user, isOpen, onClose]);
+  }, [user, isOpen, onClose, onMobileMenuClose]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,6 +44,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
         await login(email, password);
       }
       onClose();
+      // Close mobile menu after successful login
+      if (onMobileMenuClose) {
+        onMobileMenuClose();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
@@ -58,6 +67,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
       await signInWithGoogle();
       console.log('Google sign-in successful');
       onClose(); // Close modal on successful Google sign-in
+      // Close mobile menu after successful Google sign-in
+      if (onMobileMenuClose) {
+        onMobileMenuClose();
+      }
     } catch (err) {
       console.error('Google sign-in error:', err);
       setError(err instanceof Error ? err.message : 'Google sign-in failed');
@@ -70,16 +83,34 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
 
   return (
     <div
-      className="fixed inset-0 flex items-center justify-center z-50"
-      style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+      className="fixed inset-0 flex items-center justify-center z-50 p-2 sm:p-4"
+      style={{
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        minHeight: '100dvh' // Use dynamic viewport height for mobile
+      }}
     >
-      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md">
-        <h2 className="text-2xl font-bold mb-4 text-gray-800 dark:text-gray-100">
+      <div
+        className="rounded-lg p-4 sm:p-6 w-full max-w-md max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-4rem)] overflow-y-auto shadow-xl"
+        style={{
+          backgroundColor: 'var(--card-background)',
+          border: '1px solid var(--card-border)',
+          color: 'var(--primary-text)',
+          maxHeight: 'calc(100dvh - 2rem)' // Also use dynamic viewport height for the modal
+        }}
+      >
+        <h2 className="text-2xl font-bold mb-4" style={{ color: 'var(--primary-text)' }}>
           {isRegister ? 'Create Account' : 'Sign In'}
         </h2>
 
         {error && (
-          <div className="bg-red-100 dark:bg-red-900 border border-red-400 dark:border-red-600 text-red-700 dark:text-red-200 px-4 py-3 rounded mb-4">
+          <div
+            className="px-4 py-3 rounded mb-4"
+            style={{
+              backgroundColor: 'var(--error-background)',
+              border: '1px solid var(--error-border)',
+              color: 'var(--error-text)'
+            }}
+          >
             {error}
           </div>
         )}
@@ -87,7 +118,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
         {/* Google Sign-In Button */}
         <div className="mb-6">
           {!isFirebaseConfigured ? (
-            <div className="w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 py-2 px-4 rounded-md flex items-center justify-center gap-2">
+            <div
+              className="w-full py-2 px-4 rounded-md flex items-center justify-center gap-2"
+              style={{
+                backgroundColor: 'var(--secondary-background)',
+                border: '1px solid var(--border-color)',
+                color: 'var(--secondary-text)'
+              }}
+            >
               <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
                 <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
@@ -100,7 +138,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
             <button
               onClick={handleGoogleSignIn}
               disabled={loading}
-              className="w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 py-2 px-4 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full py-2 px-4 rounded-md hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 flex items-center justify-center gap-2"
+              style={{
+                backgroundColor: 'var(--input-background)',
+                border: '1px solid var(--input-border)',
+                color: 'var(--primary-text)'
+              }}
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -115,36 +158,65 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
 
         <div className="relative mb-6">
           <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-gray-300 dark:border-gray-600"></div>
+            <div
+              className="w-full"
+              style={{
+                borderTop: '1px solid var(--border-color)'
+              }}
+            ></div>
           </div>
           <div className="relative flex justify-center text-sm">
-            <span className="px-2 bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400">Or continue with email</span>
+            <span
+              className="px-2"
+              style={{
+                backgroundColor: 'var(--primary-background)',
+                color: 'var(--secondary-text)'
+              }}
+            >
+              Or continue with email
+            </span>
           </div>
         </div>
 
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
-            <label className="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-2">
+            <label
+              className="block text-sm font-bold mb-2"
+              style={{ color: 'var(--primary-text)' }}
+            >
               Email
             </label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              style={{
+                backgroundColor: 'var(--input-background)',
+                border: '1px solid var(--input-border)',
+                color: 'var(--primary-text)'
+              }}
               required
             />
           </div>
 
           <div className="mb-6">
-            <label className="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-2">
+            <label
+              className="block text-sm font-bold mb-2"
+              style={{ color: 'var(--primary-text)' }}
+            >
               Password
             </label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              style={{
+                backgroundColor: 'var(--input-background)',
+                border: '1px solid var(--input-border)',
+                color: 'var(--primary-text)'
+              }}
               required
             />
           </div>
@@ -153,15 +225,29 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              className="flex-1 py-2 px-4 rounded-md hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              style={{
+                backgroundColor: 'var(--button-primary)',
+                color: 'white'
+              }}
             >
               {loading ? 'Loading...' : (isRegister ? 'Create Account' : 'Sign In')}
             </button>
 
             <button
               type="button"
-              onClick={onClose}
-              className="flex-1 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 py-2 px-4 rounded-md hover:bg-gray-400 dark:hover:bg-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-500"
+              onClick={() => {
+                onClose();
+                // Close mobile menu when user cancels login
+                if (onMobileMenuClose) {
+                  onMobileMenuClose();
+                }
+              }}
+              className="flex-1 py-2 px-4 rounded-md hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-gray-500"
+              style={{
+                backgroundColor: 'var(--button-secondary)',
+                color: 'white'
+              }}
             >
               Cancel
             </button>
@@ -172,7 +258,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
           <button
             type="button"
             onClick={() => setIsRegister(!isRegister)}
-            className="text-blue-500 dark:text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 text-sm"
+            className="text-sm hover:opacity-80"
+            style={{ color: 'var(--accent-color)' }}
           >
             {isRegister ? 'Already have an account? Sign in' : 'Need an account? Sign up'}
           </button>
