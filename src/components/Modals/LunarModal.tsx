@@ -380,7 +380,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
         className="fas fa-fish mr-2"
         style={{ color: BITE_QUALITY_COLORS[bite.quality] }}
       ></i>
-      <span className="text-sm">
+      <span className="text-sm text-gray-800 dark:text-gray-300">
         {bite.start} - {bite.end}
       </span>
     </div>
@@ -588,7 +588,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
             ) : weatherError ? (
               <p className="text-red-500">{weatherError}</p>
             ) : weatherData ? (
-              <div className="space-y-2">
+              <div className="space-y-2 text-gray-800 dark:text-gray-300">
                 <p>
                   Temperature:{" "}
                   {formatTemperatureRange(
@@ -605,11 +605,11 @@ export const LunarModal: React.FC<LunarModalProps> = ({
                 </p>
               </div>
             ) : !userLocation ? (
-              <p>Set a location to see weather forecast</p>
+              <p className="text-gray-800 dark:text-gray-300">Set a location to see weather forecast</p>
             ) : !isWeatherAvailable(currentDate) ? (
-              <p>Weather forecast not available for this date</p>
+              <p className="text-gray-800 dark:text-gray-300">Weather forecast not available for this date</p>
             ) : (
-              <p>Weather data unavailable</p>
+              <p className="text-gray-800 dark:text-gray-300">Weather data unavailable</p>
             )}
           </div>
         </div>
@@ -621,7 +621,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
           </h4>
           <div className="text-sm text-gray-700 dark:text-gray-300">
             {sunMoonTimes ? (
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4 text-gray-800 dark:text-gray-300">
                 <div>
                   <p>
                     Sunrise: {sunMoonTimes.sunrise}
@@ -640,7 +640,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
                 </div>
               </div>
             ) : (
-              <p>Set a location to see sun and moon times</p>
+              <p className="text-gray-800 dark:text-gray-300">Set a location to see sun and moon times</p>
             )}
           </div>
         </div>
