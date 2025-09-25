@@ -19,6 +19,10 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect, refreshTrigger
   const [currentYear, setCurrentYear] = useState(currentDate.getFullYear());
   const [daysWithTrips, setDaysWithTrips] = useState<Set<string>>(new Set());
 
+  // Touch/swipe handling for mobile
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
+
   // Load trips for the current month with robust error handling
   const loadTripsForMonth = async () => {
     // Load trips for both authenticated and guest users
@@ -117,8 +121,39 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect, refreshTrigger
     onDateSelect(date);
   };
 
+  // Touch handlers for swipe navigation
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > 50;
+    const isRightSwipe = distance < -50;
+
+    if (isLeftSwipe) {
+      // Swipe left - go to previous month (backwards in time)
+      handlePrevMonth();
+    } else if (isRightSwipe) {
+      // Swipe right - go to next month (forwards in time)
+      handleNextMonth();
+    }
+  };
+
   return (
-    <div className="calendar-container">
+    <div
+      className="calendar-container"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
       {/* Calendar Header with Navigation */}
       <div className="flex items-center justify-between mb-4">
         <h2
