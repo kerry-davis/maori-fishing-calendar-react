@@ -504,4 +504,73 @@ body {
     html.dark [data-modal-header="true"] {
         background-color: #0f172a !important; /* Much darker than card background #1f2937 */
     }
+
+    /* Analytics Modal specific styles */
+    .analytics-modal {
+        /* Ensure modal content doesn't overflow */
+        overflow: hidden;
+    }
+
+    .analytics-modal .modal-body,
+    .analytics-modal [class*="ModalBody"] {
+        /* Proper overflow handling for charts */
+        overflow-y: auto;
+        max-height: calc(85vh - 140px); /* Account for header and padding */
+        padding-bottom: 1rem;
+    }
+
+    /* Chart container styles */
+    .analytics-modal .species-chart,
+    .analytics-modal .location-chart,
+    .analytics-modal .moon-phase-chart,
+    .analytics-modal .gear-chart,
+    .analytics-modal .weather-chart {
+        /* Ensure charts are properly contained */
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        z-index: 1;
+    }
+
+    /* Chart.js canvas containment */
+    .analytics-modal canvas {
+        max-width: 100% !important;
+        max-height: 100% !important;
+        position: relative !important;
+        z-index: 1 !important;
+    }
+
+    /* Chart container styles */
+    .analytics-modal .species-chart-container,
+    .analytics-modal .location-chart-container,
+    .analytics-modal .moon-phase-chart-container,
+    .analytics-modal .gear-chart-container,
+    .analytics-modal .weather-chart-container {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        border-radius: 0.5rem;
+        background-color: var(--card-background);
+        border: 1px solid var(--card-border);
+        padding: 1rem;
+    }
+
+    /* Mobile responsive adjustments for analytics modal */
+    @media (max-width: 768px) {
+        .analytics-modal .modal-body,
+        .analytics-modal [class*="ModalBody"] {
+            max-height: calc(100vh - 120px);
+            padding: 1rem;
+        }
+
+        .analytics-modal .h-64 {
+            height: 200px !important;
+        }
+
+        .analytics-modal .h-80 {
+            height: 250px !important;
+        }
+    }
 }
