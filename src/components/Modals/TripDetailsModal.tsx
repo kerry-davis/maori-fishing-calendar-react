@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Button } from '../UI';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './Modal';
 import { useAuth } from '../../contexts/AuthContext';
 import { firebaseDataService } from '../../services/firebaseDataService';
@@ -261,10 +262,10 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
       <ModalBody>
         {/* Error display */}
         {error && (
-          <div className="mb-4 p-4 bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-lg">
+          <div className="mb-4 p-4 rounded-lg" style={{ backgroundColor: 'var(--error-background)', border: '1px solid var(--error-border)' }}>
             <div className="flex items-center">
-              <i className="fas fa-exclamation-triangle text-red-500 mr-2"></i>
-              <span className="text-red-700 dark:text-red-300">{error}</span>
+              <i className="fas fa-exclamation-triangle mr-2" style={{ color: 'var(--error-text)' }}></i>
+              <span style={{ color: 'var(--error-text)' }}>{error}</span>
             </div>
           </div>
         )}
@@ -284,7 +285,7 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Date */}
               <div>
-                <label htmlFor="date" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label htmlFor="date" className="form-label">
                   Date *
                 </label>
                 <input
@@ -292,19 +293,24 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
                   id="date"
                   value={formData.date}
                   onChange={(e) => handleInputChange('date', e.target.value)}
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white ${
-                    validation.errors.date ? 'border-red-500' : 'border-gray-300'
+                  className={`w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    validation.errors.date ? 'border-red-500' : ''
                   }`}
+                  style={{
+                    backgroundColor: 'var(--input-background)',
+                    border: `1px solid ${validation.errors.date ? 'var(--error-border)' : 'var(--border-color)'}`,
+                    color: 'var(--primary-text)'
+                  }}
                   required
                 />
                 {validation.errors.date && (
-                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{validation.errors.date}</p>
+                  <p className="mt-1 text-sm" style={{ color: 'var(--error-text)' }}>{validation.errors.date}</p>
                 )}
               </div>
 
               {/* Hours */}
               <div>
-                <label htmlFor="hours" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label htmlFor="hours" className="form-label">
                   Duration (hours) *
                 </label>
                 <input
@@ -315,20 +321,25 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
                   step="0.5"
                   value={formData.hours}
                   onChange={(e) => handleInputChange('hours', parseFloat(e.target.value) || 1)}
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white ${
-                    validation.errors.hours ? 'border-red-500' : 'border-gray-300'
+                  className={`w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    validation.errors.hours ? 'border-red-500' : ''
                   }`}
+                  style={{
+                    backgroundColor: 'var(--input-background)',
+                    border: `1px solid ${validation.errors.hours ? 'var(--error-border)' : 'var(--border-color)'}`,
+                    color: 'var(--primary-text)'
+                  }}
                   required
                 />
                 {validation.errors.hours && (
-                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{validation.errors.hours}</p>
+                  <p className="mt-1 text-sm" style={{ color: 'var(--error-text)' }}>{validation.errors.hours}</p>
                 )}
               </div>
             </div>
 
             {/* Water Body */}
             <div>
-              <label htmlFor="water" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label htmlFor="water" className="form-label">
                 Water Body *
               </label>
               <input
@@ -337,19 +348,24 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
                 value={formData.water}
                 onChange={(e) => handleInputChange('water', e.target.value)}
                 placeholder="e.g., Lake Taupo, Waikato River"
-                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white ${
-                  validation.errors.water ? 'border-red-500' : 'border-gray-300'
+                className={`w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  validation.errors.water ? 'border-red-500' : ''
                 }`}
+                style={{
+                  backgroundColor: 'var(--input-background)',
+                  border: `1px solid ${validation.errors.water ? 'var(--error-border)' : 'var(--border-color)'}`,
+                  color: 'var(--primary-text)'
+                }}
                 required
               />
               {validation.errors.water && (
-                <p className="mt-1 text-sm text-red-600 dark:text-red-400">{validation.errors.water}</p>
+                <p className="mt-1 text-sm" style={{ color: 'var(--error-text)' }}>{validation.errors.water}</p>
               )}
             </div>
 
             {/* Location */}
             <div>
-              <label htmlFor="location" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label htmlFor="location" className="form-label">
                 Specific Location *
               </label>
               <input
@@ -358,19 +374,24 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
                 value={formData.location}
                 onChange={(e) => handleInputChange('location', e.target.value)}
                 placeholder="e.g., Western Bays, Hamilton Gardens"
-                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white ${
-                  validation.errors.location ? 'border-red-500' : 'border-gray-300'
+                className={`w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  validation.errors.location ? 'border-red-500' : ''
                 }`}
+                style={{
+                  backgroundColor: 'var(--input-background)',
+                  border: `1px solid ${validation.errors.location ? 'var(--error-border)' : 'var(--border-color)'}`,
+                  color: 'var(--primary-text)'
+                }}
                 required
               />
               {validation.errors.location && (
-                <p className="mt-1 text-sm text-red-600 dark:text-red-400">{validation.errors.location}</p>
+                <p className="mt-1 text-sm" style={{ color: 'var(--error-text)' }}>{validation.errors.location}</p>
               )}
             </div>
 
             {/* Companions */}
             <div>
-              <label htmlFor="companions" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label htmlFor="companions" className="form-label">
                 Companions
               </label>
               <input
@@ -379,13 +400,18 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
                 value={formData.companions}
                 onChange={(e) => handleInputChange('companions', e.target.value)}
                 placeholder="e.g., John, Sarah (optional)"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                style={{
+                  backgroundColor: 'var(--input-background)',
+                  border: '1px solid var(--border-color)',
+                  color: 'var(--primary-text)'
+                }}
               />
             </div>
 
             {/* Notes */}
             <div>
-              <label htmlFor="notes" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label htmlFor="notes" className="form-label">
                 Notes
               </label>
               <textarea
@@ -394,7 +420,12 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
                 value={formData.notes}
                 onChange={(e) => handleInputChange('notes', e.target.value)}
                 placeholder="Any additional notes about the trip..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white resize-vertical"
+                className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-vertical"
+                style={{
+                  backgroundColor: 'var(--input-background)',
+                  border: '1px solid var(--border-color)',
+                  color: 'var(--primary-text)'
+                }}
               />
             </div>
 
@@ -404,10 +435,10 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
 
       <ModalFooter>
         <div className="flex justify-end space-x-3">
-          <button type="button" onClick={handleCancel} disabled={isSaving} className="btn btn-secondary">Cancel</button>
-          <button type="submit" onClick={handleSubmit} disabled={isSaving || isLoading} className="btn btn-primary">
-            {isEditing ? 'Update Trip' : 'Create Trip'}
-          </button>
+          <Button type="button" variant="secondary" onClick={handleCancel} disabled={isSaving}>Cancel</Button>
+          <Button type="submit" onClick={handleSubmit} loading={isSaving} disabled={isSaving || isLoading}>
+            {isSaving ? (isEditing ? 'Updating…' : 'Saving…') : (isEditing ? 'Update' : 'Save')}
+          </Button>
         </div>
       </ModalFooter>
     </Modal>
