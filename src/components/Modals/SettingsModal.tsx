@@ -261,24 +261,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             )}
           </div>
         )}
-
-        {/* App Information */}
-        <div>
-          <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--primary-text)' }}>
-            About
-          </h3>
-          <div className="text-sm space-y-2" style={{ color: 'var(--secondary-text)' }}>
-            <p>
-              <strong>Māori Fishing Calendar</strong> - React Version
-            </p>
-            <p>
-              This application helps you plan your fishing trips based on traditional Māori lunar calendar knowledge.
-            </p>
-            <p>
-              Data is stored locally in your browser and can be exported for backup or transfer to other devices.
-            </p>
-          </div>
-        </div>
         </div>
       </ModalBody>
     </Modal>
