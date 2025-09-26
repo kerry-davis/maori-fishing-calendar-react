@@ -4,7 +4,6 @@ import {
   useDatabaseContext,
   useAuth,
 } from "./contexts";
-import { firebaseDataService } from "./services/firebaseDataService";
 import "./utils/cleanupDuplicates"; // Load cleanup utilities
 import ErrorBoundary from "./components/ErrorBoundary";
 import { Header, Footer } from "./components/Layout";
@@ -89,32 +88,14 @@ function AppContent() {
   }, []);
 
   // These handlers will be implemented when modal components are fixed
-  const handleTripLogOpen = useCallback(async (date?: Date) => {
-    if (date) {
-      setSelectedDate(date);
+  const handleTripLogOpen = useCallback((date: Date, hasTrips: boolean) => {
+    setSelectedDate(date);
+    if (hasTrips) {
+      setCurrentModal("tripLog");
+    } else {
+      setCurrentModal("tripForm");
     }
-
-    // Check if trips exist for this date
-    if (date && user) {
-      try {
-        const allTrips = await firebaseDataService.getAllTrips();
-        const dateStr = date.toLocaleDateString("en-CA");
-        const tripsForDate = allTrips.filter(trip => trip.date === dateStr);
-
-        if (tripsForDate.length === 0) {
-          // No trips exist, open trip form directly
-          setCurrentModal("tripForm");
-          return;
-        }
-      } catch (err) {
-        console.error("Error checking trips:", err);
-        // On error, default to showing trip log
-      }
-    }
-
-    // Trips exist or error occurred, show trip log
-    setCurrentModal("tripLog");
-  }, [user]);
+  }, []);
 
   const handleNewTrip = useCallback(() => {
     setCurrentModal("tripForm");
