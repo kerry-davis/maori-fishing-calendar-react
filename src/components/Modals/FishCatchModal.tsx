@@ -35,6 +35,10 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
     photo: "",
     photoPath: "",
   });
+  const [validation, setValidation] = useState({
+    isValid: true,
+    errors: {} as Record<string, string>
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showGearModal, setShowGearModal] = useState(false);
@@ -82,25 +86,49 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
         });
       }
       setError(null);
+      setValidation({ isValid: true, errors: {} });
     }
   }, [isOpen, isEditing, fishId, loadFishData]);
 
   const handleInputChange = useCallback((field: string, value: string | string[]) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-    if (error) setError(null);
-  }, [error]);
 
-  const validateForm = useCallback((): boolean => {
-    if (!formData.species.trim()) {
-      setError("Species is required");
-      return false;
+    // Clear validation error for this field
+    if (validation.errors[field]) {
+      setValidation(prev => ({
+        ...prev,
+        errors: {
+          ...prev.errors,
+          [field]: ''
+        }
+      }));
     }
-    return true;
+
+    // Clear general error
+    if (error) setError(null);
+  }, [error, validation.errors]);
+
+  const validateForm = useCallback(() => {
+    const errors: Record<string, string> = {};
+
+    if (!formData.species.trim()) {
+      errors.species = "Species is required";
+    }
+
+    const isValid = Object.keys(errors).length === 0;
+    setValidation({ isValid, errors });
+    return { isValid, errors };
   }, [formData]);
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validateForm()) return;
+
+    const validationResult = validateForm();
+    setValidation(validationResult);
+
+    if (!validationResult.isValid) {
+      return;
+    }
 
     setIsSubmitting(true);
     setError(null);
@@ -185,36 +213,110 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
           subtitle={isEditing ? "Update details of your catch" : "Record details of your catch"}
           onClose={onClose}
         />
-        <form onSubmit={handleSubmit}>
-          <ModalBody className="space-y-4 max-h-[60vh] overflow-y-auto">
-            {error && (
-              <div className="p-3 rounded-lg" style={{ backgroundColor: 'var(--error-background)', border: '1px solid var(--error-border)' }}>
-                <div className="flex items-center">
-                  <i className="fas fa-exclamation-triangle mr-2" style={{ color: 'var(--error-text)' }}></i>
-                  <span className="text-sm" style={{ color: 'var(--error-text)' }}>{error}</span>
-                </div>
+
+        <ModalBody>
+          {/* Error display */}
+          {error && (
+            <div className="mb-4 p-4 rounded-lg" style={{ backgroundColor: 'var(--error-background)', border: '1px solid var(--error-border)' }}>
+              <div className="flex items-center">
+                <i className="fas fa-exclamation-triangle mr-2" style={{ color: 'var(--error-text)' }}></i>
+                <span style={{ color: 'var(--error-text)' }}>{error}</span>
               </div>
-            )}
-            <div>
-              <label htmlFor="species" className="form-label" style={{ color: 'var(--primary-text)' }}>Species *</label>
-              <input type="text" id="species" value={formData.species} onChange={(e) => handleInputChange("species", e.target.value)} placeholder="e.g., Rainbow Trout, Snapper" className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" style={{ backgroundColor: 'var(--input-background)', border: '1px solid var(--border-color)', color: 'var(--primary-text)' }} required />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+          )}
+
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Species */}
+            <div>
+              <label htmlFor="species" className="form-label">
+                Species *
+              </label>
+              <input
+                type="text"
+                id="species"
+                value={formData.species}
+                onChange={(e) => handleInputChange("species", e.target.value)}
+                placeholder="e.g., Rainbow Trout, Snapper"
+                className={`w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  validation.errors.species ? 'border-red-500' : ''
+                }`}
+                style={{
+                  backgroundColor: 'var(--input-background)',
+                  border: `1px solid ${validation.errors.species ? 'var(--error-border)' : 'var(--border-color)'}`,
+                  color: 'var(--primary-text)'
+                }}
+                required
+              />
+              {validation.errors.species && (
+                <p className="mt-1 text-sm" style={{ color: 'var(--error-text)' }}>{validation.errors.species}</p>
+              )}
+            </div>
+
+            {/* Length and Weight Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label htmlFor="length" className="form-label" style={{ color: 'var(--primary-text)' }}>Length</label>
-                <input type="text" id="length" value={formData.length} onChange={(e) => handleInputChange("length", e.target.value)} placeholder="e.g., 55cm" className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" style={{ backgroundColor: 'var(--input-background)', border: '1px solid var(--border-color)', color: 'var(--primary-text)' }} />
+                <label htmlFor="length" className="form-label">
+                  Length
+                </label>
+                <input
+                  type="text"
+                  id="length"
+                  value={formData.length}
+                  onChange={(e) => handleInputChange("length", e.target.value)}
+                  placeholder="e.g., 55cm"
+                  className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  style={{
+                    backgroundColor: 'var(--input-background)',
+                    border: '1px solid var(--border-color)',
+                    color: 'var(--primary-text)'
+                  }}
+                />
               </div>
               <div>
-                <label htmlFor="weight" className="form-label" style={{ color: 'var(--primary-text)' }}>Weight</label>
-                <input type="text" id="weight" value={formData.weight} onChange={(e) => handleInputChange("weight", e.target.value)} placeholder="e.g., 2.5kg" className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" style={{ backgroundColor: 'var(--input-background)', border: '1px solid var(--border-color)', color: 'var(--primary-text)' }} />
+                <label htmlFor="weight" className="form-label">
+                  Weight
+                </label>
+                <input
+                  type="text"
+                  id="weight"
+                  value={formData.weight}
+                  onChange={(e) => handleInputChange("weight", e.target.value)}
+                  placeholder="e.g., 2.5kg"
+                  className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  style={{
+                    backgroundColor: 'var(--input-background)',
+                    border: '1px solid var(--border-color)',
+                    color: 'var(--primary-text)'
+                  }}
+                />
               </div>
             </div>
+
+            {/* Time of Catch */}
             <div>
-              <label htmlFor="time" className="form-label" style={{ color: 'var(--primary-text)' }}>Time of Catch</label>
-              <input type="time" id="time" value={formData.time} onChange={(e) => handleInputChange("time", e.target.value)} className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" style={{ backgroundColor: 'var(--input-background)', border: '1px solid var(--border-color)', color: 'var(--primary-text)' }} />
+              <label htmlFor="time" className="form-label">
+                Time of Catch
+              </label>
+              <input
+                type="time"
+                id="time"
+                value={formData.time}
+                onChange={(e) => handleInputChange("time", e.target.value)}
+                className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                style={{
+                  backgroundColor: 'var(--input-background)',
+                  border: '1px solid var(--border-color)',
+                  color: 'var(--primary-text)'
+                }}
+              />
             </div>
+
+            {/* Gear Used */}
             <div>
-              <label className="form-label" style={{ color: 'var(--primary-text)' }}>Gear Used</label>
+              <label className="form-label">
+                Gear Used
+              </label>
               <div className="flex flex-wrap gap-2 mb-2">
                 {formData.gear.map((gearItem, index) => (
                   <span key={index} className="inline-flex items-center px-2 py-1 rounded-full text-xs" style={{ backgroundColor: 'var(--chip-background)', color: 'var(--chip-text)' }}>
@@ -225,13 +327,26 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                   </span>
                 ))}
               </div>
-              <button type="button" onClick={() => setShowGearModal(true)} className="w-full px-3 py-2 rounded-md hover:opacity-80 transition-colors text-left" style={{ backgroundColor: 'var(--input-background)', border: '1px solid var(--border-color)', color: 'var(--primary-text)' }}>
+              <button
+                type="button"
+                onClick={() => setShowGearModal(true)}
+                className="w-full px-3 py-2 rounded-md hover:opacity-80 transition-colors text-left focus:outline-none focus:ring-2 focus:ring-blue-500"
+                style={{
+                  backgroundColor: 'var(--input-background)',
+                  border: '1px solid var(--border-color)',
+                  color: 'var(--primary-text)'
+                }}
+              >
                 <i className="fas fa-plus mr-2"></i>
                 {formData.gear.length > 0 ? "Add More Gear" : "Select Gear"}
               </button>
             </div>
+
+            {/* Photo Section */}
             <div>
-              <label className="form-label" style={{ color: 'var(--primary-text)' }}>Photo (Optional)</label>
+              <label className="form-label">
+                Photo (Optional)
+              </label>
               {isEditing && formData.photo && (
                 <div className="mt-2">
                   <div className="text-sm font-medium mb-2" style={{ color: 'var(--secondary-text)' }}>Current Photo</div>
@@ -259,7 +374,12 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                 </div>
               )}
               <div className="mt-4">
-                <button type="button" className="w-full border-2 border-dashed rounded-lg p-6 text-center hover:opacity-80 transition-colors" style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border-color)' }} onClick={() => document.getElementById('photo-upload')?.click()}>
+                <button
+                  type="button"
+                  className="w-full border-2 border-dashed rounded-lg p-6 text-center hover:opacity-80 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border-color)' }}
+                  onClick={() => document.getElementById('photo-upload')?.click()}
+                >
                   <div className="space-y-2">
                     <div className="flex justify-center">
                       <i className="fas fa-camera text-2xl" style={{ color: 'var(--secondary-text)' }}></i>
@@ -270,22 +390,39 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                 <input type="file" id="photo-upload" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
               </div>
             </div>
+
+            {/* Details */}
             <div>
-              <label htmlFor="details" className="form-label" style={{ color: 'var(--primary-text)' }}>Details (Optional)</label>
-              <textarea id="details" rows={3} value={formData.details} onChange={(e) => handleInputChange("details", e.target.value)} placeholder="Additional notes about the catch..." className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" style={{ backgroundColor: 'var(--input-background)', border: '1px solid var(--border-color)', color: 'var(--primary-text)' }} />
+              <label htmlFor="details" className="form-label">
+                Details (Optional)
+              </label>
+              <textarea
+                id="details"
+                rows={3}
+                value={formData.details}
+                onChange={(e) => handleInputChange("details", e.target.value)}
+                placeholder="Additional notes about the catch..."
+                className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-vertical"
+                style={{
+                  backgroundColor: 'var(--input-background)',
+                  border: '1px solid var(--border-color)',
+                  color: 'var(--primary-text)'
+                }}
+              />
             </div>
-          </ModalBody>
-          <ModalFooter>
-            <div className="flex justify-end w-full space-x-3">
-              <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
-                Cancel
-              </Button>
-              <Button type="submit" loading={isSubmitting} disabled={isSubmitting}>
-                {isSubmitting ? (isEditing ? 'Updating…' : 'Saving…') : (isEditing ? 'Update Fish' : 'Save Fish')}
-              </Button>
-            </div>
-          </ModalFooter>
-        </form>
+          </form>
+        </ModalBody>
+
+        <ModalFooter>
+          <div className="flex justify-end space-x-3">
+            <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
+              Cancel
+            </Button>
+            <Button type="submit" onClick={handleSubmit} loading={isSubmitting} disabled={isSubmitting}>
+              {isSubmitting ? (isEditing ? 'Updating…' : 'Saving…') : (isEditing ? 'Update Fish' : 'Save Fish')}
+            </Button>
+          </div>
+        </ModalFooter>
       </Modal>
       <GearSelectionModal isOpen={showGearModal} onClose={() => setShowGearModal(false)} selectedGear={formData.gear} onGearSelected={handleGearSelection} />
     </>
