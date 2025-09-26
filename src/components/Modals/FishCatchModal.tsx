@@ -419,7 +419,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
               Cancel
             </Button>
             <Button type="submit" onClick={handleSubmit} loading={isSubmitting} disabled={isSubmitting}>
-              {isSubmitting ? (isEditing ? 'Updating…' : 'Saving…') : (isEditing ? 'Update Fish' : 'Save Fish')}
+              {isSubmitting ? (isEditing ? 'Updating…' : 'Saving…') : (isEditing ? 'Update' : 'Save')}
             </Button>
           </div>
         </ModalFooter>
