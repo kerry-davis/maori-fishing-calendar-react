@@ -443,7 +443,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
             Close
           </Button>
           <Button onClick={handleNewTrip}>
-            New
+            New Trip
           </Button>
         </div>
       </ModalFooter>
@@ -670,7 +670,7 @@ const TripCard: React.FC<TripCardProps> = ({
                           className="px-3 py-1 text-xs"
                           title="Update weather log"
                         >
-                          Update
+                          Edit
                         </Button>
                         <Button
                           onClick={(e) => {
@@ -758,7 +758,7 @@ const TripCard: React.FC<TripCardProps> = ({
                           size="sm"
                           className="px-3 py-1 text-xs"
                         >
-                          Update
+                          Edit
                         </Button>
                         <Button
                           onClick={(e) => {
