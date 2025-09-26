@@ -465,28 +465,30 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
           </ModalBody>
 
           <ModalFooter>
-            <div className="flex justify-end space-x-3">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors"
-                disabled={isSubmitting}
-              >
-                Cancel
-              </button>
+            <div className="flex justify-between items-center w-full">
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                className="btn btn-primary"
               >
                 {isSubmitting ? (
                   <>
                     <i className="fas fa-spinner fa-spin mr-2"></i>
-                    {isEditing ? 'Updating...' : 'Saving...'}
+                    {isEditing ? "Updating..." : "Saving..."}
                   </>
+                ) : isEditing ? (
+                  "Update Fish"
                 ) : (
-                  isEditing ? 'Update Fish' : 'Save Fish'
+                  "Save Fish"
                 )}
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="btn btn-secondary"
+                disabled={isSubmitting}
+              >
+                Cancel
               </button>
             </div>
           </ModalFooter>
