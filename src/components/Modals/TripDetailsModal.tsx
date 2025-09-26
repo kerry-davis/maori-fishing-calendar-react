@@ -437,7 +437,7 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
         <div className="flex justify-end space-x-3">
           <Button type="button" variant="secondary" onClick={handleCancel} disabled={isSaving}>Cancel</Button>
           <Button type="submit" onClick={handleSubmit} loading={isSaving} disabled={isSaving || isLoading}>
-            {isSaving ? (isEditing ? 'Updating…' : 'Saving…') : (isEditing ? 'Update Trip' : 'Create Trip')}
+            {isSaving ? (isEditing ? 'Updating…' : 'Saving…') : (isEditing ? 'Update' : 'Save')}
           </Button>
         </div>
       </ModalFooter>
