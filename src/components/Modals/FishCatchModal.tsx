@@ -237,7 +237,24 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                   <div className="text-sm font-medium mb-2" style={{ color: 'var(--secondary-text)' }}>Current Photo</div>
                   <div className="relative inline-block">
                     <img src={formData.photo} alt="Current catch" className="w-32 h-32 object-cover rounded" style={{ border: '1px solid var(--border-color)' }} />
-                    <button type="button" onClick={() => handleInputChange("photo", "")} className="absolute top-2 right-2 btn btn-danger px-2 py-1 text-xs">Delete Photo</button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (formData.photoPath) {
+                          try {
+                            const storageRef = ref(storage, formData.photoPath);
+                            await deleteObject(storageRef);
+                          } catch (err) {
+                            console.warn('Failed to delete photo from storage:', err);
+                          }
+                        }
+                        handleInputChange("photo", "");
+                        handleInputChange("photoPath", "");
+                      }}
+                      className="absolute top-2 right-2 btn btn-danger px-2 py-1 text-xs"
+                    >
+                      Delete Photo
+                    </button>
                   </div>
                 </div>
               )}
