@@ -30,7 +30,7 @@ export interface LunarModalProps {
   isOpen: boolean;
   onClose: () => void;
   selectedDate: Date | null;
-  onTripLogOpen?: (date: Date) => void;
+  onTripLogOpen?: (date: Date, hasTrips: boolean) => void;
 }
 
 /**
@@ -349,9 +349,9 @@ export const LunarModal: React.FC<LunarModalProps> = ({
   // Trip log handler
   const handleTripLogOpen = useCallback(() => {
     if (onTripLogOpen) {
-      onTripLogOpen(currentDate);
+      onTripLogOpen(currentDate, hasTripsForDate);
     }
-  }, [currentDate, onTripLogOpen]);
+  }, [currentDate, onTripLogOpen, hasTripsForDate]);
 
   // Touch handlers for swipe navigation
   const handleTouchStart = (e: React.TouchEvent) => {
