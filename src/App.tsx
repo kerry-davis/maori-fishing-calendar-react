@@ -4,7 +4,6 @@ import {
   useDatabaseContext,
   useAuth,
 } from "./contexts";
-import { firebaseDataService } from "./services/firebaseDataService";
 import "./utils/cleanupDuplicates"; // Load cleanup utilities
 import ErrorBoundary from "./components/ErrorBoundary";
 import { Header, Footer } from "./components/Layout";
