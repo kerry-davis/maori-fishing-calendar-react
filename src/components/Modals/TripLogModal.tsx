@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { Button } from "../UI";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "./Modal";
 import { useDatabaseService } from "../../contexts/DatabaseContext";
 import { WeatherLogModal } from "./WeatherLogModal";
@@ -437,25 +438,13 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
       </ModalBody>
 
       <ModalFooter>
-        <div className="flex justify-between items-center w-full">
-          <button
-            onClick={handleNewTrip}
-            className="btn btn-primary"
-          >
-            <i className="fas fa-plus mr-2"></i>
-            Log a New Trip
-          </button>
-
-          <button
-            onClick={() => {
-              console.log('[UI Debug] Close button clicked - testing if any buttons work');
-              onClose();
-            }}
-            className="btn btn-secondary"
-          >
+        <div className="flex justify-end space-x-3">
+          <Button type="button" variant="secondary" onClick={onClose}>
             Close
-          </button>
-
+          </Button>
+          <Button onClick={handleNewTrip}>
+            New Trip
+          </Button>
         </div>
       </ModalFooter>
 
@@ -602,23 +591,26 @@ const TripCard: React.FC<TripCardProps> = ({
         </div>
 
         <div className="flex space-x-2">
-          <button
+          <Button
             onClick={onEdit}
-            className="btn btn-warning px-3 py-1 text-xs"
+            size="sm"
+            className="px-3 py-1 text-xs"
             title="Edit trip"
           >
-            Edit Trip
-          </button>
-          <button
+            Edit
+          </Button>
+          <Button
             onClick={() => {
               console.log('Delete button clicked for trip:', trip.id, 'firebaseDocId:', trip.firebaseDocId);
               onDelete(trip.firebaseDocId);
             }}
-            className="btn btn-danger px-3 py-1 text-xs"
+            variant="secondary"
+            size="sm"
+            className="px-3 py-1 text-xs"
             title="Delete trip"
           >
-            Delete Trip
-          </button>
+            Delete
+          </Button>
         </div>
       </div>
 
@@ -672,39 +664,28 @@ const TripCard: React.FC<TripCardProps> = ({
                         </div>
                       </div>
                       <div className="flex space-x-2 ml-2">
-                        <button
+                        <Button
                           onClick={() => onEditWeather(log.id)}
-                          className="btn btn-warning px-3 py-1 text-xs"
-                          title="Edit weather log"
+                          size="sm"
+                          className="px-3 py-1 text-xs"
+                          title="Update weather log"
                         >
                           Edit
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           onClick={(e) => {
                             console.log('[UI Debug] Weather delete button clicked, calling onDeleteWeather with ID:', log.id);
                             console.log('[UI Debug] Button element:', e.currentTarget);
                             console.log('[UI Debug] Button is disabled?', e.currentTarget.disabled);
                             onDeleteWeather(log.id);
                           }}
-                          className="btn btn-danger px-3 py-1 text-xs cursor-pointer select-none"
+                          variant="secondary"
+                          size="sm"
+                          className="px-3 py-1 text-xs cursor-pointer select-none"
                           title="Delete weather log"
-                          onMouseDown={(e) => {
-                            console.log('[UI Debug] Weather delete button mouse down');
-                            e.currentTarget.style.transform = 'scale(0.95)';
-                          }}
-                          onMouseUp={(e) => {
-                            console.log('[UI Debug] Weather delete button mouse up');
-                            e.currentTarget.style.transform = 'scale(1)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.transform = 'scale(1)';
-                          }}
-                          onMouseEnter={() => {
-                            console.log('[UI Debug] Weather delete button mouse enter');
-                          }}
                         >
                           Delete
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -715,12 +696,12 @@ const TripCard: React.FC<TripCardProps> = ({
                 <p className="text-sm mb-3" style={{ color: 'var(--secondary-text)' }}>
                   No weather logs for this trip yet.
                 </p>
-                <button
+                <Button
                   onClick={() => onAddWeather(trip.id)}
-                  className="btn btn-primary w-full"
+                  className="w-full"
                 >
                   Add Weather
-                </button>
+                </Button>
               </div>
             )}
           </div>
@@ -772,37 +753,26 @@ const TripCard: React.FC<TripCardProps> = ({
                         </div>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
-                        <button
+                        <Button
                           onClick={() => onEditFish(fish.id)}
-                          className="btn btn-warning px-3 py-1 text-xs"
+                          size="sm"
+                          className="px-3 py-1 text-xs"
                         >
                           Edit
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           onClick={(e) => {
                             console.log('[UI Debug] Fish delete button clicked, calling onDeleteFish with ID:', fish.id);
                             console.log('[UI Debug] Button element:', e.currentTarget);
                             console.log('[UI Debug] Button is disabled?', e.currentTarget.disabled);
                             onDeleteFish(fish.id);
                           }}
-                          className="btn btn-danger px-3 py-1 text-xs cursor-pointer select-none"
-                          onMouseDown={(e) => {
-                            console.log('[UI Debug] Fish delete button mouse down');
-                            e.currentTarget.style.transform = 'scale(0.95)';
-                          }}
-                          onMouseUp={(e) => {
-                            console.log('[UI Debug] Fish delete button mouse up');
-                            e.currentTarget.style.transform = 'scale(1)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.transform = 'scale(1)';
-                          }}
-                          onMouseEnter={() => {
-                            console.log('[UI Debug] Fish delete button mouse enter');
-                          }}
+                          variant="secondary"
+                          size="sm"
+                          className="px-3 py-1 text-xs cursor-pointer select-none"
                         >
                           Delete
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -817,12 +787,12 @@ const TripCard: React.FC<TripCardProps> = ({
             )}
 
             <div className="pt-2">
-              <button
+              <Button
                 onClick={() => onAddFish(trip.id)}
-                className="btn btn-primary w-full"
+                className="w-full"
               >
                 Add Fish
-              </button>
+              </Button>
             </div>
           </div>
         </div>
