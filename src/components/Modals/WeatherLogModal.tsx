@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from "react";
+import { Button } from "../UI";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "./Modal";
 import { useDatabaseService } from "../../contexts/DatabaseContext";
 import type { WeatherLog } from "../../types";
@@ -315,26 +316,13 @@ export const WeatherLogModal: React.FC<WeatherLogModalProps> = ({
         </ModalBody>
 
         <ModalFooter>
-          <div className="flex justify-between items-center w-full">
-            <button
-              type="submit"
-              disabled={isSubmitting || isLoading}
-              className="btn btn-primary"
-            >
-              {isSubmitting
-                ? (isEditing ? "Updating..." : "Saving...")
-                : isEditing
-                ? "Update Weather"
-                : "Save Weather"}
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="btn btn-secondary"
-              disabled={isSubmitting}
-            >
+          <div className="flex justify-end space-x-3">
+            <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
               Cancel
-            </button>
+            </Button>
+            <Button type="submit" loading={isSubmitting} disabled={isSubmitting || isLoading}>
+              {isSubmitting ? (isEditing ? 'Updating…' : 'Saving…') : (isEditing ? 'Update Weather' : 'Save Weather')}
+            </Button>
           </div>
         </ModalFooter>
       </form>
