@@ -242,17 +242,17 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
           <ModalBody className="space-y-4 max-h-[60vh] overflow-y-auto">
             {/* Error display */}
             {error && (
-              <div className="p-3 bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-lg">
+              <div className="p-3 rounded-lg" style={{ backgroundColor: 'var(--error-background)', border: '1px solid var(--error-border)' }}>
                 <div className="flex items-center">
-                  <i className="fas fa-exclamation-triangle text-red-500 mr-2"></i>
-                  <span className="text-red-700 dark:text-red-300 text-sm">{error}</span>
+                  <i className="fas fa-exclamation-triangle mr-2" style={{ color: 'var(--error-text)' }}></i>
+                  <span className="text-sm" style={{ color: 'var(--error-text)' }}>{error}</span>
                 </div>
               </div>
             )}
 
             {/* Species */}
             <div>
-              <label htmlFor="species" className="form-label">
+              <label htmlFor="species" className="form-label" style={{ color: 'var(--primary-text)' }}>
                 Species *
               </label>
               <input
@@ -261,7 +261,12 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                 value={formData.species}
                 onChange={(e) => handleInputChange("species", e.target.value)}
                 placeholder="e.g., Rainbow Trout, Snapper"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                style={{
+                  backgroundColor: 'var(--input-background)',
+                  border: '1px solid var(--border-color)',
+                  color: 'var(--primary-text)'
+                }}
                 required
               />
             </div>
@@ -269,7 +274,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
             {/* Length and Weight */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label htmlFor="length" className="form-label">
+                <label htmlFor="length" className="form-label" style={{ color: 'var(--primary-text)' }}>
                   Length
                 </label>
                 <input
@@ -278,12 +283,17 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                   value={formData.length}
                   onChange={(e) => handleInputChange("length", e.target.value)}
                   placeholder="e.g., 55cm"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  style={{
+                    backgroundColor: 'var(--input-background)',
+                    border: '1px solid var(--border-color)',
+                    color: 'var(--primary-text)'
+                  }}
                 />
               </div>
 
               <div>
-                <label htmlFor="weight" className="form-label">
+                <label htmlFor="weight" className="form-label" style={{ color: 'var(--primary-text)' }}>
                   Weight
                 </label>
                 <input
@@ -292,14 +302,19 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                   value={formData.weight}
                   onChange={(e) => handleInputChange("weight", e.target.value)}
                   placeholder="e.g., 2.5kg"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  style={{
+                    backgroundColor: 'var(--input-background)',
+                    border: '1px solid var(--border-color)',
+                    color: 'var(--primary-text)'
+                  }}
                 />
               </div>
             </div>
 
             {/* Time of Catch */}
             <div>
-              <label htmlFor="time" className="form-label">
+              <label htmlFor="time" className="form-label" style={{ color: 'var(--primary-text)' }}>
                 Time of Catch
               </label>
               <input
@@ -307,20 +322,26 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                 id="time"
                 value={formData.time}
                 onChange={(e) => handleInputChange("time", e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                style={{
+                  backgroundColor: 'var(--input-background)',
+                  border: '1px solid var(--border-color)',
+                  color: 'var(--primary-text)'
+                }}
               />
             </div>
 
             {/* Gear Selection */}
             <div>
-              <label className="form-label">
+              <label className="form-label" style={{ color: 'var(--primary-text)' }}>
                 Gear Used
               </label>
               <div className="flex flex-wrap gap-2 mb-2">
                 {formData.gear.map((gearItem, index) => (
                   <span
                     key={index}
-                    className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200"
+                    className="inline-flex items-center px-2 py-1 rounded-full text-xs"
+                    style={{ backgroundColor: 'var(--chip-background)', color: 'var(--chip-text)' }}
                   >
                     {gearItem}
                     <button
@@ -329,7 +350,8 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                         const newGear = formData.gear.filter((_, i) => i !== index);
                         handleInputChange("gear", newGear);
                       }}
-                      className="ml-1 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200"
+                      className="ml-1"
+                      style={{ color: 'var(--chip-text)' }}
                     >
                       <i className="fas fa-times"></i>
                     </button>
@@ -339,7 +361,12 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
               <button
                 type="button"
                 onClick={() => setShowGearModal(true)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors text-left"
+                className="w-full px-3 py-2 rounded-md hover:opacity-80 transition-colors text-left"
+                style={{
+                  backgroundColor: 'var(--input-background)',
+                  border: '1px solid var(--border-color)',
+                  color: 'var(--primary-text)'
+                }}
               >
                 <i className="fas fa-plus mr-2"></i>
                 {formData.gear.length > 0 ? "Add More Gear" : "Select Gear"}
@@ -348,21 +375,22 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
 
             {/* Photo Upload */}
             <div>
-              <label className="form-label">
+              <label className="form-label" style={{ color: 'var(--primary-text)' }}>
                 Photo (Optional)
               </label>
 
               {/* Current Photo Section (when editing) */}
               {isEditing && formData.photo && (
                 <div className="mt-2">
-                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <div className="text-sm font-medium mb-2" style={{ color: 'var(--secondary-text)' }}>
                     Current Photo
                   </div>
                   <div className="relative inline-block">
                     <img
                       src={formData.photo}
                       alt="Current catch photo"
-                      className="w-32 h-32 object-cover rounded border"
+                      className="w-32 h-32 object-cover rounded"
+                      style={{ border: '1px solid var(--border-color)' }}
                     />
                     <button
                       type="button"
@@ -390,14 +418,18 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
               <div className="mt-4">
                 <button
                   type="button"
-                  className="w-full bg-gray-100 dark:bg-gray-700 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                  className="w-full border-2 border-dashed rounded-lg p-6 text-center hover:opacity-80 transition-colors"
+                  style={{
+                    backgroundColor: 'var(--input-background)',
+                    borderColor: 'var(--border-color)',
+                  }}
                   onClick={() => document.getElementById('photo')?.click()}
                 >
                   <div className="space-y-2">
                     <div className="flex justify-center">
-                      <i className="fas fa-camera text-2xl text-gray-400 dark:text-gray-500"></i>
+                      <i className="fas fa-camera text-2xl" style={{ color: 'var(--secondary-text)' }}></i>
                     </div>
-                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                    <div className="text-sm" style={{ color: 'var(--secondary-text)' }}>
                       Upload New Photo
                     </div>
                   </div>
@@ -416,7 +448,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
               {formData.photo && !isEditing && (
                 <div className="mt-4">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <span className="text-sm font-medium" style={{ color: 'var(--secondary-text)' }}>
                       Selected Photo:
                     </span>
                     <button
@@ -442,7 +474,8 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                     <img
                       src={formData.photo}
                       alt="Catch preview"
-                      className="w-32 h-32 object-cover rounded border"
+                      className="w-32 h-32 object-cover rounded"
+                      style={{ border: '1px solid var(--border-color)' }}
                     />
                   </div>
                 </div>
@@ -451,7 +484,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
 
             {/* Details */}
             <div>
-              <label htmlFor="details" className="form-label">
+              <label htmlFor="details" className="form-label" style={{ color: 'var(--primary-text)' }}>
                 Details (Optional)
               </label>
               <textarea
@@ -460,7 +493,12 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                 value={formData.details}
                 onChange={(e) => handleInputChange("details", e.target.value)}
                 placeholder="Additional notes about the catch..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                style={{
+                  backgroundColor: 'var(--input-background)',
+                  border: '1px solid var(--border-color)',
+                  color: 'var(--primary-text)'
+                }}
               />
             </div>
           </ModalBody>

@@ -179,10 +179,10 @@ export const WeatherLogModal: React.FC<WeatherLogModalProps> = ({
         <ModalBody className="space-y-4">
           {/* Error display */}
           {error && (
-            <div className="p-3 bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-lg">
+            <div className="p-3 rounded-lg" style={{ backgroundColor: 'var(--error-background)', border: '1px solid var(--error-border)' }}>
               <div className="flex items-center">
-                <i className="fas fa-exclamation-triangle text-red-500 mr-2"></i>
-                <span className="text-red-700 dark:text-red-300 text-sm">{error}</span>
+                <i className="fas fa-exclamation-triangle mr-2" style={{ color: 'var(--error-text)' }}></i>
+                <span className="text-sm" style={{ color: 'var(--error-text)' }}>{error}</span>
               </div>
             </div>
           )}
@@ -191,20 +191,25 @@ export const WeatherLogModal: React.FC<WeatherLogModalProps> = ({
           {isLoading && (
             <div className="flex items-center justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-              <span className="ml-3 text-gray-600 dark:text-gray-400">Loading weather data...</span>
+              <span className="ml-3" style={{ color: 'var(--secondary-text)' }}>Loading weather data...</span>
             </div>
           )}
 
           {/* Time of Day */}
           <div>
-            <label htmlFor="timeOfDay" className="form-label">
+            <label htmlFor="timeOfDay" className="form-label" style={{ color: 'var(--primary-text)' }}>
               Time of Day *
             </label>
             <select
               id="timeOfDay"
               value={formData.timeOfDay}
               onChange={(e) => handleInputChange("timeOfDay", e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              style={{
+                backgroundColor: 'var(--input-background)',
+                border: '1px solid var(--border-color)',
+                color: 'var(--primary-text)'
+              }}
               required
             >
               <option value="">Select time of day...</option>
@@ -215,14 +220,19 @@ export const WeatherLogModal: React.FC<WeatherLogModalProps> = ({
 
           {/* Sky Condition */}
           <div>
-            <label htmlFor="sky" className="form-label">
+            <label htmlFor="sky" className="form-label" style={{ color: 'var(--primary-text)' }}>
               Sky Condition
             </label>
             <select
               id="sky"
               value={formData.sky}
               onChange={(e) => handleInputChange("sky", e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              style={{
+                backgroundColor: 'var(--input-background)',
+                border: '1px solid var(--border-color)',
+                color: 'var(--primary-text)'
+              }}
             >
               <option value="">Select sky condition...</option>
               <option value="Sunny">Sunny</option>
@@ -236,14 +246,19 @@ export const WeatherLogModal: React.FC<WeatherLogModalProps> = ({
 
           {/* Wind Condition */}
           <div>
-            <label htmlFor="windCondition" className="form-label">
+            <label htmlFor="windCondition" className="form-label" style={{ color: 'var(--primary-text)' }}>
               Wind Condition
             </label>
             <select
               id="windCondition"
               value={formData.windCondition}
               onChange={(e) => handleInputChange("windCondition", e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              style={{
+                backgroundColor: 'var(--input-background)',
+                border: '1px solid var(--border-color)',
+                color: 'var(--primary-text)'
+              }}
             >
               <option value="">Select wind condition...</option>
               <option value="Calm">Calm</option>
@@ -256,14 +271,19 @@ export const WeatherLogModal: React.FC<WeatherLogModalProps> = ({
 
           {/* Wind Direction */}
           <div>
-            <label htmlFor="windDirection" className="form-label">
+            <label htmlFor="windDirection" className="form-label" style={{ color: 'var(--primary-text)' }}>
               Wind Direction
             </label>
             <select
               id="windDirection"
               value={formData.windDirection}
               onChange={(e) => handleInputChange("windDirection", e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              style={{
+                backgroundColor: 'var(--input-background)',
+                border: '1px solid var(--border-color)',
+                color: 'var(--primary-text)'
+              }}
             >
               <option value="">Select wind direction...</option>
               <option value="N">North</option>
@@ -280,7 +300,7 @@ export const WeatherLogModal: React.FC<WeatherLogModalProps> = ({
           {/* Temperatures */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label htmlFor="waterTemp" className="form-label">
+              <label htmlFor="waterTemp" className="form-label" style={{ color: 'var(--primary-text)' }}>
                 Water Temperature (°C)
               </label>
               <input
@@ -292,12 +312,17 @@ export const WeatherLogModal: React.FC<WeatherLogModalProps> = ({
                 value={formData.waterTemp}
                 onChange={(e) => handleInputChange("waterTemp", e.target.value)}
                 placeholder="15.5"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                style={{
+                  backgroundColor: 'var(--input-background)',
+                  border: '1px solid var(--border-color)',
+                  color: 'var(--primary-text)'
+                }}
               />
             </div>
 
             <div>
-              <label htmlFor="airTemp" className="form-label">
+              <label htmlFor="airTemp" className="form-label" style={{ color: 'var(--primary-text)' }}>
                 Air Temperature (°C)
               </label>
               <input
@@ -309,7 +334,12 @@ export const WeatherLogModal: React.FC<WeatherLogModalProps> = ({
                 value={formData.airTemp}
                 onChange={(e) => handleInputChange("airTemp", e.target.value)}
                 placeholder="18.0"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                style={{
+                  backgroundColor: 'var(--input-background)',
+                  border: '1px solid var(--border-color)',
+                  color: 'var(--primary-text)'
+                }}
               />
             </div>
           </div>
