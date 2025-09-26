@@ -346,7 +346,7 @@ export const WeatherLogModal: React.FC<WeatherLogModalProps> = ({
         </ModalBody>
 
         <ModalFooter>
-          <div className="flex justify-end space-x-3">
+          <div className="flex justify-end space-x-3 w-full">
             <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
               Cancel
             </Button>
