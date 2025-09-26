@@ -350,7 +350,7 @@ export const WeatherLogModal: React.FC<WeatherLogModalProps> = ({
             Cancel
           </Button>
           <Button type="submit" onClick={handleSubmit} loading={isSubmitting} disabled={isSubmitting || isLoading}>
-            {isSubmitting ? (isEditing ? 'Updating…' : 'Saving…') : (isEditing ? 'Update Weather' : 'Save Weather')}
+            {isSubmitting ? (isEditing ? 'Updating…' : 'Saving…') : (isEditing ? 'Update' : 'Save')}
           </Button>
         </div>
       </ModalFooter>
