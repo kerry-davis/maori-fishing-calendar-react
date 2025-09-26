@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from "react";
+import { Button } from "../UI";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "./Modal";
 import { useDatabaseService } from "../../contexts/DatabaseContext";
 import { useAuth } from "../../contexts/AuthContext";
@@ -465,31 +466,13 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
           </ModalBody>
 
           <ModalFooter>
-            <div className="flex justify-between items-center w-full">
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="btn btn-primary"
-              >
-                {isSubmitting ? (
-                  <>
-                    <i className="fas fa-spinner fa-spin mr-2"></i>
-                    {isEditing ? "Updating..." : "Saving..."}
-                  </>
-                ) : isEditing ? (
-                  "Update Fish"
-                ) : (
-                  "Save Fish"
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={onClose}
-                className="btn btn-secondary"
-                disabled={isSubmitting}
-              >
+            <div className="flex justify-end space-x-3">
+              <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
                 Cancel
-              </button>
+              </Button>
+              <Button type="submit" loading={isSubmitting} disabled={isSubmitting}>
+                {isSubmitting ? (isEditing ? 'Updating...' : 'Saving...') : (isEditing ? 'Update Fish' : 'Save Fish')}
+              </Button>
             </div>
           </ModalFooter>
         </form>
