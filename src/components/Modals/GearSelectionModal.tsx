@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "./Modal";
+import { Button } from "../UI";
 import { useFirebaseTackleBox, useFirebaseGearTypes } from "../../hooks/useFirebaseTackleBox";
 import type { TackleItem } from "../../types";
 
@@ -179,14 +180,15 @@ export const GearSelectionModal: React.FC<GearSelectionModalProps> = ({
                     }
                   }}
                 />
-                <button
+                <Button
                   type="button"
+                  size="sm"
                   onClick={handleCustomGearAdd}
                   disabled={!customGear.trim()}
-                  className="px-3 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  leftIcon={<i className="fas fa-plus"></i>}
                 >
-                  <i className="fas fa-plus"></i>
-                </button>
+                  Add
+                </Button>
               </div>
             </div>
 
@@ -227,20 +229,19 @@ export const GearSelectionModal: React.FC<GearSelectionModalProps> = ({
             {selectedGearItems.length} item{selectedGearItems.length !== 1 ? 's' : ''} selected
           </div>
           <div className="flex space-x-3">
-            <button
+            <Button
               type="button"
+              variant="secondary"
               onClick={handleCancel}
-              className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-colors"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
               onClick={handleSave}
-              className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
             >
               Done
-            </button>
+            </Button>
           </div>
         </div>
       </ModalFooter>
