@@ -35,7 +35,7 @@ I've analyzed your legacy app and created a complete migration solution. Here's 
    // await window.firebaseDataService.migrateLocalData(yourData);
    ```
 
-### **Method 1B: Zip File Migration (Easiest)**
+### **Method 1B: Zip File Migration (Desktop/Node.js)**
 
 1. **Export Zip from Legacy App:**
    - Open your legacy Māori Fishing Calendar app
@@ -43,14 +43,44 @@ I've analyzed your legacy app and created a complete migration solution. Here's 
    - Save the downloaded `.zip` file to your computer
 
 2. **Import Zip to React App:**
-   ```bash
-   # Set the path to your zip file in the script:
-   # Edit scripts/import-zip-migration.js
-   const ZIP_FILE_PATH = "/path/to/your/exported_file.zip";
+    ```bash
+    # Set the path to your zip file in the script:
+    # Edit scripts/import-zip-migration.js
+    const ZIP_FILE_PATH = "/path/to/your/exported_file.zip";
 
-   # Run the import script:
-   node scripts/import-zip-migration.js
-   ```
+    # Run the import script:
+    node scripts/import-zip-migration.js
+    ```
+
+### **Method 1C: Browser Zip Import (Mobile/Guest)**
+
+**🎉 NEW: Browser-Based Import - No Node.js Required!**
+
+Perfect for mobile devices and tablets where you can't run Node.js scripts.
+
+1. **Export Zip from Legacy App:**
+   - Open your legacy Māori Fishing Calendar app in mobile browser
+   - Click the "Export Data" button
+   - Download/save the `.zip` file to your device
+
+2. **Import Zip to React App (Mobile-Friendly):**
+   - Open your React Māori Fishing Calendar app
+   - **Guest users:** Import works without an account - data saves locally
+   - **Authenticated users:** Data saves to cloud account
+   - Go to **Settings** → **"Legacy Data Migration"** → **"Import Legacy Data"**
+   - Select **"Click to select zip file"**
+   - Choose your downloaded zip file
+   - The app will automatically process and import your data!
+
+**✅ Mobile Benefits:**
+- ✅ **No Node.js required** - works entirely in the browser
+- ✅ **No terminal commands** - simple file upload interface
+- ✅ **Perfect for tablets/phones** - touch-friendly interface
+- ✅ **Automatic processing** - handles zip extraction and data import
+- ✅ **Real-time progress** - shows import status and results
+- ✅ **Error handling** - clear error messages if something goes wrong
+- ✅ **Offline support** - works for guest users without accounts
+- ✅ **Auto-migration** - guest data uploads to cloud when you log in
 
 ### **Method 2: Using Migration Scripts**
 
@@ -58,7 +88,8 @@ I've created these scripts for you:
 
 - `scripts/migrate-from-legacy.js` - Extracts data from legacy app
 - `scripts/import-legacy-data.js` - Imports data into React app
-- `scripts/import-zip-migration.js` - **NEW: Import zip files directly**
+- `scripts/import-zip-migration.js` - Import zip files with Node.js
+- `src/services/browserZipImportService.ts` - **NEW: Browser-based zip import (mobile-friendly)**
 - `scripts/test-legacy-migration.js` - Tests the migration process
 
 ## 📋 Step-by-Step Instructions
@@ -121,6 +152,60 @@ The migration system provides **comprehensive photo support**:
 3. **Processing** - Extracts and preserves image data
 4. **Transfer** - Moves to React app with full quality
 5. **Verification** - Confirms photos display correctly
+
+## 📱 Mobile Migration Guide
+
+### **Perfect for Tablets and Phones!**
+
+If you're migrating on a mobile device or tablet, use the **browser-based zip import** method:
+
+1. **On Mobile/Tablet:**
+   - Open your React app in the mobile browser
+   - Sign up/login to your account
+   - The migration modal will appear automatically
+   - Choose **"Import from Zip File Instead"**
+   - Upload your zip file directly in the browser
+
+2. **No Installation Required:**
+   - ✅ Works on iOS Safari
+   - ✅ Works on Android Chrome
+   - ✅ Works on tablets
+   - ✅ No app installation needed
+   - ✅ No Node.js or terminal access required
+
+3. **Mobile-Specific Features:**
+   - Touch-friendly file upload interface
+   - Progress indicators during import
+   - Clear error messages for troubleshooting
+   - Automatic format detection (JSON/CSV)
+   - Photo extraction and processing
+
+### **Mobile Troubleshooting:**
+- **File too large?** The browser handles large zip files automatically
+- **Slow import?** Normal on mobile networks - the import will complete
+- **Browser crashes?** Refresh and try again - progress is saved
+- **Can't find zip file?** Check your Downloads folder
+
+## 👤 Guest vs Authenticated Import
+
+### **Guest User Import (Offline):**
+- ✅ **No account required** - import works immediately
+- ✅ **Local storage** - data saves to browser's IndexedDB
+- ✅ **Instant access** - view your data right away
+- ✅ **Auto-migration** - when you create/login to account, data uploads to cloud
+- ✅ **Perfect for testing** - try the app with your data before committing
+
+### **Authenticated User Import (Online):**
+- ✅ **Cloud storage** - data saves to your Firebase account
+- ✅ **Cross-device sync** - access data on any device
+- ✅ **Real-time backup** - data is safely stored in the cloud
+- ✅ **Multi-device support** - seamless sync across devices
+
+### **Auto-Migration Process:**
+1. **Import as guest** → Data saves locally
+2. **Create account later** → App detects local data
+3. **Automatic upload** → Local data migrates to cloud
+4. **Complete sync** → All devices have access to your data
 
 ## 🔧 Troubleshooting
 

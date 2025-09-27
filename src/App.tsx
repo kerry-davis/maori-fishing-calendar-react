@@ -73,6 +73,10 @@ function AppContent() {
     setCurrentModal("settings");
   }, []);
 
+  const handleLegacyMigration = useCallback(() => {
+    setCurrentModal("dataMigration");
+  }, []);
+
   const handleTackleBoxClick = useCallback(() => {
     setCurrentModal("tackleBox");
   }, []);
@@ -171,6 +175,30 @@ function AppContent() {
         try {
           // Use the Firebase data service for migration checks
           const firebaseDb = (await import('./services/firebaseDataService')).firebaseDataService;
+
+          // Check if guest has imported data that needs migration
+          const guestHasImportedData = localStorage.getItem('guestHasImportedData') === 'true';
+
+          if (guestHasImportedData) {
+            console.log('Guest has imported data - attempting automatic migration to Firebase...');
+            try {
+              // Attempt to migrate local data to Firebase
+              await firebaseDb.mergeLocalDataForUser();
+              console.log('Guest data successfully migrated to Firebase');
+
+              // Clear the guest flag
+              localStorage.removeItem('guestHasImportedData');
+
+              // Mark migration as complete
+              localStorage.setItem(`migrationComplete_${user.uid}`, 'true');
+
+              console.log('Migration completed automatically for newly logged in user');
+            } catch (migrationError) {
+              console.error('Automatic migration failed:', migrationError);
+              // Still show the migration modal if automatic migration fails
+            }
+          }
+
           const [hasLocalData, hasCompletedMigration] = await Promise.all([
             firebaseDb.hasLocalData(),
             firebaseDb.hasCompletedMigration()
@@ -272,9 +300,10 @@ function AppContent() {
         />
 
         <SettingsModal
-          isOpen={currentModal === "settings"}
-          onClose={handleCloseModal}
-        />
+           isOpen={currentModal === "settings"}
+           onClose={handleCloseModal}
+           onLegacyMigration={handleLegacyMigration}
+         />
 
         <SearchModal
           isOpen={currentModal === "search"}
