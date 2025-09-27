@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "migratedAt": "2025-09-27T20:09:30.000Z",
+    "migratedAt": "2025-09-27T20:15:41.712Z",
     "source": "legacy-maori-fishing-calendar",
     "version": "1.0.0",
     "totalRecords": {
@@ -33,7 +33,7 @@
     ],
     "weather_logs": [
       {
-        "id": "1-1759003770000-0.8502688003287249",
+        "id": "1-1759004141711-0.2021992351043096",
         "tripId": 1,
         "timeOfDay": "Morning",
         "sky": "Partly Cloudy",
@@ -43,7 +43,7 @@
         "airTemp": "22"
       },
       {
-        "id": "2-1759003770000-0.11849980659707082",
+        "id": "2-1759004141711-0.6932045717866564",
         "tripId": 2,
         "timeOfDay": "Afternoon",
         "sky": "Clear",
@@ -55,7 +55,7 @@
     ],
     "fish_caught": [
       {
-        "id": "1-1759003770000-0.050160741044250834",
+        "id": "1-1759004141712-0.705931331033113",
         "tripId": 1,
         "species": "Rainbow Trout",
         "length": "45cm",
@@ -68,7 +68,7 @@
         "details": "Beautiful fish, fought well"
       },
       {
-        "id": "1-1759003770000-0.7850553814646426",
+        "id": "1-1759004141712-0.5903665511294869",
         "tripId": 1,
         "species": "Brown Trout",
         "length": "38cm",
