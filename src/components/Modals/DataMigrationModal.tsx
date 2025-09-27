@@ -36,7 +36,7 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
     if (isOpen && user) {
       checkMigrationStatus();
     }
-  }, [isOpen, user]);
+  }, [isOpen, user]); // Removed checkMigrationStatus from dependencies to prevent infinite loop
 
   const checkMigrationStatus = async () => {
     if (!user) return;
