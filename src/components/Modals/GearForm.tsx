@@ -120,7 +120,7 @@ export const GearForm: React.FC<GearFormProps> = ({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <h4 className="text-xl font-semibold text-gray-800 dark:text-gray-100 mb-4">
+      <h4 className="text-xl font-semibold mb-4" style={{ color: 'var(--primary-text)' }}>
         {isEditing ? 'Edit Gear' : 'Add New Gear'}
       </h4>
 
@@ -131,9 +131,10 @@ export const GearForm: React.FC<GearFormProps> = ({
       )}
 
       <div>
-        <label 
-          htmlFor="gear-name" 
-          className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+        <label
+          htmlFor="gear-name"
+          className="block text-sm font-medium mb-1"
+          style={{ color: 'var(--primary-text)' }}
         >
           Name *
         </label>
@@ -143,9 +144,14 @@ export const GearForm: React.FC<GearFormProps> = ({
           value={formData.name}
           onChange={(e) => handleInputChange('name', e.target.value)}
           placeholder="Enter gear name"
-          className={`w-full p-2 border rounded-md dark:bg-gray-600 dark:border-gray-500 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-            errors.name ? 'border-red-500' : 'border-gray-300'
+          className={`w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+            errors.name ? 'border-red-500' : ''
           }`}
+          style={{
+            backgroundColor: 'var(--input-background)',
+            border: `1px solid ${errors.name ? 'var(--error-border)' : 'var(--border-color)'}`,
+            color: 'var(--primary-text)'
+          }}
           disabled={isSubmitting}
         />
         {errors.name && (
@@ -154,9 +160,10 @@ export const GearForm: React.FC<GearFormProps> = ({
       </div>
 
       <div>
-        <label 
-          htmlFor="gear-brand" 
-          className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+        <label
+          htmlFor="gear-brand"
+          className="block text-sm font-medium mb-1"
+          style={{ color: 'var(--primary-text)' }}
         >
           Brand
         </label>
@@ -166,15 +173,21 @@ export const GearForm: React.FC<GearFormProps> = ({
           value={formData.brand}
           onChange={(e) => handleInputChange('brand', e.target.value)}
           placeholder="Enter brand name"
-          className="w-full p-2 border border-gray-300 rounded-md dark:bg-gray-600 dark:border-gray-500 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          style={{
+            backgroundColor: 'var(--input-background)',
+            border: '1px solid var(--border-color)',
+            color: 'var(--primary-text)'
+          }}
           disabled={isSubmitting}
         />
       </div>
 
       <div>
-        <label 
-          htmlFor="gear-type" 
-          className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+        <label
+          htmlFor="gear-type"
+          className="block text-sm font-medium mb-1"
+          style={{ color: 'var(--primary-text)' }}
         >
           Gear Type *
         </label>
@@ -182,9 +195,14 @@ export const GearForm: React.FC<GearFormProps> = ({
           id="gear-type"
           value={formData.type}
           onChange={(e) => handleInputChange('type', e.target.value)}
-          className={`w-full p-2 border rounded-md dark:bg-gray-600 dark:border-gray-500 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-            errors.type ? 'border-red-500' : 'border-gray-300'
+          className={`w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+            errors.type ? 'border-red-500' : ''
           }`}
+          style={{
+            backgroundColor: 'var(--input-background)',
+            border: `1px solid ${errors.type ? 'var(--error-border)' : 'var(--border-color)'}`,
+            color: 'var(--primary-text)'
+          }}
           disabled={isSubmitting}
         >
           <option value="">Select gear type</option>
@@ -200,9 +218,10 @@ export const GearForm: React.FC<GearFormProps> = ({
       </div>
 
       <div>
-        <label 
-          htmlFor="gear-colour" 
-          className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+        <label
+          htmlFor="gear-colour"
+          className="block text-sm font-medium mb-1"
+          style={{ color: 'var(--primary-text)' }}
         >
           Colour
         </label>
@@ -212,38 +231,43 @@ export const GearForm: React.FC<GearFormProps> = ({
           value={formData.colour}
           onChange={(e) => handleInputChange('colour', e.target.value)}
           placeholder="Enter colour"
-          className="w-full p-2 border border-gray-300 rounded-md dark:bg-gray-600 dark:border-gray-500 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          style={{
+            backgroundColor: 'var(--input-background)',
+            border: '1px solid var(--border-color)',
+            color: 'var(--primary-text)'
+          }}
           disabled={isSubmitting}
         />
       </div>
 
-      <div className="flex space-x-2 pt-4">
+      <div className="flex justify-end space-x-3 pt-4">
         <button
-          type="submit"
+          type="button"
+          onClick={onCancel}
           disabled={isSubmitting}
-          className="btn btn-primary flex-1"
+          className="btn btn-secondary px-4 py-2"
         >
-          {isSubmitting ? 'Saving...' : 'Save'}
+          Cancel
         </button>
-        
+
         {isEditing && onDelete && (
           <button
             type="button"
             onClick={handleDelete}
             disabled={isSubmitting}
-            className="btn btn-danger flex-1 disabled:opacity-50"
+            className="btn btn-danger px-4 py-2"
           >
             Delete
           </button>
         )}
-        
+
         <button
-          type="button"
-          onClick={onCancel}
+          type="submit"
           disabled={isSubmitting}
-          className="btn btn-secondary flex-1"
+          className="btn btn-primary px-4 py-2"
         >
-          Cancel
+          {isEditing ? 'Update' : 'Save'}
         </button>
       </div>
     </form>
