@@ -129,11 +129,6 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
     }
   };
 
-  const resetZipImport = () => {
-    setShowZipImport(false);
-    setZipImportResults(null);
-    setError(null);
-  };
 
   // Don't show modal if already migrated (but allow showing for zip import even without local data)
   if (!isOpen || (hasLocalData && hasCompletedMigration)) {
