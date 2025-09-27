@@ -35,12 +35,30 @@ I've analyzed your legacy app and created a complete migration solution. Here's 
    // await window.firebaseDataService.migrateLocalData(yourData);
    ```
 
+### **Method 1B: Zip File Migration (Easiest)**
+
+1. **Export Zip from Legacy App:**
+   - Open your legacy Māori Fishing Calendar app
+   - Click the "Export Data" button
+   - Save the downloaded `.zip` file to your computer
+
+2. **Import Zip to React App:**
+   ```bash
+   # Set the path to your zip file in the script:
+   # Edit scripts/import-zip-migration.js
+   const ZIP_FILE_PATH = "/path/to/your/exported_file.zip";
+
+   # Run the import script:
+   node scripts/import-zip-migration.js
+   ```
+
 ### **Method 2: Using Migration Scripts**
 
 I've created these scripts for you:
 
 - `scripts/migrate-from-legacy.js` - Extracts data from legacy app
 - `scripts/import-legacy-data.js` - Imports data into React app
+- `scripts/import-zip-migration.js` - **NEW: Import zip files directly**
 - `scripts/test-legacy-migration.js` - Tests the migration process
 
 ## 📋 Step-by-Step Instructions
@@ -126,6 +144,7 @@ The migration system provides **comprehensive photo support**:
 
 - `scripts/migrate-from-legacy.js` - Legacy data extraction script
 - `scripts/import-legacy-data.js` - React app import utilities
+- `scripts/import-zip-migration.js` - **NEW: Direct zip file import**
 - `scripts/test-legacy-migration.js` - Migration testing tools
 - `MIGRATION_GUIDE.md` - Detailed migration documentation
 - `test-migration-output.json` - Test migration output
