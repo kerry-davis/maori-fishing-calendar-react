@@ -3,7 +3,7 @@ import { Button } from "../UI";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "./Modal";
 import { useDatabaseService } from "../../contexts/DatabaseContext";
 import { useAuth } from "../../contexts/AuthContext";
-import { GearSelectionModal } from "./GearSelectionModal";
+import { useFirebaseTackleBox } from "../../hooks/useFirebaseTackleBox";
 import { storage } from "../../services/firebase";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import type { FishCaught } from "../../types";
@@ -25,6 +25,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
 }) => {
   const db = useDatabaseService();
   const { user } = useAuth();
+  const [tackleBox] = useFirebaseTackleBox();
   const [formData, setFormData] = useState({
     species: "",
     length: "",
@@ -41,8 +42,9 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showGearModal, setShowGearModal] = useState(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set());
   const isEditing = fishId !== undefined;
 
   const loadFishData = useCallback(async (id: string) => {
@@ -198,9 +200,55 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
     }
   }, [user, fishId, handleInputChange]);
 
-  const handleGearSelection = (selectedGear: string[]) => {
-    handleInputChange("gear", selectedGear);
-    setShowGearModal(false);
+  // Filter and group gear items
+  const filteredAndGroupedGear = React.useMemo(() => {
+    let filtered = tackleBox;
+
+    // Apply search filter
+    if (searchTerm.trim()) {
+      const search = searchTerm.toLowerCase();
+      filtered = tackleBox.filter(item =>
+        item.name.toLowerCase().includes(search) ||
+        item.brand.toLowerCase().includes(search) ||
+        item.type.toLowerCase().includes(search)
+      );
+    }
+
+    // Group by type
+    const grouped = filtered.reduce((acc, item) => {
+      const type = item.type;
+      if (!acc[type]) {
+        acc[type] = [];
+      }
+      acc[type].push(item);
+      return acc;
+    }, {} as Record<string, typeof tackleBox>);
+
+    return grouped;
+  }, [tackleBox, searchTerm]);
+
+  const toggleTypeExpansion = (type: string) => {
+    const newExpanded = new Set(expandedTypes);
+    if (newExpanded.has(type)) {
+      newExpanded.delete(type);
+    } else {
+      newExpanded.add(type);
+    }
+    setExpandedTypes(newExpanded);
+  };
+
+  const selectAllInType = (type: string) => {
+    const typeItems = filteredAndGroupedGear[type] || [];
+    const typeItemNames = typeItems.map(item => item.name);
+    const newSelection = [...new Set([...formData.gear, ...typeItemNames])];
+    handleInputChange("gear", newSelection);
+  };
+
+  const clearAllInType = (type: string) => {
+    const typeItems = filteredAndGroupedGear[type] || [];
+    const typeItemNames = typeItems.map(item => item.name);
+    const newSelection = formData.gear.filter(gear => !typeItemNames.includes(gear));
+    handleInputChange("gear", newSelection);
   };
 
   if (!isOpen) return null;
@@ -317,29 +365,168 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
               <label className="form-label">
                 Gear Used
               </label>
-              <div className="flex flex-wrap gap-2 mb-2">
-                {formData.gear.map((gearItem, index) => (
-                  <span key={index} className="inline-flex items-center px-2 py-1 rounded-full text-xs" style={{ backgroundColor: 'var(--chip-background)', color: 'var(--chip-text)' }}>
-                    {gearItem}
-                    <button type="button" onClick={() => handleInputChange("gear", formData.gear.filter((_, i) => i !== index))} className="ml-1" style={{ color: 'var(--chip-text)' }}>
-                      <i className="fas fa-times"></i>
-                    </button>
-                  </span>
-                ))}
+
+              {/* Search Input */}
+              <div className="mb-4">
+                <input
+                  type="text"
+                  placeholder="Search gear items..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  style={{
+                    backgroundColor: 'var(--input-background)',
+                    border: '1px solid var(--border-color)',
+                    color: 'var(--primary-text)'
+                  }}
+                />
               </div>
-              <button
-                type="button"
-                onClick={() => setShowGearModal(true)}
-                className="w-full px-3 py-2 rounded-md hover:opacity-80 transition-colors text-left focus:outline-none focus:ring-2 focus:ring-blue-500"
-                style={{
-                  backgroundColor: 'var(--input-background)',
-                  border: '1px solid var(--border-color)',
-                  color: 'var(--primary-text)'
-                }}
-              >
-                <i className="fas fa-plus mr-2"></i>
-                {formData.gear.length > 0 ? "Add More Gear" : "Select Gear"}
-              </button>
+
+              {tackleBox.length > 0 ? (
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {Object.entries(filteredAndGroupedGear).map(([type, items]) => {
+                    const isExpanded = expandedTypes.has(type);
+                    const selectedCount = items.filter(item => formData.gear.includes(item.name)).length;
+                    const totalCount = items.length;
+
+                    return (
+                      <div key={type} className="border rounded-lg" style={{ borderColor: 'var(--border-color)' }}>
+                        {/* Type Header */}
+                        <div
+                          className="flex items-center justify-between p-3 cursor-pointer hover:opacity-80 transition-all"
+                          style={{ backgroundColor: 'var(--secondary-background)' }}
+                          onClick={() => toggleTypeExpansion(type)}
+                        >
+                          <div className="flex items-center">
+                            <i className={`fas fa-chevron-${isExpanded ? 'down' : 'right'} mr-2`} style={{ color: 'var(--secondary-text)' }}></i>
+                            <div>
+                              <div className="font-medium" style={{ color: 'var(--primary-text)' }}>
+                                {type}s ({totalCount} item{totalCount !== 1 ? 's' : ''})
+                              </div>
+                              {selectedCount > 0 && (
+                                <div className="text-xs" style={{ color: 'var(--secondary-text)' }}>
+                                  {selectedCount} selected
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex space-x-1">
+                            {selectedCount > 0 && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  clearAllInType(type);
+                                }}
+                                className="px-2 py-1 text-xs rounded"
+                                style={{ backgroundColor: 'var(--error-background)', color: 'var(--error-text)' }}
+                              >
+                                Clear All
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                selectAllInType(type);
+                              }}
+                              className="px-2 py-1 text-xs rounded"
+                              style={{ backgroundColor: 'var(--button-primary)', color: 'white' }}
+                            >
+                              Select All
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Type Items */}
+                        {isExpanded && (
+                          <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
+                            {items.map(item => (
+                              <label
+                                key={item.id}
+                                className="flex items-center p-2 rounded hover:opacity-80 cursor-pointer transition-all"
+                                style={{
+                                  backgroundColor: formData.gear.includes(item.name) ? 'var(--button-primary)' : 'var(--input-background)',
+                                  border: formData.gear.includes(item.name) ? '1px solid var(--button-primary)' : '1px solid transparent'
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={formData.gear.includes(item.name)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      handleInputChange("gear", [...formData.gear, item.name]);
+                                    } else {
+                                      handleInputChange("gear", formData.gear.filter(gear => gear !== item.name));
+                                    }
+                                  }}
+                                  className="mr-3 w-4 h-4 text-white bg-transparent border-2 rounded focus:ring-0"
+                                  style={{
+                                    borderColor: formData.gear.includes(item.name) ? 'white' : 'var(--border-color)',
+                                    backgroundColor: formData.gear.includes(item.name) ? 'var(--button-primary)' : 'transparent'
+                                  }}
+                                />
+                                <div className="flex-1">
+                                  <div className="text-sm font-medium" style={{ color: formData.gear.includes(item.name) ? 'white' : 'var(--primary-text)' }}>
+                                    {item.name}
+                                  </div>
+                                  <div className="text-xs" style={{ color: formData.gear.includes(item.name) ? 'rgba(255,255,255,0.8)' : 'var(--secondary-text)' }}>
+                                    {item.brand}
+                                  </div>
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-6 border rounded-md" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--secondary-background)' }}>
+                  <i className="fas fa-toolbox text-2xl mb-2" style={{ color: 'var(--secondary-text)' }}></i>
+                  <p style={{ color: 'var(--secondary-text)' }}>No gear available</p>
+                  <p className="text-sm" style={{ color: 'var(--secondary-text)' }}>Add gear items to your tackle box first</p>
+                </div>
+              )}
+
+              {/* Selected Gear Summary */}
+              {formData.gear.length > 0 && (
+                <div className="mt-4 p-3 rounded-lg" style={{ backgroundColor: 'var(--secondary-background)' }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-sm font-medium" style={{ color: 'var(--secondary-text)' }}>
+                      Selected Gear ({formData.gear.length} item{formData.gear.length !== 1 ? 's' : ''}):
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => handleInputChange("gear", [])}
+                    >
+                      Clear All
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {formData.gear.map((gearItem, index) => (
+                      <span
+                        key={index}
+                        className="inline-flex items-center px-2 py-1 rounded-full text-xs"
+                        style={{ backgroundColor: 'var(--chip-background)', color: 'var(--chip-text)' }}
+                      >
+                        {gearItem}
+                        <button
+                          type="button"
+                          onClick={() => handleInputChange("gear", formData.gear.filter((_, i) => i !== index))}
+                          className="ml-1"
+                          style={{ color: 'var(--chip-text)' }}
+                        >
+                          <i className="fas fa-times"></i>
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Photo Section */}
@@ -424,7 +611,6 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
           </div>
         </ModalFooter>
       </Modal>
-      <GearSelectionModal isOpen={showGearModal} onClose={() => setShowGearModal(false)} selectedGear={formData.gear} onGearSelected={handleGearSelection} />
     </>
   );
 };
