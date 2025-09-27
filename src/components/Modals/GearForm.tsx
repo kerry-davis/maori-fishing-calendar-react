@@ -120,7 +120,7 @@ export const GearForm: React.FC<GearFormProps> = ({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <h4 className="text-xl font-semibold text-gray-800 dark:text-gray-100 mb-4">
+      <h4 className="text-xl font-semibold mb-4" style={{ color: 'var(--primary-text)' }}>
         {isEditing ? 'Edit Gear' : 'Add New Gear'}
       </h4>
 
@@ -131,9 +131,10 @@ export const GearForm: React.FC<GearFormProps> = ({
       )}
 
       <div>
-        <label 
-          htmlFor="gear-name" 
-          className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+        <label
+          htmlFor="gear-name"
+          className="block text-sm font-medium mb-1"
+          style={{ color: 'var(--primary-text)' }}
         >
           Name *
         </label>
@@ -154,9 +155,10 @@ export const GearForm: React.FC<GearFormProps> = ({
       </div>
 
       <div>
-        <label 
-          htmlFor="gear-brand" 
-          className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+        <label
+          htmlFor="gear-brand"
+          className="block text-sm font-medium mb-1"
+          style={{ color: 'var(--primary-text)' }}
         >
           Brand
         </label>
@@ -172,9 +174,10 @@ export const GearForm: React.FC<GearFormProps> = ({
       </div>
 
       <div>
-        <label 
-          htmlFor="gear-type" 
-          className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+        <label
+          htmlFor="gear-type"
+          className="block text-sm font-medium mb-1"
+          style={{ color: 'var(--primary-text)' }}
         >
           Gear Type *
         </label>
@@ -200,9 +203,10 @@ export const GearForm: React.FC<GearFormProps> = ({
       </div>
 
       <div>
-        <label 
-          htmlFor="gear-colour" 
-          className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+        <label
+          htmlFor="gear-colour"
+          className="block text-sm font-medium mb-1"
+          style={{ color: 'var(--primary-text)' }}
         >
           Colour
         </label>
@@ -217,33 +221,33 @@ export const GearForm: React.FC<GearFormProps> = ({
         />
       </div>
 
-      <div className="flex space-x-2 pt-4">
+      <div className="flex justify-end space-x-3 pt-4">
         <button
-          type="submit"
+          type="button"
+          onClick={onCancel}
           disabled={isSubmitting}
-          className="btn btn-primary flex-1"
+          className="btn btn-secondary px-4 py-2"
         >
-          {isSubmitting ? 'Saving...' : 'Save'}
+          Cancel
         </button>
-        
+
         {isEditing && onDelete && (
           <button
             type="button"
             onClick={handleDelete}
             disabled={isSubmitting}
-            className="btn btn-danger flex-1 disabled:opacity-50"
+            className="btn btn-danger px-4 py-2"
           >
             Delete
           </button>
         )}
-        
+
         <button
-          type="button"
-          onClick={onCancel}
+          type="submit"
           disabled={isSubmitting}
-          className="btn btn-secondary flex-1"
+          className="btn btn-primary px-4 py-2"
         >
-          Cancel
+          {isEditing ? 'Update' : 'Save'}
         </button>
       </div>
     </form>

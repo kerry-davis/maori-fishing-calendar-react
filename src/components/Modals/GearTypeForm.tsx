@@ -99,7 +99,7 @@ export const GearTypeForm: React.FC<GearTypeFormProps> = ({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <h4 className="text-xl font-semibold text-gray-800 dark:text-gray-100 mb-4">
+      <h4 className="text-xl font-semibold mb-4" style={{ color: 'var(--primary-text)' }}>
         {isEditing ? 'Edit Gear Type' : 'Add New Gear Type'}
       </h4>
 
@@ -110,9 +110,10 @@ export const GearTypeForm: React.FC<GearTypeFormProps> = ({
       )}
 
       <div>
-        <label 
-          htmlFor="gear-type-name" 
-          className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+        <label
+          htmlFor="gear-type-name"
+          className="block text-sm font-medium mb-1"
+          style={{ color: 'var(--primary-text)' }}
         >
           Gear Type Name *
         </label>
@@ -137,40 +138,47 @@ export const GearTypeForm: React.FC<GearTypeFormProps> = ({
       </div>
 
       {isEditing && (
-        <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
-          <p className="text-yellow-800 dark:text-yellow-200 text-sm">
-            <strong>Note:</strong> Changing this gear type name will update all gear items that use this type.
+        <div
+          className="p-3 rounded-md border text-sm"
+          style={{
+            backgroundColor: 'var(--card-background)',
+            borderColor: 'var(--accent-color)',
+            color: 'var(--primary-text)'
+          }}
+        >
+          <p>
+            <strong style={{ color: 'var(--accent-color)' }}>Note:</strong> Changing this gear type name will update all gear items that use this type.
           </p>
         </div>
       )}
 
-      <div className="flex space-x-2 pt-4">
+      <div className="flex justify-end space-x-3 pt-4">
         <button
-          type="submit"
+          type="button"
+          onClick={onCancel}
           disabled={isSubmitting}
-          className="btn btn-primary flex-1"
+          className="btn btn-secondary px-4 py-2"
         >
-          {isSubmitting ? 'Saving...' : 'Save'}
+          Cancel
         </button>
-        
+
         {isEditing && onDelete && (
           <button
             type="button"
             onClick={handleDelete}
             disabled={isSubmitting}
-            className="btn btn-danger flex-1 disabled:opacity-50"
+            className="btn btn-danger px-4 py-2"
           >
             Delete
           </button>
         )}
-        
+
         <button
-          type="button"
-          onClick={onCancel}
+          type="submit"
           disabled={isSubmitting}
-          className="btn btn-secondary flex-1"
+          className="btn btn-primary px-6 py-2"
         >
-          Cancel
+          {isSubmitting ? 'Saving...' : 'Save'}
         </button>
       </div>
     </form>
