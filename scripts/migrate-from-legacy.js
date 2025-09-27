@@ -154,22 +154,48 @@ function transformWeatherData(legacyWeather) {
 }
 
 /**
- * Transform legacy fish data to React format
+ * Transform legacy fish data to React format with photo handling
  */
 function transformFishData(legacyFish) {
     console.log('🔄 Transforming fish data...');
 
-    return legacyFish.map(fish => ({
-        id: `${fish.tripId}-${Date.now()}-${Math.random()}`,
-        tripId: fish.tripId,
-        species: fish.species || '',
-        length: fish.length || '',
-        weight: fish.weight || '',
-        time: fish.time || '',
-        gear: Array.isArray(fish.gear) ? fish.gear : (fish.bait ? [fish.bait] : []),
-        details: fish.details || '',
-        photo: fish.photo || undefined
-    }));
+    return legacyFish.map(fish => {
+        let processedPhoto = undefined;
+
+        // Handle photo data - check if it's a base64 data URL
+        if (fish.photo && fish.photo.startsWith('data:image')) {
+            try {
+                // Extract the base64 data and determine file extension
+                const photoData = fish.photo.split(',')[1];
+                const mimeType = fish.photo.substring("data:".length, fish.photo.indexOf(";base64"));
+                const fileExtension = mimeType.split('/')[1] || 'png';
+
+                // For migration, we'll keep the full base64 data
+                // The React app can handle base64 photo storage
+                processedPhoto = fish.photo;
+
+                console.log(`📸 Processed photo for fish ${fish.id}: ${fileExtension}, ${photoData.length} chars`);
+            } catch (error) {
+                console.warn(`⚠️ Could not process photo for fish ${fish.id}:`, error.message);
+                processedPhoto = undefined;
+            }
+        } else if (fish.photo) {
+            // Keep non-base64 photo data as-is (could be file paths)
+            processedPhoto = fish.photo;
+        }
+
+        return {
+            id: `${fish.tripId}-${Date.now()}-${Math.random()}`,
+            tripId: fish.tripId,
+            species: fish.species || '',
+            length: fish.length || '',
+            weight: fish.weight || '',
+            time: fish.time || '',
+            gear: Array.isArray(fish.gear) ? fish.gear : (fish.bait ? [fish.bait] : []),
+            details: fish.details || '',
+            photo: processedPhoto
+        };
+    });
 }
 
 /**
@@ -185,6 +211,50 @@ function transformTackleData(legacyTackle) {
         type: item.type || 'Lure', // Default to Lure if not specified
         colour: item.colour || ''
     }));
+}
+
+/**
+ * Validate and count photos in the dataset
+ */
+function analyzePhotos(fishData) {
+    console.log('📸 Analyzing photos in dataset...');
+
+    let photoCount = 0;
+    let base64Photos = 0;
+    let photoSizes = [];
+
+    fishData.forEach(fish => {
+        if (fish.photo) {
+            photoCount++;
+
+            if (fish.photo.startsWith('data:image')) {
+                base64Photos++;
+                // Estimate size (base64 is ~4/3 larger than binary)
+                const photoData = fish.photo.split(',')[1];
+                const estimatedSizeKB = Math.round((photoData.length * 3/4) / 1024);
+                photoSizes.push(estimatedSizeKB);
+            }
+        }
+    });
+
+    console.log(`📊 Photo Analysis:`);
+    console.log(`   • Total fish with photos: ${photoCount}`);
+    console.log(`   • Base64 encoded photos: ${base64Photos}`);
+    if (photoSizes.length > 0) {
+        const totalSizeKB = photoSizes.reduce((sum, size) => sum + size, 0);
+        const avgSizeKB = Math.round(totalSizeKB / photoSizes.length);
+        const maxSizeKB = Math.max(...photoSizes);
+        console.log(`   • Total photo data: ~${totalSizeKB}KB`);
+        console.log(`   • Average photo size: ~${avgSizeKB}KB`);
+        console.log(`   • Largest photo: ~${maxSizeKB}KB`);
+    }
+
+    return {
+        totalPhotos: photoCount,
+        base64Photos: base64Photos,
+        totalSizeKB: photoSizes.reduce((sum, size) => sum + size, 0),
+        averageSizeKB: photoSizes.length > 0 ? Math.round(photoSizes.reduce((sum, size) => sum + size, 0) / photoSizes.length) : 0
+    };
 }
 
 /**
@@ -212,7 +282,10 @@ async function performMigration() {
         const transformedFish = transformFishData(legacyFish);
         const transformedTackle = transformTackleData(localStorageData.tacklebox);
 
-        // Step 4: Create migration package
+        // Step 4: Analyze photos
+        const photoAnalysis = analyzePhotos(transformedFish);
+
+        // Step 5: Create migration package
         const migrationPackage = {
             metadata: {
                 migratedAt: new Date().toISOString(),
@@ -223,6 +296,12 @@ async function performMigration() {
                     weatherLogs: transformedWeather.length,
                     fishCatches: transformedFish.length,
                     tackleItems: transformedTackle.length
+                },
+                photoInfo: {
+                    totalPhotos: photoAnalysis.totalPhotos,
+                    base64Photos: photoAnalysis.base64Photos,
+                    totalSizeKB: photoAnalysis.totalSizeKB,
+                    averageSizeKB: photoAnalysis.averageSizeKB
                 }
             },
             indexedDB: {
@@ -244,6 +323,11 @@ async function performMigration() {
         console.log(`   • Weather Logs: ${transformedWeather.length}`);
         console.log(`   • Fish Catches: ${transformedFish.length}`);
         console.log(`   • Tackle Items: ${transformedTackle.length}`);
+        console.log(`   • Photos: ${photoAnalysis.totalPhotos} (${photoAnalysis.base64Photos} base64)`);
+
+        if (photoAnalysis.totalPhotos > 0) {
+            console.log(`   • Photo Data: ~${photoAnalysis.totalSizeKB}KB total, ~${photoAnalysis.averageSizeKB}KB average`);
+        }
 
         return migrationPackage;
 
