@@ -123,9 +123,14 @@ export const GearTypeForm: React.FC<GearTypeFormProps> = ({
           value={typeName}
           onChange={(e) => handleInputChange(e.target.value)}
           placeholder="Enter gear type name (e.g., Lure, Rod, Reel)"
-          className={`w-full p-2 border rounded-md dark:bg-gray-600 dark:border-gray-500 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-            errors.typeName ? 'border-red-500' : 'border-gray-300'
+          className={`w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+            errors.typeName ? 'border-red-500' : ''
           }`}
+          style={{
+            backgroundColor: 'var(--input-background)',
+            border: `1px solid ${errors.typeName ? 'var(--error-border)' : 'var(--border-color)'}`,
+            color: 'var(--primary-text)'
+          }}
           disabled={isSubmitting}
           maxLength={50}
         />
