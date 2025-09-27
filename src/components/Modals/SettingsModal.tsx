@@ -6,9 +6,15 @@ import { dataExportService } from '../../services/dataExportService';
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onLegacyMigration?: () => void; // Add callback for legacy migration
 }
 
-export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
+interface SettingsModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onLegacyMigration }) => {
   const [isExportingJSON, setIsExportingJSON] = useState(false);
   const [isExportingCSV, setIsExportingCSV] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -137,6 +143,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
           </div>
         </div>
 
+        {/* Legacy Data Migration Section */}
+        <div className="pb-6" style={{ borderBottom: '1px solid var(--border-color)' }}>
+          <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--primary-text)' }}>
+            Legacy Data Migration
+          </h3>
+          <p className="text-sm mb-4" style={{ color: 'var(--secondary-text)' }}>
+            Import fishing data from your previous Māori Fishing Calendar app (legacy version).
+          </p>
+
+          <div className="flex flex-col gap-3">
+            <Button
+              onClick={() => {
+                onClose(); // Close settings modal
+                onLegacyMigration?.(); // Open migration modal
+              }}
+              variant="secondary"
+            >
+              <i className="fas fa-file-import mr-2"></i>
+              Import Legacy Data
+            </Button>
+
+            <p className="text-xs" style={{ color: 'var(--secondary-text)' }}>
+              Supports zip files exported from the legacy app. Perfect for mobile devices!
+            </p>
+          </div>
+        </div>
+
         {/* Data Import Section */}
         <div className="pb-6" style={{ borderBottom: '1px solid var(--border-color)' }}>
           <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--primary-text)' }}>
@@ -145,7 +178,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
           <p className="text-sm mb-4" style={{ color: 'var(--secondary-text)' }}>
             Import data from a previously exported ZIP file or JSON file. This will replace all existing data.
           </p>
-          
+
           <div className="flex flex-col gap-3">
             <Button onClick={handleImportClick} disabled={isImporting} loading={isImporting}>
               {isImporting ? 'Importing…' : (
@@ -155,7 +188,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 </>
               )}
             </Button>
-            
+
             <input
               ref={fileInputRef}
               type="file"
@@ -163,7 +196,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               onChange={handleFileImport}
               className="hidden"
             />
-            
+
             <p className="text-xs" style={{ color: 'var(--secondary-text)' }}>
               Supported formats: ZIP files (exported from this app) or JSON files
             </p>
