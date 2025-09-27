@@ -30,8 +30,6 @@ export interface LegacyDataStructure {
  * Browser-based zip file processor for legacy data migration
  */
 export class BrowserZipImportService {
-  private zip: any = null;
-
   constructor() {
     // Load JSZip dynamically for browser compatibility
     this.loadJSZip();
