@@ -1,0 +1,113 @@
+{
+  "metadata": {
+    "migratedAt": "2025-09-27T20:09:30.000Z",
+    "source": "legacy-maori-fishing-calendar",
+    "version": "1.0.0",
+    "totalRecords": {
+      "trips": 2,
+      "weatherLogs": 2,
+      "fishCatches": 2,
+      "tackleItems": 2
+    }
+  },
+  "indexedDB": {
+    "trips": [
+      {
+        "id": 1,
+        "date": "2024-01-15",
+        "water": "Lake Taupo",
+        "location": "Eastern Bay",
+        "hours": 4,
+        "companions": "John",
+        "notes": "Great day fishing"
+      },
+      {
+        "id": 2,
+        "date": "2024-01-20",
+        "water": "Waihou River",
+        "location": "Lower reaches",
+        "hours": 2,
+        "companions": "",
+        "notes": "Quick afternoon session"
+      }
+    ],
+    "weather_logs": [
+      {
+        "id": "1-1759003770000-0.8502688003287249",
+        "tripId": 1,
+        "timeOfDay": "Morning",
+        "sky": "Partly Cloudy",
+        "windCondition": "Light",
+        "windDirection": "NW",
+        "waterTemp": "18",
+        "airTemp": "22"
+      },
+      {
+        "id": "2-1759003770000-0.11849980659707082",
+        "tripId": 2,
+        "timeOfDay": "Afternoon",
+        "sky": "Clear",
+        "windCondition": "Calm",
+        "windDirection": "",
+        "waterTemp": "20",
+        "airTemp": "25"
+      }
+    ],
+    "fish_caught": [
+      {
+        "id": "1-1759003770000-0.050160741044250834",
+        "tripId": 1,
+        "species": "Rainbow Trout",
+        "length": "45cm",
+        "weight": "2.5kg",
+        "time": "10:30",
+        "gear": [
+          "Spinner",
+          "Rod"
+        ],
+        "details": "Beautiful fish, fought well"
+      },
+      {
+        "id": "1-1759003770000-0.7850553814646426",
+        "tripId": 1,
+        "species": "Brown Trout",
+        "length": "38cm",
+        "weight": "1.8kg",
+        "time": "14:15",
+        "gear": [
+          "Fly"
+        ],
+        "details": "Caught on dry fly"
+      }
+    ]
+  },
+  "localStorage": {
+    "tacklebox": [
+      {
+        "id": 1,
+        "name": "Silver Spinner",
+        "brand": "Rapala",
+        "type": "Lure",
+        "colour": "Silver"
+      },
+      {
+        "id": 2,
+        "name": "Fly Rod",
+        "brand": "Sage",
+        "type": "Rod",
+        "colour": ""
+      }
+    ],
+    "gearTypes": [
+      "Lure",
+      "Rod",
+      "Reel"
+    ],
+    "theme": "light",
+    "userLocation": {
+      "lat": -38.6637,
+      "lon": 176.0702,
+      "name": "Lake Taupo, New Zealand"
+    }
+  }
+}
