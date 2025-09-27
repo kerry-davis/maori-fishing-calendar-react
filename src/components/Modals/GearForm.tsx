@@ -144,9 +144,14 @@ export const GearForm: React.FC<GearFormProps> = ({
           value={formData.name}
           onChange={(e) => handleInputChange('name', e.target.value)}
           placeholder="Enter gear name"
-          className={`w-full p-2 border rounded-md dark:bg-gray-600 dark:border-gray-500 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-            errors.name ? 'border-red-500' : 'border-gray-300'
+          className={`w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+            errors.name ? 'border-red-500' : ''
           }`}
+          style={{
+            backgroundColor: 'var(--input-background)',
+            border: `1px solid ${errors.name ? 'var(--error-border)' : 'var(--border-color)'}`,
+            color: 'var(--primary-text)'
+          }}
           disabled={isSubmitting}
         />
         {errors.name && (
@@ -168,7 +173,12 @@ export const GearForm: React.FC<GearFormProps> = ({
           value={formData.brand}
           onChange={(e) => handleInputChange('brand', e.target.value)}
           placeholder="Enter brand name"
-          className="w-full p-2 border border-gray-300 rounded-md dark:bg-gray-600 dark:border-gray-500 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          style={{
+            backgroundColor: 'var(--input-background)',
+            border: '1px solid var(--border-color)',
+            color: 'var(--primary-text)'
+          }}
           disabled={isSubmitting}
         />
       </div>
@@ -185,9 +195,14 @@ export const GearForm: React.FC<GearFormProps> = ({
           id="gear-type"
           value={formData.type}
           onChange={(e) => handleInputChange('type', e.target.value)}
-          className={`w-full p-2 border rounded-md dark:bg-gray-600 dark:border-gray-500 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-            errors.type ? 'border-red-500' : 'border-gray-300'
+          className={`w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+            errors.type ? 'border-red-500' : ''
           }`}
+          style={{
+            backgroundColor: 'var(--input-background)',
+            border: `1px solid ${errors.type ? 'var(--error-border)' : 'var(--border-color)'}`,
+            color: 'var(--primary-text)'
+          }}
           disabled={isSubmitting}
         >
           <option value="">Select gear type</option>
@@ -216,7 +231,12 @@ export const GearForm: React.FC<GearFormProps> = ({
           value={formData.colour}
           onChange={(e) => handleInputChange('colour', e.target.value)}
           placeholder="Enter colour"
-          className="w-full p-2 border border-gray-300 rounded-md dark:bg-gray-600 dark:border-gray-500 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          style={{
+            backgroundColor: 'var(--input-background)',
+            border: '1px solid var(--border-color)',
+            color: 'var(--primary-text)'
+          }}
           disabled={isSubmitting}
         />
       </div>
