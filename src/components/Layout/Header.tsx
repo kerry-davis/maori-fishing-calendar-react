@@ -63,7 +63,7 @@ const Header: FC<HeaderProps> = ({
 
   return (
     <div ref={headerRef} className="sticky top-0 z-40 backdrop-blur supports-[backdrop-filter]:bg-white/70 bg-white/90 dark:bg-gray-900/70 ring-1 ring-gray-200/60 dark:ring-white/10 rounded-b-2xl shadow-sm mb-0" style={{ backgroundColor: 'var(--card-background)' }}>
-      <Container className="py-2 sm:py-4 px-1 sm:px-4">
+      <Container className="py-4 sm:py-8 px-2 sm:px-8">
         <div className="flex items-center justify-between gap-1 sm:gap-2">
           <div className="text-left min-w-0 flex-1 pr-1 sm:pr-2">
             <div className="flex items-center gap-2">
@@ -131,7 +131,7 @@ const Header: FC<HeaderProps> = ({
         </div>
 
         {/* Mobile collapsible menu */}
-        <div className={`sm:hidden overflow-hidden transition-all duration-300 ease-in-out ${isMobileMenuOpen ? 'max-h-32 opacity-100 mt-0.5' : 'max-h-0 opacity-0'}`} style={{ display: isMobileMenuOpen ? 'block' : 'none' }}>
+        <div className={`sm:hidden overflow-hidden transition-all duration-300 ease-in-out ${isMobileMenuOpen ? 'max-h-32 opacity-100 mt-3' : 'max-h-0 opacity-0'}`} style={{ display: isMobileMenuOpen ? 'block' : 'none' }}>
           <div className="flex flex-wrap gap-0.5 pt-2 pb-2 px-0.5 mx-0 rounded-sm border shadow-sm justify-center" style={{ backgroundColor: 'var(--secondary-background)', borderColor: 'var(--border-color)' }}>
             <button onClick={() => { closeMobileMenu(); onSearchClick(); }} className="icon-btn flex flex-col items-center justify-center p-0 min-h-[24px] min-w-[60px]" title="Search Logs">
               <i className="fas fa-search text-base mb-0" />
