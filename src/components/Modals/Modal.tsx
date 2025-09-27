@@ -185,7 +185,7 @@ export const ModalHeader: React.FC<ModalHeaderProps> = ({
       data-modal-header="true"
     >
       <div className="flex justify-between items-center">
-        <div className="flex-1">
+        <div className="flex-1 text-center">
           <h3 className="text-2xl font-bold" style={{ color: 'var(--primary-text)' }}>
             {title}
           </h3>
