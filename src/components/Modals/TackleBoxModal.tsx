@@ -19,13 +19,15 @@ import type { ModalProps, TackleItem } from '../../types';
  * Requirements: 1.1, 5.1
  */
 export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
-  const [tacklebox, setTacklebox] = useFirebaseTackleBox();
-  const [gearTypes, setGearTypes] = useFirebaseGearTypes();
+  const [tacklebox, updateTackleBox] = useFirebaseTackleBox();
+  const [gearTypes, updateGearTypes] = useFirebaseGearTypes();
   const [selectedGearId, setSelectedGearId] = useState<string>('');
   const [selectedGearType, setSelectedGearType] = useState<string>('');
   const [activeForm, setActiveForm] = useState<'gear' | 'gearType' | null>(null);
   const [editingGear, setEditingGear] = useState<TackleItem | null>(null);
   const [editingGearType, setEditingGearType] = useState<string>('');
+
+  console.log('TackleBoxModal rendered - tacklebox items:', tacklebox.length, 'gearTypes:', gearTypes.length);
 
   // Reset form state when modal opens/closes
   useEffect(() => {
@@ -83,43 +85,57 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
     setActiveForm('gearType');
   };
 
-  const handleGearSave = (gearData: Omit<TackleItem, 'id'> | TackleItem) => {
-    if ('id' in gearData) {
-      // Update existing gear
-      setTacklebox(prev => prev.map(item => 
-        item.id === gearData.id ? gearData : item
-      ));
-    } else {
-      // Add new gear
-      const newGear: TackleItem = {
-        ...gearData,
-        id: Date.now()
-      };
-      setTacklebox(prev => [...prev, newGear]);
+  const handleGearSave = async (gearData: Omit<TackleItem, 'id'> | TackleItem) => {
+    try {
+      if ('id' in gearData) {
+        // Update existing gear
+        await updateTackleBox(prev => prev.map(item =>
+          item.id === gearData.id ? gearData : item
+        ));
+      } else {
+        // Add new gear
+        const newGear: TackleItem = {
+          ...gearData,
+          id: Date.now()
+        };
+        await updateTackleBox(prev => [...prev, newGear]);
+      }
+
+      // Only reset form after successful save
+      resetFormState();
+    } catch (error) {
+      console.error('Error saving gear:', error);
+      // Keep form open on error so user can retry
     }
-    resetFormState();
   };
 
   const handleGearDelete = (gearId: number) => {
     if (window.confirm('Are you sure you want to delete this gear item?')) {
-      setTacklebox(prev => prev.filter(item => item.id !== gearId));
+      updateTackleBox(prev => prev.filter(item => item.id !== gearId));
       resetFormState();
     }
   };
 
-  const handleGearTypeSave = (newTypeName: string, oldTypeName?: string) => {
-    if (oldTypeName && oldTypeName !== newTypeName) {
-      // Update existing gear type
-      setGearTypes(prev => prev.map(type => type === oldTypeName ? newTypeName : type));
-      // Update all gear items that use this type
-      setTacklebox(prev => prev.map(item => 
-        item.type === oldTypeName ? { ...item, type: newTypeName } : item
-      ));
-    } else if (!oldTypeName && !gearTypes.includes(newTypeName)) {
-      // Add new gear type
-      setGearTypes(prev => [...prev, newTypeName]);
+  const handleGearTypeSave = async (newTypeName: string, oldTypeName?: string) => {
+    try {
+      if (oldTypeName && oldTypeName !== newTypeName) {
+        // Update existing gear type
+        updateGearTypes(prev => prev.map(type => type === oldTypeName ? newTypeName : type));
+        // Update all gear items that use this type
+        updateTackleBox(prev => prev.map(item =>
+          item.type === oldTypeName ? { ...item, type: newTypeName } : item
+        ));
+      } else if (!oldTypeName && !gearTypes.includes(newTypeName)) {
+        // Add new gear type
+        updateGearTypes(prev => [...prev, newTypeName]);
+      }
+
+      // Only reset form after successful save
+      resetFormState();
+    } catch (error) {
+      console.error('Error saving gear type:', error);
+      // Keep form open on error so user can retry
     }
-    resetFormState();
   };
 
   const handleGearTypeDelete = (gearType: string) => {
@@ -129,8 +145,8 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
       : `Are you sure you want to delete the "${gearType}" type?`;
 
     if (window.confirm(confirmMessage)) {
-      setGearTypes(prev => prev.filter(type => type !== gearType));
-      setTacklebox(prev => prev.filter(item => item.type !== gearType));
+      updateGearTypes(prev => prev.filter(type => type !== gearType));
+      updateTackleBox(prev => prev.filter(item => item.type !== gearType));
       resetFormState();
     }
   };
@@ -140,107 +156,123 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
   const sortedGearTypes = [...gearTypes].sort();
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-4xl">
+    <Modal isOpen={isOpen} onClose={onClose} className="max-w-5xl">
       <ModalHeader title="My Tackle Box" onClose={onClose} />
 
-      <ModalBody className="overflow-y-auto max-h-[70vh]">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Left side: Dropdowns and Add buttons */}
-          <div>
-            <div className="mb-4">
-              <label
-                htmlFor="gear-item-select"
-                className="block text-sm font-medium mb-2"
-                style={{ color: 'var(--primary-text)' }}
-              >
-                Edit Existing Gear
-              </label>
-              <select
-                id="gear-item-select"
-                value={selectedGearId}
-                onChange={(e) => handleGearSelect(e.target.value)}
-                className="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                style={{
-                  backgroundColor: 'var(--input-background)',
-                  borderColor: 'var(--input-border)',
-                  color: 'var(--primary-text)'
-                }}
-              >
-                <option value="">Select Gear...</option>
-                {sortedGear.map(item => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="mb-4">
-              <label
-                htmlFor="gear-type-select"
-                className="block text-sm font-medium mb-2"
-                style={{ color: 'var(--primary-text)' }}
-              >
-                Edit Existing Gear Type
-              </label>
-              <select
-                id="gear-type-select"
-                value={selectedGearType}
-                onChange={(e) => handleGearTypeSelect(e.target.value)}
-                className="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                style={{
-                  backgroundColor: 'var(--input-background)',
-                  borderColor: 'var(--input-border)',
-                  color: 'var(--primary-text)'
-                }}
-              >
-                <option value="">Select Type...</option>
-                {sortedGearTypes.map(type => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex space-x-2">
-              <Button onClick={handleAddNewGear} className="flex-1">
-                Add New Gear
-              </Button>
-              <Button onClick={handleAddNewGearType} className="flex-1">
-                Add New Type
-              </Button>
-            </div>
-          </div>
-
-          {/* Right side: Details and Forms */}
-          <div className="p-4 rounded-lg" style={{ backgroundColor: 'var(--secondary-background)' }}>
-            {activeForm === 'gear' && (
-              <GearForm
-                gear={editingGear}
-                gearTypes={gearTypes}
-                onSave={handleGearSave}
-                onDelete={editingGear ? () => handleGearDelete(editingGear.id) : undefined}
-                onCancel={resetFormState}
-              />
-            )}
-
-            {activeForm === 'gearType' && (
-              <GearTypeForm
-                gearType={editingGearType}
-                onSave={handleGearTypeSave}
-                onDelete={editingGearType ? () => handleGearTypeDelete(editingGearType) : undefined}
-                onCancel={resetFormState}
-              />
-            )}
-
-            {!activeForm && (
-              <div className="text-center py-8">
-                <p style={{ color: 'var(--secondary-text)' }}>
-                  Select an item or type to view details, or add a new one.
-                </p>
+      <ModalBody className="overflow-y-auto max-h-[75vh]">
+        {/* Main Content Area */}
+        <div className="space-y-6">
+          {/* Selection and Action Controls */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left Column: Selection Controls */}
+            <div className="lg:col-span-1 space-y-4">
+              <div>
+                <label
+                  htmlFor="gear-item-select"
+                  className="block text-sm font-medium mb-2"
+                  style={{ color: 'var(--primary-text)' }}
+                >
+                  Edit Existing Gear
+                </label>
+                <select
+                  key={tacklebox.length}
+                  id="gear-item-select"
+                  value={selectedGearId}
+                  onChange={(e) => handleGearSelect(e.target.value)}
+                  className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                  style={{
+                    backgroundColor: 'var(--input-background)',
+                    borderColor: 'var(--input-border)',
+                    color: 'var(--primary-text)'
+                  }}
+                >
+                  <option value="">Select Gear...</option>
+                  {sortedGear.map(item => (
+                    <option key={item.id} value={item.id}>
+                      {item.name} ({item.type})
+                    </option>
+                  ))}
+                </select>
               </div>
-            )}
+
+              <div>
+                <label
+                  htmlFor="gear-type-select"
+                  className="block text-sm font-medium mb-2"
+                  style={{ color: 'var(--primary-text)' }}
+                >
+                  Edit Existing Gear Type
+                </label>
+                <select
+                  id="gear-type-select"
+                  value={selectedGearType}
+                  onChange={(e) => handleGearTypeSelect(e.target.value)}
+                  className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                  style={{
+                    backgroundColor: 'var(--input-background)',
+                    borderColor: 'var(--input-border)',
+                    color: 'var(--primary-text)'
+                  }}
+                >
+                  <option value="">Select Type...</option>
+                  {sortedGearTypes.map(type => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="space-y-3">
+                <Button onClick={handleAddNewGear} className="w-full justify-center py-3">
+                  <i className="fas fa-plus mr-2"></i>
+                  Add New Gear
+                </Button>
+                <Button onClick={handleAddNewGearType} variant="secondary" className="w-full justify-center py-3">
+                  <i className="fas fa-plus mr-2"></i>
+                  Add New Type
+                </Button>
+              </div>
+            </div>
+
+            {/* Right Columns: Form Area (spans 2 columns on large screens) */}
+            <div className="lg:col-span-2">
+              {activeForm ? (
+                <div className="bg-white dark:bg-gray-800 rounded-lg border p-6" style={{ backgroundColor: 'var(--card-background)', borderColor: 'var(--border-color)' }}>
+                  {activeForm === 'gear' && (
+                    <GearForm
+                      gear={editingGear}
+                      gearTypes={gearTypes}
+                      onSave={handleGearSave}
+                      onDelete={editingGear ? () => handleGearDelete(editingGear.id) : undefined}
+                      onCancel={resetFormState}
+                    />
+                  )}
+
+                  {activeForm === 'gearType' && (
+                    <GearTypeForm
+                      gearType={editingGearType}
+                      onSave={handleGearTypeSave}
+                      onDelete={editingGearType ? () => handleGearTypeDelete(editingGearType) : undefined}
+                      onCancel={resetFormState}
+                    />
+                  )}
+                </div>
+              ) : (
+                <div className="bg-white dark:bg-gray-800 rounded-lg border p-8 text-center" style={{ backgroundColor: 'var(--card-background)', borderColor: 'var(--border-color)' }}>
+                  <div className="max-w-md mx-auto">
+                    <i className="fas fa-toolbox text-4xl mb-4" style={{ color: 'var(--secondary-text)' }}></i>
+                    <h3 className="text-lg font-medium mb-2" style={{ color: 'var(--primary-text)' }}>
+                      Manage Your Tackle Box
+                    </h3>
+                    <p className="text-sm" style={{ color: 'var(--secondary-text)' }}>
+                      Select an existing gear item or type to edit, or create something new to get started.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </ModalBody>

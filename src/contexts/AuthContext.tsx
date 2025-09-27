@@ -77,6 +77,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.log('Switched to guest mode - local data remains visible');
       }
 
+      console.log('Auth state changed - user:', newUser?.uid || 'null', 'email:', newUser?.email || 'none');
       setUser(newUser);
       setLoading(false);
     });
