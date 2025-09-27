@@ -4,6 +4,7 @@ import {
   useDatabaseContext,
   useAuth,
 } from "./contexts";
+import { useExitConfirmation } from "./hooks";
 import "./utils/cleanupDuplicates"; // Load cleanup utilities
 import ErrorBoundary from "./components/ErrorBoundary";
 import { Header, Footer } from "./components/Layout";
@@ -51,6 +52,7 @@ type ModalState =
 function AppContent() {
   const { isReady, error } = useDatabaseContext();
   const { user } = useAuth();
+  useExitConfirmation();
 
   // Modal state management for routing between different views
   const [currentModal, setCurrentModal] = useState<ModalState>("none");
