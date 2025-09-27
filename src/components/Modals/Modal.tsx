@@ -126,7 +126,7 @@ export const Modal: React.FC<ModalProps> = ({
       <div
         ref={modalRef}
         className={`
-          relative rounded-lg shadow-xl
+          relative rounded-lg shadow-xl flex flex-col
           ${getMaxWidthClass()} w-full mx-4
           ${className}
         `}
@@ -177,7 +177,7 @@ export const ModalHeader: React.FC<ModalHeaderProps> = ({
 
   return (
     <div
-      className={`p-6 ${className} modal-header`}
+      className={`p-6 flex-shrink-0 ${className} modal-header`}
       style={{
         borderBottom: '1px solid var(--border-color)',
         backgroundColor: getHeaderBackground()
@@ -232,7 +232,10 @@ export const ModalBody: React.FC<ModalBodyProps> = ({
   scrollable = true
 }) => {
   return (
-    <div className={`p-6 ${scrollable ? 'overflow-y-auto' : ''} ${className}`}>
+    <div
+      className={`p-6 flex-1 ${scrollable ? 'overflow-y-auto' : ''} ${className}`}
+      style={scrollable ? { minHeight: 0 } : {}}
+    >
       {children}
     </div>
   );
@@ -249,7 +252,7 @@ export const ModalFooter: React.FC<ModalFooterProps> = ({
   className = ''
 }) => {
   return (
-    <div className={`p-6 ${className}`} style={{ borderTop: '1px solid var(--border-color)' }}>
+    <div className={`p-6 flex-shrink-0 ${className}`} style={{ borderTop: '1px solid var(--border-color)' }}>
       {children}
     </div>
   );

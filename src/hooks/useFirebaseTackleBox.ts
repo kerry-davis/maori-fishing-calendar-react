@@ -32,47 +32,58 @@ export function useFirebaseTackleBox(): [
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Load tackle box from Firestore
+  // Load tackle box from Firestore or localStorage
   const loadTackleBox = useCallback(async () => {
-    if (!user) {
-      setTacklebox([]);
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
     setError(null);
 
     try {
-      const q = query(
-        collection(firestore, 'tackleItems'),
-        where('userId', '==', user.uid),
-        orderBy('name', 'asc')
-      );
+      if (user) {
+        // Authenticated user - load from Firestore
+        const q = query(
+          collection(firestore, 'tackleItems'),
+          where('userId', '==', user.uid),
+          orderBy('name', 'asc')
+        );
 
-      const querySnapshot = await getDocs(q);
-      const items: TackleItem[] = [];
+        const querySnapshot = await getDocs(q);
+        const items: TackleItem[] = [];
 
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        items.push({
-          id: parseInt(doc.id), // Convert Firebase ID to number for compatibility
-          ...data
-        } as TackleItem);
-      });
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          items.push({
+            id: parseInt(doc.id), // Convert Firebase ID to number for compatibility
+            ...data
+          } as TackleItem);
+        });
 
-      setTacklebox(items);
+        setTacklebox(items);
+      } else {
+        // Guest user - load from localStorage
+        const localData = localStorage.getItem('tacklebox');
+        if (localData) {
+          const items = JSON.parse(localData);
+          setTacklebox(items);
+        } else {
+          setTacklebox([]);
+        }
+      }
     } catch (err) {
       console.error('Error loading tackle box:', err);
       setError('Failed to load tackle box');
-      // Fallback to localStorage if Firestore fails
+
+      // Fallback to localStorage
       try {
         const localData = localStorage.getItem('tacklebox');
         if (localData) {
-          setTacklebox(JSON.parse(localData));
+          const items = JSON.parse(localData);
+          setTacklebox(items);
+        } else {
+          setTacklebox([]);
         }
       } catch (localErr) {
         console.error('Error loading local tackle box:', localErr);
+        setTacklebox([]);
       }
     } finally {
       setLoading(false);
@@ -84,66 +95,84 @@ export function useFirebaseTackleBox(): [
     loadTackleBox();
   }, [loadTackleBox]);
 
-  // Update tackle box in Firestore
+  // Update tackle box in Firestore or localStorage
   const updateTackleBox = useCallback(async (
     value: TackleItem[] | ((prev: TackleItem[]) => TackleItem[])
   ) => {
-    if (!user) return;
-
     const newValue = value instanceof Function ? value(tacklebox) : value;
     setTacklebox(newValue);
     setError(null);
 
     try {
-      // Get current items from Firestore to compare
-      const q = query(
-        collection(firestore, 'tackleItems'),
-        where('userId', '==', user.uid)
-      );
-      const querySnapshot = await getDocs(q);
-      const existingItems = new Map();
+      if (user) {
+        // Authenticated user - save to Firestore
+        const q = query(
+          collection(firestore, 'tackleItems'),
+          where('userId', '==', user.uid)
+        );
+        const querySnapshot = await getDocs(q);
+        const existingItems = new Map();
 
-      querySnapshot.forEach((doc) => {
-        existingItems.set(parseInt(doc.id), doc.ref);
-      });
+        querySnapshot.forEach((doc) => {
+          existingItems.set(parseInt(doc.id), doc.ref);
+        });
 
-      const batch = writeBatch(firestore);
+        const batch = writeBatch(firestore);
 
-      // Delete items that are no longer in the new value
-      existingItems.forEach((ref, id) => {
-        if (!newValue.find(item => item.id === id)) {
-          batch.delete(ref);
+        // Delete items that are no longer in the new value
+        existingItems.forEach((ref, id) => {
+          if (!newValue.find(item => item.id === id)) {
+            batch.delete(ref);
+          }
+        });
+
+        // Track new items to map their IDs after commit
+        const newItemMappings = new Map<number, string>();
+
+        // Add or update items
+        for (const item of newValue) {
+          const { id, ...itemWithoutId } = item;
+          const itemData = {
+            ...itemWithoutId,
+            userId: user.uid,
+            updatedAt: serverTimestamp()
+          };
+
+          if (existingItems.has(item.id)) {
+            // Update existing
+            const ref = existingItems.get(item.id);
+            batch.update(ref, itemData);
+          } else {
+            // Add new item with generated Firebase ID
+            const docRef = doc(collection(firestore, 'tackleItems'));
+            const numericId = item.id;
+            newItemMappings.set(numericId, docRef.id);
+            batch.set(docRef, {
+              ...itemData,
+              createdAt: serverTimestamp()
+            });
+          }
         }
-      });
 
-      // Add or update items
-      for (const item of newValue) {
-        const { id, ...itemWithoutId } = item; // Extract id separately
-        const itemData = {
-          ...itemWithoutId,
-          userId: user.uid,
-          updatedAt: serverTimestamp()
-        };
+        await batch.commit();
 
-        if (existingItems.has(item.id)) {
-          // Update existing
-          const ref = existingItems.get(item.id);
-          batch.update(ref, itemData);
-        } else {
-          // Add new (we'll use a generated ID and then map it back)
-          const docRef = doc(collection(firestore, 'tackleItems'));
-          batch.set(docRef, {
-            ...itemData,
-            createdAt: serverTimestamp()
+        // Update local state with correct Firebase IDs for new items
+        if (newItemMappings.size > 0) {
+          const updatedItems = newValue.map(item => {
+            const firebaseId = newItemMappings.get(item.id);
+            if (firebaseId) {
+              return { ...item };
+            }
+            return item;
           });
-          // Note: We'll need to handle ID mapping after batch commit
+          setTacklebox(updatedItems);
+        } else {
+          await loadTackleBox();
         }
+      } else {
+        // Guest user - save to localStorage
+        localStorage.setItem('tacklebox', JSON.stringify(newValue));
       }
-
-      await batch.commit();
-
-      // Reload to get updated IDs
-      await loadTackleBox();
     } catch (err) {
       console.error('Error updating tackle box:', err);
       setError('Failed to save tackle box changes');
@@ -159,23 +188,27 @@ export function useFirebaseTackleBox(): [
 
   // Clear tackle box
   const clearTackleBox = useCallback(async () => {
-    if (!user) return;
-
     setTacklebox([]);
     setError(null);
 
     try {
-      const q = query(
-        collection(firestore, 'tackleItems'),
-        where('userId', '==', user.uid)
-      );
-      const querySnapshot = await getDocs(q);
+      if (user) {
+        // Authenticated user - clear from Firestore
+        const q = query(
+          collection(firestore, 'tackleItems'),
+          where('userId', '==', user.uid)
+        );
+        const querySnapshot = await getDocs(q);
 
-      const batch = writeBatch(firestore);
-      querySnapshot.forEach((doc) => {
-        batch.delete(doc.ref);
-      });
-      await batch.commit();
+        const batch = writeBatch(firestore);
+        querySnapshot.forEach((doc) => {
+          batch.delete(doc.ref);
+        });
+        await batch.commit();
+      } else {
+        // Guest user - clear from localStorage
+        localStorage.removeItem('tacklebox');
+      }
     } catch (err) {
       console.error('Error clearing tackle box:', err);
       setError('Failed to clear tackle box');
@@ -207,31 +240,38 @@ export function useFirebaseGearTypes(): [
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Load gear types from Firestore
+  // Load gear types from Firestore or localStorage
   const loadGearTypes = useCallback(async () => {
-    if (!user) {
-      setGearTypes([...DEFAULT_GEAR_TYPES]);
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
     setError(null);
 
     try {
-      const docRef = doc(firestore, 'userSettings', user.uid);
-      const docSnap = await getDoc(docRef);
+      if (user) {
+        // Authenticated user - load from Firestore
+        const docRef = doc(firestore, 'userSettings', user.uid);
+        const docSnap = await getDoc(docRef);
 
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setGearTypes(data.gearTypes || [...DEFAULT_GEAR_TYPES]);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          const types = data.gearTypes || [...DEFAULT_GEAR_TYPES];
+          setGearTypes(types);
+        } else {
+          // Create default settings for new user
+          await updateDoc(docRef, {
+            gearTypes: [...DEFAULT_GEAR_TYPES],
+            updatedAt: serverTimestamp()
+          });
+          setGearTypes([...DEFAULT_GEAR_TYPES]);
+        }
       } else {
-        // Create default settings for new user
-        await updateDoc(docRef, {
-          gearTypes: [...DEFAULT_GEAR_TYPES],
-          updatedAt: serverTimestamp()
-        });
-        setGearTypes([...DEFAULT_GEAR_TYPES]);
+        // Guest user - load from localStorage
+        const localData = localStorage.getItem('gearTypes');
+        if (localData) {
+          const types = JSON.parse(localData);
+          setGearTypes(types);
+        } else {
+          setGearTypes([...DEFAULT_GEAR_TYPES]);
+        }
       }
     } catch (err) {
       console.error('Error loading gear types:', err);
@@ -241,10 +281,14 @@ export function useFirebaseGearTypes(): [
       try {
         const localData = localStorage.getItem('gearTypes');
         if (localData) {
-          setGearTypes(JSON.parse(localData));
+          const types = JSON.parse(localData);
+          setGearTypes(types);
+        } else {
+          setGearTypes([...DEFAULT_GEAR_TYPES]);
         }
       } catch (localErr) {
         console.error('Error loading local gear types:', localErr);
+        setGearTypes([...DEFAULT_GEAR_TYPES]);
       }
     } finally {
       setLoading(false);
@@ -256,22 +300,26 @@ export function useFirebaseGearTypes(): [
     loadGearTypes();
   }, [loadGearTypes]);
 
-  // Update gear types in Firestore
+  // Update gear types in Firestore or localStorage
   const updateGearTypes = useCallback(async (
     value: string[] | ((prev: string[]) => string[])
   ) => {
-    if (!user) return;
-
     const newValue = value instanceof Function ? value(gearTypes) : value;
     setGearTypes(newValue);
     setError(null);
 
     try {
-      const docRef = doc(firestore, 'userSettings', user.uid);
-      await updateDoc(docRef, {
-        gearTypes: newValue,
-        updatedAt: serverTimestamp()
-      });
+      if (user) {
+        // Authenticated user - save to Firestore
+        const docRef = doc(firestore, 'userSettings', user.uid);
+        await updateDoc(docRef, {
+          gearTypes: newValue,
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        // Guest user - save to localStorage
+        localStorage.setItem('gearTypes', JSON.stringify(newValue));
+      }
     } catch (err) {
       console.error('Error updating gear types:', err);
       setError('Failed to save gear types');
@@ -287,18 +335,22 @@ export function useFirebaseGearTypes(): [
 
   // Reset gear types to defaults
   const resetGearTypes = useCallback(async () => {
-    if (!user) return;
-
     const defaultTypes = [...DEFAULT_GEAR_TYPES];
     setGearTypes(defaultTypes);
     setError(null);
 
     try {
-      const docRef = doc(firestore, 'userSettings', user.uid);
-      await updateDoc(docRef, {
-        gearTypes: defaultTypes,
-        updatedAt: serverTimestamp()
-      });
+      if (user) {
+        // Authenticated user - save to Firestore
+        const docRef = doc(firestore, 'userSettings', user.uid);
+        await updateDoc(docRef, {
+          gearTypes: defaultTypes,
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        // Guest user - save to localStorage
+        localStorage.setItem('gearTypes', JSON.stringify(defaultTypes));
+      }
     } catch (err) {
       console.error('Error resetting gear types:', err);
       setError('Failed to reset gear types');
