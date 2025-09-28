@@ -293,37 +293,47 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
     }
   };
 
+  const getMimeType = (base64Data: string): string => {
+    try {
+      const decodedData = atob(base64Data.substring(0, 50));
+      const byte1 = decodedData.charCodeAt(0);
+      const byte2 = decodedData.charCodeAt(1);
+      const byte3 = decodedData.charCodeAt(2);
+      const byte4 = decodedData.charCodeAt(3);
+
+      // Check for JPEG magic numbers (FF D8 FF)
+      if (byte1 === 0xFF && byte2 === 0xD8 && byte3 === 0xFF) {
+        return "image/jpeg";
+      }
+
+      // Check for PNG magic numbers (89 50 4E 47)
+      if (byte1 === 0x89 && byte2 === 0x50 && byte3 === 0x4E && byte4 === 0x47) {
+        return "image/png";
+      }
+    } catch (e) {
+      // Not valid base64, so we can't determine the type
+      return "";
+    }
+
+    return ""; // Unknown type
+  };
+
   const fixPhotoData = (photoData: string): string => {
-    // If it's already a proper data URL, return as-is
-    if (photoData.startsWith("data:image/")) {
+    // If it's already a proper data URL, return as-is.
+    if (photoData.startsWith("data:image")) {
       return photoData;
     }
 
-    // Check for common base64 characters and a reasonable length to avoid decoding random strings.
-    const isLikelyBase64 = /^[A-Za-z0-9+/=]+$/.test(photoData) && photoData.length > 100;
+    // Use the magic number helper to determine the MIME type.
+    const mimeType = getMimeType(photoData);
 
-    if (isLikelyBase64) {
-      try {
-        // Look at the first few characters of decoded base64 to detect format
-        const sample = atob(photoData.substring(0, 50));
-        if (sample.includes("PNG")) {
-          console.log("🔧 GalleryModal: Detected PNG, fixing photo data format");
-          return `data:image/png;base64,${photoData}`;
-        } else if (sample.includes("JFIF") || sample.includes("Exif")) {
-          console.log("🔧 GalleryModal: Detected JPEG, fixing photo data format");
-          return `data:image/jpeg;base64,${photoData}`;
-        }
-      } catch (error) {
-        console.warn("⚠️ GalleryModal: Could not decode base64 data, treating as invalid.", error);
-      }
+    if (mimeType) {
+      console.log(`🔧 GalleryModal: Detected ${mimeType}, creating data URL.`);
+      return `data:${mimeType};base64,${photoData}`;
     }
 
-    // If we can't determine the format or it's not valid base64, return an invalid source
-    // to trigger the onError handler on the <img> tag.
-    console.warn("⚠️ GalleryModal: Invalid or unknown photo data format, returning invalid source:", {
-      length: photoData.length,
-      start: photoData.substring(0, 30),
-    });
+    // If the type is unknown, return an invalid source to trigger the error handler.
+    console.warn("⚠️ GalleryModal: Unknown photo data format, returning invalid source.");
     return "#";
   };
 
