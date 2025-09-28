@@ -127,34 +127,29 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
             // Fix photo data format if needed
             const fixedPhotoData = fixPhotoData(fish.photo);
 
-            // Only add the photo if the data is valid
-            if (fixedPhotoData) {
-              const photoItem = {
-                id: `${fish.id}-${fish.tripId}`,
-                fishId: fish.id,
-                tripId: fish.tripId,
-                photo: fixedPhotoData,
-                species: fish.species,
-                length: fish.length,
-                weight: fish.weight,
-                date: trip.date,
-                location: trip.location,
-                water: trip.water,
-                time: fish.time,
-              };
+            const photoItem = {
+              id: `${fish.id}-${fish.tripId}`,
+              fishId: fish.id,
+              tripId: fish.tripId,
+              photo: fixedPhotoData,
+              species: fish.species,
+              length: fish.length,
+              weight: fish.weight,
+              date: trip.date,
+              location: trip.location,
+              water: trip.water,
+              time: fish.time,
+            };
 
-              photoItems.push(photoItem);
-              console.log(`✅ GalleryModal: Added photo item for ${fish.species} from ${trip.date}`);
-              console.log(`   📸 Photo data:`, {
-                originalType: typeof fish.photo,
-                originalLength: fish.photo.length,
-                fixedLength: fixedPhotoData.length,
-                wasFixed: fish.photo !== fixedPhotoData,
-                isDataURL: fixedPhotoData.startsWith('data:')
-              });
-            } else {
-              console.log(`🚫 GalleryModal: Skipped photo for ${fish.species} due to invalid data`);
-            }
+            photoItems.push(photoItem);
+            console.log(`✅ GalleryModal: Added photo item for ${fish.species} from ${trip.date}`);
+            console.log(`   📸 Photo data:`, {
+              originalType: typeof fish.photo,
+              originalLength: fish.photo.length,
+              fixedLength: fixedPhotoData.length,
+              wasFixed: fish.photo !== fixedPhotoData,
+              isDataURL: fixedPhotoData.startsWith('data:')
+            });
           } else {
             console.log(`⚠️ GalleryModal: Fish ${fish.species} has photo but no matching trip ${fish.tripId}`);
           }
@@ -304,23 +299,32 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
       return photoData;
     }
 
-    // Regex to check for a plausible base64 string
-    // This is not foolproof but helps filter out simple strings or bad data
-    const isBase64 = /^[A-Za-z0-9+/=]+$/.test(photoData);
+    // Check for common base64 characters and a reasonable length to avoid decoding random strings.
+    const isLikelyBase64 = /^[A-Za-z0-9+/=]+$/.test(photoData) && photoData.length > 100;
 
-    // If it looks like base64, assume it's a JPEG and prepend the data URL prefix
-    if (isBase64 && photoData.length > 100) {
-      console.log("🔧 GalleryModal: Fixing photo data format for likely base64 string");
-      return `data:image/jpeg;base64,${photoData}`;
+    if (isLikelyBase64) {
+      try {
+        // Look at the first few characters of decoded base64 to detect format
+        const sample = atob(photoData.substring(0, 50));
+        if (sample.includes("PNG")) {
+          console.log("🔧 GalleryModal: Detected PNG, fixing photo data format");
+          return `data:image/png;base64,${photoData}`;
+        } else if (sample.includes("JFIF") || sample.includes("Exif")) {
+          console.log("🔧 GalleryModal: Detected JPEG, fixing photo data format");
+          return `data:image/jpeg;base64,${photoData}`;
+        }
+      } catch (error) {
+        console.warn("⚠️ GalleryModal: Could not decode base64 data, treating as invalid.", error);
+      }
     }
 
-    // If the data is not a data URL and doesn't look like base64, return an empty string
-    // This prevents broken image links for invalid data
-    console.warn("⚠️ GalleryModal: Invalid photo data format, returning empty string:", {
+    // If we can't determine the format or it's not valid base64, return an invalid source
+    // to trigger the onError handler on the <img> tag.
+    console.warn("⚠️ GalleryModal: Invalid or unknown photo data format, returning invalid source:", {
       length: photoData.length,
       start: photoData.substring(0, 30),
     });
-    return "";
+    return "#";
   };
 
   const getAvailableMonths = () => {
