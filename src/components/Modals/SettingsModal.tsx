@@ -9,11 +9,6 @@ interface SettingsModalProps {
   onLegacyMigration?: () => void; // Add callback for legacy migration
 }
 
-interface SettingsModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-}
-
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onLegacyMigration }) => {
   const [isExportingJSON, setIsExportingJSON] = useState(false);
   const [isExportingCSV, setIsExportingCSV] = useState(false);
@@ -155,8 +150,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
           <div className="flex flex-col gap-3">
             <Button
               onClick={() => {
-                onClose(); // Close settings modal
-                onLegacyMigration?.(); // Open migration modal
+                console.log('Import Legacy Data button clicked');
+                console.log('Calling onLegacyMigration callback');
+                onLegacyMigration?.(); // Open migration modal - parent will handle modal transitions
               }}
               variant="secondary"
             >

@@ -74,7 +74,11 @@ function AppContent() {
   }, []);
 
   const handleLegacyMigration = useCallback(() => {
+    console.log('App.tsx: handleLegacyMigration called - opening dataMigration modal');
     setCurrentModal("dataMigration");
+    // Set a flag to indicate this is for zip import
+    sessionStorage.setItem('dataMigrationForZipImport', 'true');
+    console.log('App.tsx: DataMigrationModal should now be open');
   }, []);
 
   const handleTackleBoxClick = useCallback(() => {
