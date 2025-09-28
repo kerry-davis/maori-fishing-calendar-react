@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './Modal';
 import { useDatabaseService } from '../../contexts/DatabaseContext';
 import { Button } from '../UI';
@@ -31,16 +31,14 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
   const [showZipImport, setShowZipImport] = useState(false);
   const [isZipImporting, setIsZipImporting] = useState(false);
   const [zipImportResults, setZipImportResults] = useState<ZipImportResult | null>(null);
+  const [showImportConfirmation, setShowImportConfirmation] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const initializedRef = useRef(false);
 
-  useEffect(() => {
-    if (isOpen && user) {
-      checkMigrationStatus();
-    }
-  }, [isOpen, user]); // Removed checkMigrationStatus from dependencies to prevent infinite loop
-
-  const checkMigrationStatus = async () => {
+  const checkMigrationStatus = useCallback(async () => {
     if (!user) return;
 
+    console.log('DataMigrationModal: checkMigrationStatus called for user:', user.uid);
     setIsChecking(true);
     setError(null);
 
@@ -50,15 +48,47 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
         db.hasCompletedMigration()
       ]);
 
+      console.log('DataMigrationModal: Migration status - hasData:', hasData, 'completed:', completed);
       setHasLocalData(hasData);
       setHasCompletedMigration(completed);
     } catch (err) {
-      console.error('Error checking migration status:', err);
+      console.error('DataMigrationModal: Error checking migration status:', err);
       setError('Failed to check migration status');
     } finally {
       setIsChecking(false);
     }
-  };
+  }, [user, db]);
+
+  useEffect(() => {
+    console.log('DataMigrationModal: isOpen changed to:', isOpen, 'user:', user);
+
+    if (isOpen && !initializedRef.current) {
+      // Only initialize once when modal opens
+      initializedRef.current = true;
+
+      // Check if this modal was opened for zip import
+      const isForZipImport = sessionStorage.getItem('dataMigrationForZipImport') === 'true';
+      if (isForZipImport) {
+        console.log('DataMigrationModal: Opened for zip import');
+        setShowZipImport(true);
+        sessionStorage.removeItem('dataMigrationForZipImport'); // Clear the flag
+      }
+
+      if (user) {
+        console.log('DataMigrationModal: Starting migration status check for authenticated user');
+        checkMigrationStatus();
+      } else {
+        // Guest mode - no need to check migration status
+        console.log('DataMigrationModal: Guest mode - skipping migration status check');
+        setIsChecking(false);
+        setHasLocalData(false);
+        setHasCompletedMigration(false);
+      }
+    } else if (!isOpen && initializedRef.current) {
+      // Reset initialization when modal closes
+      initializedRef.current = false;
+    }
+  }, [isOpen, user, checkMigrationStatus]);
 
   const handleMigrateData = async () => {
     if (!user) return;
@@ -100,15 +130,27 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
       return;
     }
 
+    // Store the selected file
+    setSelectedFile(file);
+
+    // Show confirmation dialog before proceeding
+    setShowImportConfirmation(true);
+  };
+
+  const handleConfirmImport = async () => {
+    if (!selectedFile) return;
+
     setIsZipImporting(true);
     setError(null);
+    setShowImportConfirmation(false);
 
     try {
       // Check if user is authenticated
       const isAuthenticated = user !== null;
       console.log('Zip import - User authenticated:', isAuthenticated);
+      console.log('Processing file:', selectedFile.name);
 
-      const results = await browserZipImportService.processZipFile(file, isAuthenticated);
+      const results = await browserZipImportService.processZipFile(selectedFile, isAuthenticated);
       setZipImportResults(results);
 
       if (results.success) {
@@ -126,12 +168,25 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
       setError(err instanceof Error ? err.message : 'Zip import failed');
     } finally {
       setIsZipImporting(false);
+      // Clear the selected file after processing
+      setSelectedFile(null);
+    }
+  };
+
+  const handleCancelImport = () => {
+    setShowImportConfirmation(false);
+    // Clear the selected file from state and DOM
+    setSelectedFile(null);
+    const fileInput = document.getElementById('zip-file-input') as HTMLInputElement;
+    if (fileInput) {
+      fileInput.value = '';
     }
   };
 
 
-  // Don't show modal if already migrated (but allow showing for zip import even without local data)
-  if (!isOpen || (hasLocalData && hasCompletedMigration)) {
+  // Don't show modal if not supposed to be open
+  // Allow showing for zip import even if user has completed migration
+  if (!isOpen) {
     return null;
   }
 
@@ -153,7 +208,46 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
           </div>
         )}
 
-        {isChecking ? (
+        {showImportConfirmation ? (
+          // Import confirmation dialog
+          <div className="space-y-4">
+            <div className="text-center">
+              <i className="fas fa-exclamation-triangle text-yellow-500 text-4xl mb-4"></i>
+              <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">
+                Confirm Data Import
+              </h3>
+              <p className="text-gray-600 dark:text-gray-400 mb-4">
+                This will delete all your current fishing data and replace it with the data from the zip file.
+              </p>
+            </div>
+
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+              <h4 className="font-medium text-red-800 dark:text-red-200 mb-2">⚠️ Warning: Data Loss</h4>
+              <ul className="text-sm text-red-700 dark:text-red-300 space-y-1">
+                <li>• All current trips will be permanently deleted</li>
+                <li>• All weather logs will be permanently deleted</li>
+                <li>• All fish catches will be permanently deleted</li>
+                <li>• Tackle box items will be permanently deleted</li>
+                <li>• This action cannot be undone</li>
+              </ul>
+            </div>
+
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+              <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-2">What will be imported:</h4>
+              <ul className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
+                <li>• All trips from the zip file</li>
+                <li>• All weather logs from the zip file</li>
+                <li>• All fish catches from the zip file</li>
+                <li>• All tackle box items from the zip file</li>
+                <li>• Photos will be compressed and attached to fish catches</li>
+              </ul>
+            </div>
+
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Make sure this is the correct zip file from your legacy Māori Fishing Calendar app before proceeding.
+            </p>
+          </div>
+        ) : isChecking ? (
           <div className="flex items-center justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
             <span className="ml-3 text-gray-600 dark:text-gray-400">Checking your data...</span>
@@ -195,6 +289,70 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
                     <span className="font-medium">{zipImportResults.photosImported}</span>
                   </div>
                 </div>
+
+                {(zipImportResults.duplicatesSkipped.trips > 0 ||
+                  zipImportResults.duplicatesSkipped.weatherLogs > 0 ||
+                  zipImportResults.duplicatesSkipped.fishCatches > 0) && (
+                  <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+                    <h5 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Duplicates Skipped:</h5>
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      {zipImportResults.duplicatesSkipped.trips > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Trips:</span>
+                          <span className="font-medium text-orange-600">{zipImportResults.duplicatesSkipped.trips}</span>
+                        </div>
+                      )}
+                      {zipImportResults.duplicatesSkipped.weatherLogs > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Weather:</span>
+                          <span className="font-medium text-orange-600">{zipImportResults.duplicatesSkipped.weatherLogs}</span>
+                        </div>
+                      )}
+                      {zipImportResults.duplicatesSkipped.fishCatches > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Fish:</span>
+                          <span className="font-medium text-orange-600">{zipImportResults.duplicatesSkipped.fishCatches}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {(() => {
+                  console.log('📊 Compression stats received:', zipImportResults.compressionStats);
+                  return zipImportResults.compressionStats && zipImportResults.compressionStats.imagesProcessed > 0 ? (
+                    <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+                      <h5 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Image Compression:</h5>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Images:</span>
+                          <span className="font-medium text-blue-600">{zipImportResults.compressionStats.imagesProcessed}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Size Reduction:</span>
+                          <span className="font-medium text-green-600">
+                            {zipImportResults.compressionStats?.compressionRatio?.toFixed ?
+                              zipImportResults.compressionStats.compressionRatio.toFixed(1) : '0.0'}%
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Original:</span>
+                          <span className="font-medium">
+                            {zipImportResults.compressionStats?.originalSize ?
+                              (zipImportResults.compressionStats.originalSize / 1024 / 1024).toFixed(2) : '0.00'} MB
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Compressed:</span>
+                          <span className="font-medium">
+                            {zipImportResults.compressionStats?.compressedSize ?
+                              (zipImportResults.compressionStats.compressedSize / 1024 / 1024).toFixed(2) : '0.00'} MB
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
               </div>
             )}
 
@@ -268,7 +426,7 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
               Your data is now synced across all your devices. Any future changes will automatically sync to the cloud.
             </p>
           </div>
-        ) : showZipImport || (!hasLocalData && !migrationResults) ? (
+        ) : showZipImport || (!hasLocalData && !migrationResults) || (hasCompletedMigration && !migrationResults) ? (
           // Zip import prompt (show when no local data or explicitly requested)
           <div className="space-y-4">
             <div className="text-center">
@@ -383,7 +541,16 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
             <Button variant="primary" onClick={onClose}>
               Get Started
             </Button>
-          ) : showZipImport || (!hasLocalData && !migrationResults) ? (
+          ) : showImportConfirmation ? (
+            <>
+              <Button variant="secondary" onClick={handleCancelImport}>
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={handleConfirmImport} loading={isZipImporting}>
+                {isZipImporting ? 'Importing...' : 'Import & Delete Current Data'}
+              </Button>
+            </>
+          ) : showZipImport || (!hasLocalData && !migrationResults) || (hasCompletedMigration && !migrationResults) ? (
             <>
               <Button variant="secondary" onClick={onClose} disabled={isZipImporting}>
                 Cancel

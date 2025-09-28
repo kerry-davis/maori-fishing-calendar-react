@@ -56,11 +56,16 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
   const [filterYear, setFilterYear] = useState<number | null>(
     selectedYear || null,
   );
+  const [imageLoadStates, setImageLoadStates] = useState<Record<string, 'loading' | 'loaded' | 'error'>>({});
 
   // Load photos when modal opens
   useEffect(() => {
+    console.log("🎨 GalleryModal: Modal open state changed:", isOpen);
     if (isOpen) {
+      console.log("🚪 GalleryModal: Modal opened, loading photos...");
       loadPhotos();
+    } else {
+      console.log("🚪 GalleryModal: Modal closed");
     }
   }, [isOpen]);
 
@@ -73,33 +78,60 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
   }, [isOpen]);
 
   const loadPhotos = async () => {
-    if (!user) {
-      setPhotos([]);
-      setLoading(false);
-      return;
-    }
+    console.log("🎨 GalleryModal: loadPhotos called");
+    console.log("🔐 User authenticated:", !!user);
+    console.log("👤 User object:", user);
+
+    // Allow both authenticated users and guests to view photos
+    // if (!user) {
+    //   console.log("❌ GalleryModal: No user, setting empty photos");
+    //   setPhotos([]);
+    //   setLoading(false);
+    //   return;
+    // }
 
     setLoading(true);
     setError(null);
 
     try {
+      console.log("📡 GalleryModal: Fetching data from database...");
       const [trips, fishCaught] = await Promise.all([
         db.getAllTrips(),
         db.getAllFishCaught(),
       ]);
 
+      console.log("📊 GalleryModal: Database results:");
+      console.log("   • Total trips:", trips.length);
+      console.log("   • Total fish catches:", fishCaught.length);
+      console.log("   • Fish catches with photos:", fishCaught.filter((f: any) => f.photo).length);
+      console.log("   • Fish catches without photos:", fishCaught.filter((f: any) => !f.photo).length);
+
       // Create photo items from fish catches that have photos
       const photoItems: PhotoItem[] = [];
 
-      fishCaught.forEach((fish: any) => {
+      fishCaught.forEach((fish: any, index: number) => {
+        console.log(`🐟 GalleryModal: Processing fish ${index + 1}/${fishCaught.length}:`, {
+          id: fish.id,
+          species: fish.species,
+          hasPhoto: !!fish.photo,
+          photoType: typeof fish.photo,
+          photoLength: fish.photo ? fish.photo.length : 0,
+          tripId: fish.tripId
+        });
+
         if (fish.photo) {
           const trip = trips.find((t: any) => t.id === fish.tripId);
+          console.log(`🔗 GalleryModal: Looking for trip ${fish.tripId}:`, trip ? "Found" : "Not found");
+
           if (trip) {
-            photoItems.push({
+            // Fix photo data format if needed
+            const fixedPhotoData = fixPhotoData(fish.photo);
+
+            const photoItem = {
               id: `${fish.id}-${fish.tripId}`,
               fishId: fish.id,
               tripId: fish.tripId,
-              photo: fish.photo,
+              photo: fixedPhotoData,
               species: fish.species,
               length: fish.length,
               weight: fish.weight,
@@ -107,26 +139,55 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
               location: trip.location,
               water: trip.water,
               time: fish.time,
+            };
+
+            photoItems.push(photoItem);
+            console.log(`✅ GalleryModal: Added photo item for ${fish.species} from ${trip.date}`);
+            console.log(`   📸 Photo data:`, {
+              originalType: typeof fish.photo,
+              originalLength: fish.photo.length,
+              fixedLength: fixedPhotoData.length,
+              wasFixed: fish.photo !== fixedPhotoData,
+              isDataURL: fixedPhotoData.startsWith('data:')
             });
+          } else {
+            console.log(`⚠️ GalleryModal: Fish ${fish.species} has photo but no matching trip ${fish.tripId}`);
           }
         }
       });
 
+      console.log("🎯 GalleryModal: Final results:");
+      console.log("   • Photo items created:", photoItems.length);
+      console.log("   • Sample items:", photoItems.slice(0, 3).map(item => ({
+        species: item.species,
+        date: item.date,
+        location: item.location,
+        photoLength: item.photo.length
+      })));
+
       setPhotos(photoItems);
     } catch (err) {
-      console.error("Error loading photos:", err);
+      console.error("❌ GalleryModal: Error loading photos:", err);
       setError("Failed to load photos");
     } finally {
       setLoading(false);
+      console.log("🏁 GalleryModal: loadPhotos completed");
     }
   };
 
   // Filter and sort photos
   const filteredAndSortedPhotos = useMemo(() => {
+    console.log("🔍 GalleryModal: Filtering and sorting photos");
+    console.log("   • Input photos:", photos.length);
+    console.log("   • Filter month:", filterMonth);
+    console.log("   • Filter year:", filterYear);
+    console.log("   • Sort order:", sortOrder);
+
     let filtered = [...photos];
 
     // Filter by month and year if specified
     if (filterMonth !== null || filterYear !== null) {
+      const beforeFilter = filtered.length;
       filtered = filtered.filter((photo) => {
         const photoDate = new Date(photo.date);
         const photoMonth = photoDate.getMonth();
@@ -140,15 +201,22 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
         }
         return true;
       });
+      console.log(`   • Filtered: ${beforeFilter} → ${filtered.length} photos`);
+    } else {
+      console.log("   • No date filters applied");
     }
 
     // Sort by date
-    filtered.sort((a, b) => {
-      const dateA = new Date(a.date).getTime();
-      const dateB = new Date(b.date).getTime();
-      return sortOrder === "desc" ? dateB - dateA : dateA - dateB;
-    });
+    if (filtered.length > 0) {
+      filtered.sort((a, b) => {
+        const dateA = new Date(a.date).getTime();
+        const dateB = new Date(b.date).getTime();
+        return sortOrder === "desc" ? dateB - dateA : dateA - dateB;
+      });
+      console.log(`   • Sorted ${filtered.length} photos by date (${sortOrder})`);
+    }
 
+    console.log("✅ GalleryModal: Final filtered count:", filtered.length);
     return filtered;
   }, [photos, filterMonth, filterYear, sortOrder]);
 
@@ -225,6 +293,33 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
     }
   };
 
+  const fixPhotoData = (photoData: string): string => {
+    // If it's already a proper data URL, return as-is
+    if (photoData.startsWith('data:image/')) {
+      return photoData;
+    }
+
+    // If it's base64 data without the data URL prefix, try to fix it
+    if (photoData.length > 100 && !photoData.includes(' ')) {
+      console.log('🔧 GalleryModal: Attempting to fix photo data format');
+      // Try to detect the image format from the base64 data
+      try {
+        // Look at the first few characters of decoded base64 to detect format
+        const sample = atob(photoData.substring(0, 50));
+        if (sample.includes('PNG')) {
+          return `data:image/png;base64,${photoData}`;
+        } else if (sample.includes('JFIF') || sample.includes('Exif')) {
+          return `data:image/jpeg;base64,${photoData}`;
+        }
+      } catch (error) {
+        console.warn('⚠️ GalleryModal: Could not detect image format from base64 data');
+      }
+    }
+
+    // Default to JPEG if we can't detect the format
+    return `data:image/jpeg;base64,${photoData}`;
+  };
+
   const getAvailableMonths = () => {
     const months = new Set<string>();
     photos.forEach((photo) => {
@@ -251,6 +346,15 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
 
   return (
     <>
+      {console.log("🎨 GalleryModal: Rendering with state:", {
+        isOpen,
+        photosCount: photos.length,
+        filteredCount: filteredAndSortedPhotos.length,
+        loading,
+        error,
+        user: !!user
+      })}
+
       <Modal isOpen={isOpen} onClose={onClose} maxWidth="3xl">
         <ModalHeader
           title="Photo Gallery"
@@ -335,15 +439,22 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
           {!loading && !error && (
             <div className="space-y-6">
               {filteredAndSortedPhotos.length === 0 ? (
-                <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-                  <i className="fas fa-camera text-4xl mb-4 opacity-50"></i>
-                  <p>No photos found</p>
-                  <p className="text-sm mt-2">
-                    {filterMonth !== null || filterYear !== null
-                      ? "Try selecting a different month or clear the filter"
-                      : "Add photos to your fish catches to see them here"}
-                  </p>
-                </div>
+                <>
+                  {console.log("🚫 GalleryModal: Displaying 'No photos found' message")}
+                  {console.log("   • Total photos loaded:", photos.length)}
+                  {console.log("   • Filtered photos:", filteredAndSortedPhotos.length)}
+                  {console.log("   • Has month filter:", filterMonth !== null)}
+                  {console.log("   • Has year filter:", filterYear !== null)}
+                  <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+                    <i className="fas fa-camera text-4xl mb-4 opacity-50"></i>
+                    <p>No photos found</p>
+                    <p className="text-sm mt-2">
+                      {filterMonth !== null || filterYear !== null
+                        ? "Try selecting a different month or clear the filter"
+                        : "Add photos to your fish catches to see them here"}
+                    </p>
+                  </div>
+                </>
               ) : (
                 photosByMonth.map((monthGroup) => (
                   <div key={monthGroup.key} className="space-y-3">
@@ -362,14 +473,40 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
                           onClick={() => handlePhotoClick(photo)}
                           className="relative aspect-square bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden
                                    cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all duration-200
-                                   group"
+                                   group flex items-center justify-center"
                         >
-                          <img
-                            src={photo.photo}
-                            alt={`${photo.species} - ${photo.length}`}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                            loading="lazy"
-                          />
+                          {imageLoadStates[photo.id] === 'error' ? (
+                            <div className="w-full h-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
+                              <div className="text-center text-gray-500 dark:text-gray-400">
+                                <i className="fas fa-image text-2xl mb-2"></i>
+                                <p className="text-xs">Image unavailable</p>
+                              </div>
+                            </div>
+                          ) : (
+                            <img
+                              key={photo.id}
+                              src={photo.photo}
+                              alt={`${photo.species} - ${photo.length}`}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                              loading="eager"
+                              onLoad={(e) => {
+                                console.log(`✅ GalleryModal: Image loaded successfully for ${photo.species}`, {
+                                  src: photo.photo.substring(0, 50) + '...',
+                                  naturalWidth: (e.target as HTMLImageElement).naturalWidth,
+                                  naturalHeight: (e.target as HTMLImageElement).naturalHeight
+                                });
+                                setImageLoadStates(prev => ({ ...prev, [photo.id]: 'loaded' }));
+                              }}
+                              onError={(e) => {
+                                console.error(`❌ GalleryModal: Image failed to load for ${photo.species}`, {
+                                  src: photo.photo.substring(0, 50) + '...',
+                                  photoLength: photo.photo.length,
+                                  photoType: typeof photo.photo
+                                });
+                                setImageLoadStates(prev => ({ ...prev, [photo.id]: 'error' }));
+                              }}
+                            />
+                          )}
 
                           {/* Overlay with info */}
                           <div
