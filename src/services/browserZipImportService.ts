@@ -42,6 +42,8 @@ export interface LegacyDataStructure {
   photos: { [key: string]: string }; // filename -> base64 data
 }
 
+type ImportStrategy = 'wipe' | 'merge';
+
 /**
  * Browser-based zip file processor for legacy data migration
  */
@@ -98,7 +100,7 @@ export class BrowserZipImportService {
    * @param file - The zip file to process
    * @param isAuthenticated - Whether the user is authenticated (has Firebase access)
    */
-  async processZipFile(file: File, isAuthenticated: boolean = false): Promise<ZipImportResult> {
+  async processZipFile(file: File, isAuthenticated: boolean = false, options?: { strategy?: ImportStrategy }): Promise<ZipImportResult> {
     const result: ZipImportResult = {
       success: false,
       tripsImported: 0,
@@ -167,8 +169,9 @@ export class BrowserZipImportService {
       // Add validation warnings
       result.warnings.push(...validationResult.warnings);
 
-      // Import the data (clear existing data first)
-      const importResult = await this.importLegacyData(extractResult.data, isAuthenticated);
+  // Import the data (clear existing data first)
+  const strategy: ImportStrategy = options?.strategy ?? 'wipe';
+  const importResult = await this.importLegacyData(extractResult.data, isAuthenticated, strategy);
 
       result.success = importResult.success;
       result.tripsImported = importResult.tripsImported;
@@ -506,7 +509,7 @@ export class BrowserZipImportService {
    * @param legacyData - The legacy data to import
    * @param isAuthenticated - Whether the user is authenticated
    */
-  private async importLegacyData(legacyData: LegacyDataStructure, isAuthenticated: boolean): Promise<ZipImportResult> {
+  private async importLegacyData(legacyData: LegacyDataStructure, isAuthenticated: boolean, strategy: ImportStrategy): Promise<ZipImportResult> {
     const result: ZipImportResult = {
       success: true,
       tripsImported: 0,
@@ -526,8 +529,8 @@ export class BrowserZipImportService {
       console.log('Starting legacy data import...');
 
       // Clear existing data first (as requested)
-      console.log('Clearing existing data before import...');
-      await this.clearExistingData(isAuthenticated);
+  console.log('Clearing existing data before import...');
+  await this.clearExistingData(isAuthenticated, strategy);
 
       // Use all data from the zip file (no duplicate checking)
       const tripsToImport = legacyData.trips;
@@ -543,6 +546,16 @@ export class BrowserZipImportService {
         // Import trips first
         for (const trip of tripsToImport) {
           try {
+            // Normalize hours coming from legacy formats (could be string/empty/negative)
+            if (typeof (trip as any).hours === 'string') {
+              const parsed = parseFloat((trip as any).hours);
+              (trip as any).hours = isNaN(parsed) ? undefined : Math.abs(parsed);
+            } else if ((trip as any).hours === null || (trip as any).hours === '') {
+              (trip as any).hours = undefined;
+            } else if (typeof (trip as any).hours === 'number' && (trip as any).hours < 0) {
+              (trip as any).hours = Math.abs((trip as any).hours);
+            }
+
             await firebaseDataService.createTrip(trip);
             result.tripsImported++;
           } catch (error) {
@@ -592,6 +605,16 @@ export class BrowserZipImportService {
         // Import trips first
         for (const trip of tripsToImport) {
           try {
+            // Normalize hours for local imports as well
+            if (typeof (trip as any).hours === 'string') {
+              const parsed = parseFloat((trip as any).hours);
+              (trip as any).hours = isNaN(parsed) ? undefined : Math.abs(parsed);
+            } else if ((trip as any).hours === null || (trip as any).hours === '') {
+              (trip as any).hours = undefined;
+            } else if (typeof (trip as any).hours === 'number' && (trip as any).hours < 0) {
+              (trip as any).hours = Math.abs((trip as any).hours);
+            }
+
             await databaseService.createTrip(trip);
             result.tripsImported++;
           } catch (error) {
@@ -1000,19 +1023,24 @@ export class BrowserZipImportService {
    * Clear all existing data before import
    * @param isAuthenticated - Whether the user is authenticated
    */
-  private async clearExistingData(isAuthenticated: boolean): Promise<void> {
+  private async clearExistingData(isAuthenticated: boolean, strategy: ImportStrategy): Promise<void> {
     try {
       console.log('Clearing existing data before import...');
 
       if (isAuthenticated) {
-        // Clear Firebase data (clearAllData clears local data, not Firestore)
-        // For Firebase, we don't clear the cloud data as it's the source of truth
-        // We'll just overwrite it with the imported data
-        console.log('✅ Firebase user - will overwrite existing data with imported data');
+        if (strategy === 'wipe') {
+          await firebaseDataService.clearFirestoreUserData();
+          console.log('✅ Firebase user - cloud data wiped successfully');
+        } else {
+          console.log('ℹ️ Firebase user - merge mode: preserving existing cloud data');
+        }
       } else {
-        // Clear local IndexedDB data
-        await databaseService.clearAllData();
-        console.log('✅ Local data cleared successfully');
+        if (strategy === 'wipe') {
+          await databaseService.clearAllData();
+          console.log('✅ Local data cleared successfully');
+        } else {
+          console.log('ℹ️ Guest user - merge mode: preserving existing local data');
+        }
       }
     } catch (error) {
       console.error('Failed to clear existing data:', error);
