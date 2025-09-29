@@ -588,7 +588,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
               <label className="form-label">
                 Photo (Optional)
               </label>
-              {isEditing && formData.photo && (
+              {isEditing && formData.photo && !photoPreview && (
                 <div className="mt-2">
                   <div className="text-sm font-medium mb-2" style={{ color: 'var(--secondary-text)' }}>Current Photo</div>
                   <div className="relative inline-block">
