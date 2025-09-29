@@ -118,6 +118,8 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
       localStorage.setItem(`migrationComplete_${user.uid}`, 'true');
     }
     onClose();
+    // Refresh calendar when user exits the import utility
+    onMigrationComplete?.();
   };
 
   const handleZipFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -181,6 +183,8 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
     if (fileInput) {
       fileInput.value = '';
     }
+    // Refresh calendar when user exits the import utility
+    onMigrationComplete?.();
   };
 
 
@@ -538,12 +542,18 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
       <ModalFooter>
         <div className="flex justify-end space-x-3">
           {zipImportResults ? (
-            <Button variant="primary" onClick={onClose}>
+            <Button variant="primary" onClick={() => {
+              onClose();
+              onMigrationComplete?.();
+            }}>
               Get Started
             </Button>
           ) : showImportConfirmation ? (
             <>
-              <Button variant="secondary" onClick={handleCancelImport}>
+              <Button variant="secondary" onClick={() => {
+                handleCancelImport();
+                onClose();
+              }}>
                 Cancel
               </Button>
               <Button variant="primary" onClick={handleConfirmImport} loading={isZipImporting}>
@@ -552,7 +562,10 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
             </>
           ) : showZipImport || (!hasLocalData && !migrationResults) || (hasCompletedMigration && !migrationResults) ? (
             <>
-              <Button variant="secondary" onClick={onClose} disabled={isZipImporting}>
+              <Button variant="secondary" onClick={() => {
+                onClose();
+                onMigrationComplete?.();
+              }} disabled={isZipImporting}>
                 Cancel
               </Button>
               <Button onClick={() => document.getElementById('zip-file-input')?.click()} loading={isZipImporting} disabled={isZipImporting}>
