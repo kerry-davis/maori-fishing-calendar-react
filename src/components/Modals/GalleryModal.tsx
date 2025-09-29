@@ -5,7 +5,7 @@ import type {
   GallerySortOrder,
 } from "../../types";
 import { useDatabaseService } from "../../contexts/DatabaseContext";
-import { useAuth } from "../../contexts/AuthContext";
+
 
 interface PhotoItem {
   id: string;
@@ -44,7 +44,6 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
   onPhotoSelect,
 }) => {
   const db = useDatabaseService();
-  const { user } = useAuth();
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,138 +55,67 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
   const [filterYear, setFilterYear] = useState<number | null>(
     selectedYear || null,
   );
-  const [imageLoadStates, setImageLoadStates] = useState<Record<string, 'loading' | 'loaded' | 'error'>>({});
 
   // Load photos when modal opens
   useEffect(() => {
-    console.log("🎨 GalleryModal: Modal open state changed:", isOpen);
     if (isOpen) {
-      console.log("🚪 GalleryModal: Modal opened, loading photos...");
       loadPhotos();
     } else {
-      console.log("🚪 GalleryModal: Modal closed");
-    }
-  }, [isOpen]);
-
-  // Reset state when modal closes
-  useEffect(() => {
-    if (!isOpen) {
       setSelectedPhoto(null);
       setError(null);
     }
   }, [isOpen]);
 
-  const loadPhotos = async () => {
-    console.log("🎨 GalleryModal: loadPhotos called");
-    console.log("🔐 User authenticated:", !!user);
-    console.log("👤 User object:", user);
+ const loadPhotos = async () => {
+   setLoading(true);
+   setError(null);
 
-    // Allow both authenticated users and guests to view photos
-    // if (!user) {
-    //   console.log("❌ GalleryModal: No user, setting empty photos");
-    //   setPhotos([]);
-    //   setLoading(false);
-    //   return;
-    // }
+   try {
+     const [trips, fishCaught] = await Promise.all([
+       db.getAllTrips(),
+       db.getAllFishCaught(),
+     ]);
 
-    setLoading(true);
-    setError(null);
+     // Create photo items from fish catches that have photos
+     const photoItems: PhotoItem[] = [];
 
-    try {
-      console.log("📡 GalleryModal: Fetching data from database...");
-      const [trips, fishCaught] = await Promise.all([
-        db.getAllTrips(),
-        db.getAllFishCaught(),
-      ]);
+     fishCaught.forEach((fish: any) => {
+       if (fish.photo) {
+         const trip = trips.find((t: any) => t.id === fish.tripId);
+         if (trip) {
+           const photoItem = {
+             id: `${fish.id}-${fish.tripId}`,
+             fishId: fish.id,
+             tripId: fish.tripId,
+             photo: fixPhotoData(fish.photo),
+             species: fish.species,
+             length: fish.length,
+             weight: fish.weight,
+             date: trip.date,
+             location: trip.location,
+             water: trip.water,
+             time: fish.time,
+           };
+           photoItems.push(photoItem);
+         }
+       }
+     });
 
-      console.log("📊 GalleryModal: Database results:");
-      console.log("   • Total trips:", trips.length);
-      console.log("   • Total fish catches:", fishCaught.length);
-      console.log("   • Fish catches with photos:", fishCaught.filter((f: any) => f.photo).length);
-      console.log("   • Fish catches without photos:", fishCaught.filter((f: any) => !f.photo).length);
+     setPhotos(photoItems);
 
-      // Create photo items from fish catches that have photos
-      const photoItems: PhotoItem[] = [];
-
-      fishCaught.forEach((fish: any, index: number) => {
-        console.log(`🐟 GalleryModal: Processing fish ${index + 1}/${fishCaught.length}:`, {
-          id: fish.id,
-          species: fish.species,
-          hasPhoto: !!fish.photo,
-          photoType: typeof fish.photo,
-          photoLength: fish.photo ? fish.photo.length : 0,
-          tripId: fish.tripId
-        });
-
-        if (fish.photo) {
-          const trip = trips.find((t: any) => t.id === fish.tripId);
-          console.log(`🔗 GalleryModal: Looking for trip ${fish.tripId}:`, trip ? "Found" : "Not found");
-
-          if (trip) {
-            // Fix photo data format if needed
-            const fixedPhotoData = fixPhotoData(fish.photo);
-
-            const photoItem = {
-              id: `${fish.id}-${fish.tripId}`,
-              fishId: fish.id,
-              tripId: fish.tripId,
-              photo: fixedPhotoData,
-              species: fish.species,
-              length: fish.length,
-              weight: fish.weight,
-              date: trip.date,
-              location: trip.location,
-              water: trip.water,
-              time: fish.time,
-            };
-
-            photoItems.push(photoItem);
-            console.log(`✅ GalleryModal: Added photo item for ${fish.species} from ${trip.date}`);
-            console.log(`   📸 Photo data:`, {
-              originalType: typeof fish.photo,
-              originalLength: fish.photo.length,
-              fixedLength: fixedPhotoData.length,
-              wasFixed: fish.photo !== fixedPhotoData,
-              isDataURL: fixedPhotoData.startsWith('data:')
-            });
-          } else {
-            console.log(`⚠️ GalleryModal: Fish ${fish.species} has photo but no matching trip ${fish.tripId}`);
-          }
-        }
-      });
-
-      console.log("🎯 GalleryModal: Final results:");
-      console.log("   • Photo items created:", photoItems.length);
-      console.log("   • Sample items:", photoItems.slice(0, 3).map(item => ({
-        species: item.species,
-        date: item.date,
-        location: item.location,
-        photoLength: item.photo.length
-      })));
-
-      setPhotos(photoItems);
-    } catch (err) {
-      console.error("❌ GalleryModal: Error loading photos:", err);
-      setError("Failed to load photos");
-    } finally {
-      setLoading(false);
-      console.log("🏁 GalleryModal: loadPhotos completed");
-    }
-  };
+   } catch (err) {
+     setError("Failed to load photos");
+   } finally {
+     setLoading(false);
+   }
+ };
 
   // Filter and sort photos
   const filteredAndSortedPhotos = useMemo(() => {
-    console.log("🔍 GalleryModal: Filtering and sorting photos");
-    console.log("   • Input photos:", photos.length);
-    console.log("   • Filter month:", filterMonth);
-    console.log("   • Filter year:", filterYear);
-    console.log("   • Sort order:", sortOrder);
-
     let filtered = [...photos];
 
     // Filter by month and year if specified
     if (filterMonth !== null || filterYear !== null) {
-      const beforeFilter = filtered.length;
       filtered = filtered.filter((photo) => {
         const photoDate = new Date(photo.date);
         const photoMonth = photoDate.getMonth();
@@ -201,9 +129,6 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
         }
         return true;
       });
-      console.log(`   • Filtered: ${beforeFilter} → ${filtered.length} photos`);
-    } else {
-      console.log("   • No date filters applied");
     }
 
     // Sort by date
@@ -213,10 +138,8 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
         const dateB = new Date(b.date).getTime();
         return sortOrder === "desc" ? dateB - dateA : dateA - dateB;
       });
-      console.log(`   • Sorted ${filtered.length} photos by date (${sortOrder})`);
     }
 
-    console.log("✅ GalleryModal: Final filtered count:", filtered.length);
     return filtered;
   }, [photos, filterMonth, filterYear, sortOrder]);
 
@@ -293,48 +216,84 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
     }
   };
 
-  const getMimeType = (base64Data: string): string => {
-    try {
-      const decodedData = atob(base64Data.substring(0, 50));
-      const byte1 = decodedData.charCodeAt(0);
-      const byte2 = decodedData.charCodeAt(1);
-      const byte3 = decodedData.charCodeAt(2);
-      const byte4 = decodedData.charCodeAt(3);
 
-      // Check for JPEG magic numbers (FF D8 FF)
-      if (byte1 === 0xFF && byte2 === 0xD8 && byte3 === 0xFF) {
-        return "image/jpeg";
-      }
 
-      // Check for PNG magic numbers (89 50 4E 47)
-      if (byte1 === 0x89 && byte2 === 0x50 && byte3 === 0x4E && byte4 === 0x47) {
-        return "image/png";
-      }
-    } catch (e) {
-      // Not valid base64, so we can't determine the type
-      return "";
+  // Simplified photo data handling
+  const fixPhotoData = (photoData: string): string => {
+    // Handle null, undefined, or empty data
+    if (!photoData || typeof photoData !== 'string' || photoData.trim() === '') {
+      return createPlaceholderSVG('No Image Available');
     }
 
-    return ""; // Unknown type
-  };
-
-  const fixPhotoData = (photoData: string): string => {
-    // If it's already a proper data URL, return as-is.
-    if (photoData.startsWith("data:image")) {
+    // If it's already a valid data URL, return as-is
+    if (photoData.startsWith('data:image/')) {
       return photoData;
     }
 
-    // Use the magic number helper to determine the MIME type.
-    const mimeType = getMimeType(photoData);
-
-    if (mimeType) {
-      console.log(`🔧 GalleryModal: Detected ${mimeType}, creating data URL.`);
-      return `data:${mimeType};base64,${photoData}`;
+    // If it's an HTTP/HTTPS URL, return as-is
+    if (photoData.startsWith('http://') || photoData.startsWith('https://')) {
+      return photoData;
     }
 
-    // If the type is unknown, return an invalid source to trigger the error handler.
-    console.warn("⚠️ GalleryModal: Unknown photo data format, returning invalid source.");
-    return "#";
+    // If it's a Firebase storage URL, return as-is
+    if (photoData.startsWith('gs://')) {
+      return photoData;
+    }
+
+    // Handle base64 data without data URL prefix
+    if (!photoData.startsWith('data:')) {
+      const cleanData = photoData.trim();
+
+      // Basic base64 validation
+      const base64Pattern = /^[A-Za-z0-9+/=]+$/;
+      const isValidBase64 = base64Pattern.test(cleanData) && cleanData.length > 100;
+
+      if (isValidBase64) {
+        // Try to detect image format from the base64 data
+        try {
+          // Decode first few characters to detect format
+          const header = cleanData.substring(0, 50);
+
+          // Check for common image format signatures
+          if (header.includes('iVBORw0KGgo') || header.includes('R0lGOD')) {
+            return `data:image/png;base64,${cleanData}`;
+          } else if (header.includes('JVBERi0') || header.includes('UEsDB')) {
+            return `data:image/jpeg;base64,${cleanData}`;
+          } else if (header.includes('UklGR') || header.includes('RIFF')) {
+            return `data:image/webp;base64,${cleanData}`;
+          } else if (header.includes('PHN2Zy')) {
+            // Already an SVG
+            return `data:image/svg+xml;base64,${cleanData}`;
+          } else {
+            // Default to JPEG for most cases - this is usually the safest bet
+            return `data:image/jpeg;base64,${cleanData}`;
+          }
+        } catch (error) {
+          console.warn('Error processing image data:', error);
+          return createPlaceholderSVG('Error loading image');
+        }
+      }
+    }
+
+    // Fallback for any other cases
+    return createPlaceholderSVG('Invalid Image Data');
+  };
+
+  const createPlaceholderSVG = (text: string): string => {
+    const svg = `<svg width="300" height="300" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#f3f4f6;stop-opacity:1" />
+          <stop offset="100%" style="stop-color:#e5e7eb;stop-opacity:1" />
+        </linearGradient>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#grad1)"/>
+      <circle cx="150" cy="120" r="30" fill="#d1d5db" opacity="0.6"/>
+      <path d="M140 110 L160 110 L155 125 Z" fill="#d1d5db" opacity="0.6"/>
+      <text x="50%" y="180" font-family="system-ui, -apple-system, sans-serif" font-size="16" font-weight="500" fill="#6b7280" text-anchor="middle" dy=".3em">${text}</text>
+      <text x="50%" y="200" font-family="system-ui, -apple-system, sans-serif" font-size="12" fill="#9ca3af" text-anchor="middle" dy=".3em">Tap to view details</text>
+    </svg>`;
+    return `data:image/svg+xml;base64,${btoa(svg)}`;
   };
 
   const getAvailableMonths = () => {
@@ -363,15 +322,6 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
 
   return (
     <>
-      {console.log("🎨 GalleryModal: Rendering with state:", {
-        isOpen,
-        photosCount: photos.length,
-        filteredCount: filteredAndSortedPhotos.length,
-        loading,
-        error,
-        user: !!user
-      })}
-
       <Modal isOpen={isOpen} onClose={onClose} maxWidth="3xl">
         <ModalHeader
           title="Photo Gallery"
@@ -452,26 +402,20 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
             </div>
           )}
 
+
           {/* Photo Gallery */}
           {!loading && !error && (
             <div className="space-y-6">
               {filteredAndSortedPhotos.length === 0 ? (
-                <>
-                  {console.log("🚫 GalleryModal: Displaying 'No photos found' message")}
-                  {console.log("   • Total photos loaded:", photos.length)}
-                  {console.log("   • Filtered photos:", filteredAndSortedPhotos.length)}
-                  {console.log("   • Has month filter:", filterMonth !== null)}
-                  {console.log("   • Has year filter:", filterYear !== null)}
-                  <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-                    <i className="fas fa-camera text-4xl mb-4 opacity-50"></i>
-                    <p>No photos found</p>
-                    <p className="text-sm mt-2">
-                      {filterMonth !== null || filterYear !== null
-                        ? "Try selecting a different month or clear the filter"
-                        : "Add photos to your fish catches to see them here"}
-                    </p>
-                  </div>
-                </>
+                <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+                  <i className="fas fa-camera text-4xl mb-4 opacity-50"></i>
+                  <p>No photos found</p>
+                  <p className="text-sm mt-2">
+                    {filterMonth !== null || filterYear !== null
+                      ? "Try selecting a different month or clear the filter"
+                      : "Add photos to your fish catches to see them here"}
+                  </p>
+                </div>
               ) : (
                 photosByMonth.map((monthGroup) => (
                   <div key={monthGroup.key} className="space-y-3">
@@ -488,56 +432,47 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
                         <div
                           key={photo.id}
                           onClick={() => handlePhotoClick(photo)}
-                          className="relative aspect-square bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden
+                          className="relative aspect-square rounded-lg overflow-hidden
                                    cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all duration-200
-                                   group flex items-center justify-center"
+                                   group"
                         >
-                          {imageLoadStates[photo.id] === 'error' ? (
-                            <div className="w-full h-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
-                              <div className="text-center text-gray-500 dark:text-gray-400">
-                                <i className="fas fa-image text-2xl mb-2"></i>
-                                <p className="text-xs">Image unavailable</p>
-                              </div>
-                            </div>
-                          ) : (
-                            <img
-                              key={photo.id}
-                              src={photo.photo}
-                              alt={`${photo.species} - ${photo.length}`}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                              loading="eager"
-                              onLoad={(e) => {
-                                console.log(`✅ GalleryModal: Image loaded successfully for ${photo.species}`, {
-                                  src: photo.photo.substring(0, 50) + '...',
-                                  naturalWidth: (e.target as HTMLImageElement).naturalWidth,
-                                  naturalHeight: (e.target as HTMLImageElement).naturalHeight
-                                });
-                                setImageLoadStates(prev => ({ ...prev, [photo.id]: 'loaded' }));
-                              }}
-                              onError={(e) => {
-                                console.error(`❌ GalleryModal: Image failed to load for ${photo.species}`, {
-                                  src: photo.photo.substring(0, 50) + '...',
-                                  photoLength: photo.photo.length,
-                                  photoType: typeof photo.photo
-                                });
-                                setImageLoadStates(prev => ({ ...prev, [photo.id]: 'error' }));
-                              }}
-                            />
-                          )}
+                          {/* Image */}
+                          <img
+                            src={photo.photo}
+                            alt={`${photo.species} - ${photo.length}`}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                            loading="lazy"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              const originalSrc = target.src;
+
+                              // If it's not already a placeholder, try to fix the image data
+                              if (!originalSrc.includes('data:image/svg+xml')) {
+                                console.warn('Image failed to load, attempting to fix:', originalSrc.substring(0, 50) + '...');
+
+                                // Try to reprocess the image data
+                                const fixedSrc = fixPhotoData(originalSrc);
+                                if (fixedSrc !== originalSrc && !fixedSrc.includes('data:image/svg+xml')) {
+                                  target.src = fixedSrc;
+                                } else {
+                                  // Use placeholder as final fallback
+                                  target.src = createPlaceholderSVG('Image not available');
+                                }
+                              }
+                            }}
+                          />
 
                           {/* Overlay with info */}
-                          <div
-                            className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50
-                                        transition-all duration-200 flex items-end"
-                          >
-                            <div className="p-3 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                              <p className="text-sm font-semibold">
+                          <div className="absolute inset-0 bg-gray-700 bg-opacity-0 group-hover:bg-opacity-70
+                                       transition-all duration-200 flex items-end pointer-events-none z-10">
+                            <div className="p-3 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200 w-full">
+                              <p className="text-sm font-semibold truncate">
                                 {photo.species}
                               </p>
-                              <p className="text-xs">
+                              <p className="text-xs truncate">
                                 {photo.length} • {photo.weight}
                               </p>
-                              <p className="text-xs">
+                              <p className="text-xs truncate">
                                 {formatDate(photo.date)}
                               </p>
                             </div>
@@ -556,11 +491,10 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
       {/* Full-size Photo Modal */}
       {selectedPhoto && (
         <Modal
-          isOpen={true}
-          onClose={() => setSelectedPhoto(null)}
-          maxWidth="3xl"
-          className="bg-black"
-        >
+           isOpen={true}
+           onClose={() => setSelectedPhoto(null)}
+           maxWidth="3xl"
+         >
           <div className="relative">
             {/* Navigation buttons */}
             {filteredAndSortedPhotos.length > 1 && (
@@ -585,23 +519,41 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
             <button
               onClick={() => setSelectedPhoto(null)}
               className="absolute top-4 right-4 z-10
-                       bg-black bg-opacity-50 text-white p-3 rounded-full
-                       hover:bg-opacity-75 transition-all duration-200"
+                       bg-gray-600 bg-opacity-70 text-white p-3 rounded-full
+                       hover:bg-opacity-90 transition-all duration-200"
             >
               <i className="fas fa-times"></i>
             </button>
 
             {/* Photo */}
-            <div className="flex items-center justify-center min-h-[60vh] max-h-[80vh]">
+            <div className="flex items-center justify-center min-h-[60vh] max-h-[80vh] bg-gray-50 dark:bg-gray-600">
               <img
                 src={selectedPhoto.photo}
                 alt={`${selectedPhoto.species} - ${selectedPhoto.length}`}
-                className="max-w-full max-h-full object-contain"
+                className="max-w-full max-h-full object-contain bg-white dark:bg-gray-700 rounded-lg shadow-lg"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  const originalSrc = target.src;
+
+                  // If it's not already a placeholder, try to fix the image data
+                  if (!originalSrc.includes('data:image/svg+xml')) {
+                    console.warn('Full-size image failed to load, attempting to fix:', originalSrc.substring(0, 50) + '...');
+
+                    // Try to reprocess the image data
+                    const fixedSrc = fixPhotoData(originalSrc);
+                    if (fixedSrc !== originalSrc && !fixedSrc.includes('data:image/svg+xml')) {
+                      target.src = fixedSrc;
+                    } else {
+                      // Use placeholder as final fallback
+                      target.src = createPlaceholderSVG('Image not available');
+                    }
+                  }
+                }}
               />
             </div>
 
             {/* Photo info */}
-            <div className="bg-black bg-opacity-75 text-white p-6">
+            <div className="bg-gray-800 dark:bg-gray-900 text-white p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <h3 className="text-xl font-bold mb-2">
