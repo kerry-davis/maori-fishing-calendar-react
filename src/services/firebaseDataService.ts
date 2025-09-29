@@ -1,5 +1,5 @@
 import type { Trip, WeatherLog, FishCaught } from "../types";
-import { firestore, auth } from "./firebase";
+import { firestore, auth } from "../services/firebase";
 import { databaseService } from "./databaseService";
 import {
   collection,
@@ -67,6 +67,20 @@ export class FirebaseDataService {
    */
   isReady(): boolean {
     return this.isInitialized;
+  }
+
+  /**
+   * Returns true when a user is authenticated and the service is initialized
+   */
+  isAuthenticated(): boolean {
+    return this.isInitialized && !this.isGuest;
+  }
+
+  /**
+   * Returns true when in guest mode (no authenticated user) and initialized
+   */
+  isGuestMode(): boolean {
+    return this.isInitialized && this.isGuest;
   }
 
   async switchToUser(userId: string): Promise<void> {
@@ -1365,6 +1379,72 @@ await batch.commit();
 
     // Note: We don't clear Firestore data here as it's the source of truth
     console.log('Local data cleared, Firestore data preserved');
+  }
+
+  /**
+   * Destructively clear all Firestore data for the current authenticated user.
+   * Also clears local ID mappings and sync queue to avoid stale references.
+   * This is intended for explicit "wipe-and-replace" import flows.
+   */
+  async clearFirestoreUserData(): Promise<void> {
+    if (this.isGuest) {
+      throw new Error('Cannot clear Firestore data in guest mode');
+    }
+    if (!this.userId) {
+      throw new Error('No user ID available for Firestore cleanup');
+    }
+    if (!this.isOnline) {
+      throw new Error('Cannot clear Firestore data while offline');
+    }
+
+    const collectionsToWipe = ['trips', 'weatherLogs', 'fishCaught'];
+
+    for (const coll of collectionsToWipe) {
+      // Query all docs for this user
+      const q = query(collection(firestore, coll), where('userId', '==', this.userId));
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) continue;
+
+      // Firestore write batches are limited (~500 ops). Commit in chunks.
+      const CHUNK = 400;
+      const docs = snapshot.docs.map(d => d.ref);
+      for (let i = 0; i < docs.length; i += CHUNK) {
+        const batch = writeBatch(firestore);
+        for (const ref of docs.slice(i, i + CHUNK)) {
+          batch.delete(ref);
+        }
+        await batch.commit();
+      }
+      console.log(`[Wipe] Cleared ${snapshot.size} documents from ${coll} for user ${this.userId}`);
+    }
+
+    // Clear local ID mappings and sync queue for this user
+    this.clearLocalIdMappings();
+    this.syncQueue = [];
+    this.saveSyncQueue();
+
+    // Also clear local IndexedDB to ensure a clean slate
+    await databaseService.clearAllData();
+
+    console.log('[Wipe] Completed Firestore user data wipe');
+  }
+
+  /**
+   * Remove all localStorage ID mapping entries for the current user
+   */
+  private clearLocalIdMappings(): void {
+    if (!this.userId) return;
+    const prefix = `idMapping_${this.userId}_`;
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(prefix)) keysToRemove.push(key);
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+    // Also clear the user's sync queue key explicitly
+    localStorage.removeItem(`syncQueue_${this.userId}`);
+    console.log(`[Wipe] Cleared ${keysToRemove.length} local ID mappings for user ${this.userId}`);
   }
 
   /**

@@ -14,7 +14,7 @@ service cloud.firestore {
     // Trips collection - users can only access their own trips
     match /trips/{document} {
       allow create: if isAuthenticated() &&
-        request.auth.uid == resource.data.userId;
+        request.auth.uid == request.resource.data.userId;
       allow read, update, delete: if isAuthenticated() &&
         request.auth.uid == resource.data.userId;
     }
@@ -22,7 +22,7 @@ service cloud.firestore {
     // Weather logs collection - users can only access their own weather logs
     match /weatherLogs/{document} {
       allow create: if isAuthenticated() &&
-        request.auth.uid == resource.data.userId;
+        request.auth.uid == request.resource.data.userId;
       allow read, update, delete: if isAuthenticated() &&
         request.auth.uid == resource.data.userId;
     }
@@ -30,7 +30,7 @@ service cloud.firestore {
     // Fish caught collection - users can only access their own fish records
     match /fishCaught/{document} {
       allow create: if isAuthenticated() &&
-        request.auth.uid == resource.data.userId;
+        request.auth.uid == request.resource.data.userId;
       allow read, update, delete: if isAuthenticated() &&
         request.auth.uid == resource.data.userId;
     }
@@ -38,17 +38,24 @@ service cloud.firestore {
     // Tackle items collection - users can only access their own tackle box
     match /tackleItems/{document} {
       allow create: if isAuthenticated() &&
-        request.auth.uid == resource.data.userId;
+        request.auth.uid == request.resource.data.userId;
       allow read, update, delete: if isAuthenticated() &&
         request.auth.uid == resource.data.userId;
     }
 
     // User settings collection - users can only access their own settings
-    match /userSettings/{document} {
+    // Use path param for read so it works even if the document doesn't exist yet
+    match /userSettings/{userId} {
+      // Read allowed for the owner by path (works even when doc doesn't yet exist)
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+
+      // Create requires the userId in the payload to match the path and auth user
       allow create: if isAuthenticated() &&
-        request.auth.uid == resource.data.userId;
-      allow read, update, delete: if isAuthenticated() &&
-        request.auth.uid == resource.data.userId;
+        request.auth.uid == userId && request.resource.data.userId == userId;
+
+      // Update/Delete requires ownership and consistent userId in payload
+      allow update, delete: if isAuthenticated() &&
+        request.auth.uid == userId && request.resource.data.userId == userId;
     }
 
     // Gear types collection - users can only access their own gear types

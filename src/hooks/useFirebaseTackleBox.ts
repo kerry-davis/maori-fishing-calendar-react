@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { firestore } from '../services/firebase';
+import { firestore } from '../services/firebase.ts';
 import {
   collection,
   doc,
   getDoc,
   getDocs,
-  updateDoc,
+  setDoc,
   query,
   where,
   orderBy,
@@ -256,11 +256,13 @@ export function useFirebaseGearTypes(): [
           const types = data.gearTypes || [...DEFAULT_GEAR_TYPES];
           setGearTypes(types);
         } else {
-          // Create default settings for new user
-          await updateDoc(docRef, {
+          // Create default settings for new user (merge ensures idempotency)
+          await setDoc(docRef, {
+            userId: user.uid,
             gearTypes: [...DEFAULT_GEAR_TYPES],
+            createdAt: serverTimestamp(),
             updatedAt: serverTimestamp()
-          });
+          }, { merge: true });
           setGearTypes([...DEFAULT_GEAR_TYPES]);
         }
       } else {
@@ -312,10 +314,11 @@ export function useFirebaseGearTypes(): [
       if (user) {
         // Authenticated user - save to Firestore
         const docRef = doc(firestore, 'userSettings', user.uid);
-        await updateDoc(docRef, {
+        await setDoc(docRef, {
+          userId: user.uid,
           gearTypes: newValue,
           updatedAt: serverTimestamp()
-        });
+        }, { merge: true });
       } else {
         // Guest user - save to localStorage
         localStorage.setItem('gearTypes', JSON.stringify(newValue));
@@ -343,10 +346,11 @@ export function useFirebaseGearTypes(): [
       if (user) {
         // Authenticated user - save to Firestore
         const docRef = doc(firestore, 'userSettings', user.uid);
-        await updateDoc(docRef, {
+        await setDoc(docRef, {
+          userId: user.uid,
           gearTypes: defaultTypes,
           updatedAt: serverTimestamp()
-        });
+        }, { merge: true });
       } else {
         // Guest user - save to localStorage
         localStorage.setItem('gearTypes', JSON.stringify(defaultTypes));
