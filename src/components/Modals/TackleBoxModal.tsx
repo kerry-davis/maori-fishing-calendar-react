@@ -5,6 +5,7 @@ import { GearForm } from './GearForm';
 import { GearTypeForm } from './GearTypeForm';
 import { useFirebaseTackleBox, useFirebaseGearTypes } from '../../hooks/useFirebaseTackleBox';
 import type { ModalProps, TackleItem } from '../../types';
+import ConfirmationDialog from '../UI/ConfirmationDialog';
 
 /**
  * TackleBoxModal Component
@@ -26,6 +27,7 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
   const [activeForm, setActiveForm] = useState<'gear' | 'gearType' | null>(null);
   const [editingGear, setEditingGear] = useState<TackleItem | null>(null);
   const [editingGearType, setEditingGearType] = useState<string>('');
+  const [showConfirm, setShowConfirm] = useState<{ open: boolean; title: string; message: string; onConfirm: () => void } | null>(null);
 
   console.log('TackleBoxModal rendered - tacklebox items:', tacklebox.length, 'gearTypes:', gearTypes.length);
 
@@ -110,10 +112,16 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
   };
 
   const handleGearDelete = (gearId: number) => {
-    if (window.confirm('Are you sure you want to delete this gear item?')) {
-      updateTackleBox(prev => prev.filter(item => item.id !== gearId));
-      resetFormState();
-    }
+    setShowConfirm({
+      open: true,
+      title: 'Delete Gear Item',
+      message: 'This will permanently delete this gear item from your tackle box.',
+      onConfirm: () => {
+        updateTackleBox(prev => prev.filter(item => item.id !== gearId));
+        resetFormState();
+        setShowConfirm(null);
+      }
+    });
   };
 
   const handleGearTypeSave = async (newTypeName: string, oldTypeName?: string) => {
@@ -140,15 +148,21 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
 
   const handleGearTypeDelete = (gearType: string) => {
     const gearUsingType = tacklebox.filter(item => item.type === gearType);
-    const confirmMessage = gearUsingType.length > 0
-      ? `Are you sure you want to delete the "${gearType}" type? This will also remove ${gearUsingType.length} gear item(s) of this type.`
-      : `Are you sure you want to delete the "${gearType}" type?`;
+    const message = gearUsingType.length > 0
+      ? `This will also remove ${gearUsingType.length} gear item(s) of this type.`
+      : 'This will permanently delete this gear type.';
 
-    if (window.confirm(confirmMessage)) {
-      updateGearTypes(prev => prev.filter(type => type !== gearType));
-      updateTackleBox(prev => prev.filter(item => item.type !== gearType));
-      resetFormState();
-    }
+    setShowConfirm({
+      open: true,
+      title: `Delete "${gearType}" Type`,
+      message,
+      onConfirm: () => {
+        updateGearTypes(prev => prev.filter(type => type !== gearType));
+        updateTackleBox(prev => prev.filter(item => item.type !== gearType));
+        resetFormState();
+        setShowConfirm(null);
+      }
+    });
   };
 
   // Sort gear items and types for display
@@ -276,6 +290,19 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
           </div>
         </div>
       </ModalBody>
+
+      {/* Standardized confirmation dialog */}
+      <ConfirmationDialog
+        isOpen={!!showConfirm?.open}
+        title={showConfirm?.title || ''}
+        message={showConfirm?.message || ''}
+        confirmText="Delete"
+        cancelText="Cancel"
+        onConfirm={() => showConfirm?.onConfirm()}
+        onCancel={() => setShowConfirm(null)}
+        variant="danger"
+        overlayStyle="blur"
+      />
     </Modal>
   );
 };

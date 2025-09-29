@@ -368,14 +368,16 @@ export class DataExportService {
       // Trim strings in the data
       const cleanData = this.trimObjectStrings(data);
 
-      // Import to Firebase if user is authenticated, otherwise use local storage
-      const useFirebase = firebaseDataService.isReady();
+      // Import to Firebase only if an authenticated user is present; otherwise use local storage
+      const useFirebase = firebaseDataService.isAuthenticated?.()
+        ? firebaseDataService.isAuthenticated()
+        : (firebaseDataService.isReady() && !(firebaseDataService as any).isGuest);
 
       if (useFirebase) {
-        console.log("Importing data to Firebase...");
+        console.log("Importing data to Firebase (authenticated user)...");
         await this.importToFirebase(cleanData);
       } else {
-        console.log("Importing data to local storage...");
+        console.log("Importing data to local storage (guest mode)...");
         await this.importToLocal(cleanData);
       }
 
@@ -392,6 +394,12 @@ export class DataExportService {
    * Import data to Firebase
    */
   private async importToFirebase(data: any): Promise<void> {
+    // Defensive: if not authenticated, route to local import instead
+    if (!firebaseDataService.isAuthenticated?.()) {
+      console.warn("importToFirebase called without an authenticated user. Falling back to local import.");
+      await this.importToLocal(data);
+      return;
+    }
     // Import tackle box data via Firebase hooks (this will handle localStorage too)
     if (data.localStorage?.tacklebox) {
       localStorage.setItem("tacklebox", JSON.stringify(data.localStorage.tacklebox));
@@ -468,19 +476,32 @@ export class DataExportService {
           trip.hours = undefined;
         }
 
-        await databaseService.createTrip(trip);
+        // If an ID is present, upsert to preserve original IDs, else create new
+        if (typeof trip.id === 'number') {
+          await databaseService.updateTrip(trip);
+        } else {
+          await databaseService.createTrip(trip);
+        }
       }
     }
 
     if (dbData.weather_logs && Array.isArray(dbData.weather_logs)) {
       for (const weather of dbData.weather_logs) {
-        await databaseService.createWeatherLog(weather);
+        if (typeof weather.id === 'string') {
+          await databaseService.updateWeatherLog(weather);
+        } else {
+          await databaseService.createWeatherLog(weather);
+        }
       }
     }
 
     if (dbData.fish_caught && Array.isArray(dbData.fish_caught)) {
       for (const fish of dbData.fish_caught) {
-        await databaseService.createFishCaught(fish);
+        if (typeof fish.id === 'string') {
+          await databaseService.updateFishCaught(fish);
+        } else {
+          await databaseService.createFishCaught(fish);
+        }
       }
     }
   }

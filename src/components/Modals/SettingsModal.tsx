@@ -2,6 +2,10 @@ import React, { useState, useRef } from 'react';
 import { Button } from '../UI';
 import { Modal, ModalHeader, ModalBody } from './Modal';
 import { dataExportService } from '../../services/dataExportService';
+import ConfirmationDialog from '../UI/ConfirmationDialog';
+import { useAuth } from '../../contexts/AuthContext';
+import { firebaseDataService } from '../../services/firebaseDataService';
+import { databaseService } from '../../services/databaseService';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -10,6 +14,7 @@ interface SettingsModalProps {
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onLegacyMigration }) => {
+  const { user } = useAuth();
   const [isExportingJSON, setIsExportingJSON] = useState(false);
   const [isExportingCSV, setIsExportingCSV] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -17,6 +22,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   const [importError, setImportError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
+  const [isDeletingAll, setIsDeletingAll] = useState(false);
+  const [showImportConfirm, setShowImportConfirm] = useState(false);
+  const [pendingImportFile, setPendingImportFile] = useState<File | null>(null);
 
   const handleExportJSON = async () => {
     setIsExportingJSON(true);
@@ -59,20 +68,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   const handleFileImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    // Show styled confirmation dialog
+    setPendingImportFile(file);
+    setShowImportConfirm(true);
+  };
 
-    // Confirm import action
-    const confirmed = window.confirm(
-      `Are you sure you want to import data from "${file.name}"? This will overwrite ALL existing log data.`
-    );
-    
-    if (!confirmed) {
-      // Reset file input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-      return;
-    }
-
+  const handleConfirmImport = async () => {
+    if (!pendingImportFile) return;
+    const file = pendingImportFile;
     setIsImporting(true);
     setImportError(null);
     setImportSuccess(null);
@@ -80,7 +83,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
     try {
       await dataExportService.importData(file);
       setImportSuccess(`Successfully imported data from "${file.name}". The page will reload to reflect changes.`);
-      
+      setShowImportConfirm(false);
+      setPendingImportFile(null);
+
       // Reload page after a short delay to show success message
       setTimeout(() => {
         window.location.reload();
@@ -97,10 +102,45 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
     }
   };
 
+  const handleCancelImport = () => {
+    setShowImportConfirm(false);
+    setPendingImportFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const clearErrors = () => {
     setExportError(null);
     setImportError(null);
     setImportSuccess(null);
+  };
+
+  const handleDeleteAllData = async () => {
+    setIsDeletingAll(true);
+    try {
+      if (user) {
+        // Logged-in: use destructive Firestore wipe
+        await firebaseDataService.clearFirestoreUserData();
+      } else {
+        // Guest: clear local IndexedDB only
+        await databaseService.clearAllData();
+      }
+
+      // Clear tackle box localStorage items too
+      localStorage.removeItem('tacklebox');
+      localStorage.removeItem('gearTypes');
+
+      // Close dialog and notify success
+      setShowDeleteAllConfirm(false);
+      setImportSuccess('All data has been deleted. The page will reload.');
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (e) {
+      console.error('Failed to delete all data:', e);
+      setImportError(e instanceof Error ? e.message : 'Failed to delete all data');
+    } finally {
+      setIsDeletingAll(false);
+    }
   };
 
   return (
@@ -290,8 +330,47 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
             )}
           </div>
         )}
+
+        {/* Danger Zone */}
+        <div className="mt-6 pt-6" style={{ borderTop: '1px solid var(--border-color)' }}>
+          <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--primary-text)' }}>Danger Zone</h3>
+          <p className="text-sm mb-3" style={{ color: 'var(--secondary-text)' }}>
+            Permanently delete all your {user ? 'cloud and local' : 'local'} data. This cannot be undone.
+          </p>
+          <Button
+            variant="danger"
+            onClick={() => setShowDeleteAllConfirm(true)}
+            disabled={isDeletingAll}
+          >
+            {isDeletingAll ? 'Deleting…' : (<><i className="fas fa-trash-alt mr-2"></i>Delete All Data</>)}
+          </Button>
+        </div>
         </div>
       </ModalBody>
+
+      <ConfirmationDialog
+        isOpen={showDeleteAllConfirm}
+        title="Delete All Data"
+        message={`This will permanently delete all ${user ? 'cloud and local' : 'local'} trips, weather logs, and fish catches${user ? ' for your account' : ''}. This action cannot be undone.`}
+        confirmText={isDeletingAll ? 'Deleting…' : 'Delete Everything'}
+        cancelText="Cancel"
+        onConfirm={handleDeleteAllData}
+        onCancel={() => !isDeletingAll && setShowDeleteAllConfirm(false)}
+        variant="danger"
+        overlayStyle="blur"
+      />
+
+      <ConfirmationDialog
+        isOpen={showImportConfirm}
+        title="Import Data"
+        message={pendingImportFile ? `Are you sure you want to import data from "${pendingImportFile.name}"? This will overwrite ALL existing log data.` : 'Are you sure you want to import data? This will overwrite ALL existing log data.'}
+        confirmText={isImporting ? 'Importing…' : 'Import'}
+        cancelText="Cancel"
+        onConfirm={handleConfirmImport}
+        onCancel={handleCancelImport}
+        variant="danger"
+        overlayStyle="blur"
+      />
     </Modal>
   );
 };
