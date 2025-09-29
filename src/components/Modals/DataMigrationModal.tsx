@@ -217,17 +217,17 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
           <div className="space-y-4">
             <div className="text-center">
               <i className="fas fa-exclamation-triangle text-yellow-500 text-4xl mb-4"></i>
-              <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">
+              <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--primary-text)' }}>
                 Confirm Data Import
               </h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-4">
+              <p className="mb-4" style={{ color: 'var(--secondary-text)' }}>
                 This will delete all your current fishing data and replace it with the data from the zip file.
               </p>
             </div>
 
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-              <h4 className="font-medium text-red-800 dark:text-red-200 mb-2">⚠️ Warning: Data Loss</h4>
-              <ul className="text-sm text-red-700 dark:text-red-300 space-y-1">
+              <h4 className="font-medium mb-2 modal-primary-text">⚠️ Warning: Data Loss</h4>
+              <ul className="text-sm space-y-1 modal-secondary-text">
                 <li>• All current trips will be permanently deleted</li>
                 <li>• All weather logs will be permanently deleted</li>
                 <li>• All fish catches will be permanently deleted</li>
@@ -237,8 +237,8 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
             </div>
 
             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-              <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-2">What will be imported:</h4>
-              <ul className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
+              <h4 className="font-medium mb-2 modal-primary-text">What will be imported:</h4>
+              <ul className="text-sm space-y-1 modal-secondary-text">
                 <li>• All trips from the zip file</li>
                 <li>• All weather logs from the zip file</li>
                 <li>• All fish catches from the zip file</li>
@@ -247,24 +247,24 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
               </ul>
             </div>
 
-            <p className="text-sm text-gray-500 dark:text-gray-400">
+            <p className="text-sm" style={{ color: 'var(--secondary-text)' }}>
               Make sure this is the correct zip file from your legacy Māori Fishing Calendar app before proceeding.
             </p>
           </div>
         ) : isChecking ? (
           <div className="flex items-center justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-            <span className="ml-3 text-gray-600 dark:text-gray-400">Checking your data...</span>
+            <span className="ml-3" style={{ color: 'var(--secondary-text)' }}>Checking your data...</span>
           </div>
         ) : zipImportResults ? (
           // Zip import completed
           <div className="space-y-4">
             <div className="text-center">
               <i className={`fas ${zipImportResults.success ? 'fa-check-circle text-green-500' : 'fa-exclamation-triangle text-red-500'} text-4xl mb-4`}></i>
-              <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">
+              <h3 className="text-lg font-semibold mb-2 modal-primary-text">
                 {zipImportResults.success ? 'Zip Import Complete!' : 'Zip Import Failed'}
               </h3>
-              <p className="text-gray-600 dark:text-gray-400">
+              <p className="modal-secondary-text">
                 {zipImportResults.success
                   ? 'Your legacy data has been successfully imported from the zip file.'
                   : 'There were errors importing your zip file.'
@@ -273,23 +273,29 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
             </div>
 
             {zipImportResults.success && (
-              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
-                <h4 className="font-medium text-gray-800 dark:text-gray-100 mb-3">Import Summary:</h4>
+              <div
+                className="rounded-lg p-4"
+                style={{
+                  backgroundColor: 'var(--secondary-background)',
+                  border: '1px solid var(--border-color)'
+                }}
+              >
+                <h4 className="font-medium mb-3" style={{ color: 'var(--primary-text)' }}>Import Summary:</h4>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-400">Trips:</span>
+                    <span style={{ color: 'var(--secondary-text)' }}>Trips:</span>
                     <span className="font-medium">{zipImportResults.tripsImported}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-400">Weather Logs:</span>
+                    <span style={{ color: 'var(--secondary-text)' }}>Weather Logs:</span>
                     <span className="font-medium">{zipImportResults.weatherLogsImported}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-400">Fish Catches:</span>
+                    <span style={{ color: 'var(--secondary-text)' }}>Fish Catches:</span>
                     <span className="font-medium">{zipImportResults.fishCatchesImported}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-400">Photos:</span>
+                    <span style={{ color: 'var(--secondary-text)' }}>Photos:</span>
                     <span className="font-medium">{zipImportResults.photosImported}</span>
                   </div>
                 </div>
@@ -297,24 +303,24 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
                 {(zipImportResults.duplicatesSkipped.trips > 0 ||
                   zipImportResults.duplicatesSkipped.weatherLogs > 0 ||
                   zipImportResults.duplicatesSkipped.fishCatches > 0) && (
-                  <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
-                    <h5 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Duplicates Skipped:</h5>
+                  <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--border-color)' }}>
+                    <h5 className="text-sm font-medium mb-2" style={{ color: 'var(--primary-text)' }}>Duplicates Skipped:</h5>
                     <div className="grid grid-cols-3 gap-2 text-xs">
                       {zipImportResults.duplicatesSkipped.trips > 0 && (
                         <div className="flex justify-between">
-                          <span className="text-gray-500">Trips:</span>
+                          <span style={{ color: 'var(--secondary-text)' }}>Trips:</span>
                           <span className="font-medium text-orange-600">{zipImportResults.duplicatesSkipped.trips}</span>
                         </div>
                       )}
                       {zipImportResults.duplicatesSkipped.weatherLogs > 0 && (
                         <div className="flex justify-between">
-                          <span className="text-gray-500">Weather:</span>
+                          <span style={{ color: 'var(--secondary-text)' }}>Weather:</span>
                           <span className="font-medium text-orange-600">{zipImportResults.duplicatesSkipped.weatherLogs}</span>
                         </div>
                       )}
                       {zipImportResults.duplicatesSkipped.fishCatches > 0 && (
                         <div className="flex justify-between">
-                          <span className="text-gray-500">Fish:</span>
+                          <span style={{ color: 'var(--secondary-text)' }}>Fish:</span>
                           <span className="font-medium text-orange-600">{zipImportResults.duplicatesSkipped.fishCatches}</span>
                         </div>
                       )}
@@ -325,29 +331,29 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
                 {(() => {
                   console.log('📊 Compression stats received:', zipImportResults.compressionStats);
                   return zipImportResults.compressionStats && zipImportResults.compressionStats.imagesProcessed > 0 ? (
-                    <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
-                      <h5 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Image Compression:</h5>
+                    <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--border-color)' }}>
+                      <h5 className="text-sm font-medium mb-2" style={{ color: 'var(--primary-text)' }}>Image Compression:</h5>
                       <div className="grid grid-cols-2 gap-2 text-xs">
                         <div className="flex justify-between">
-                          <span className="text-gray-500">Images:</span>
+                          <span style={{ color: 'var(--secondary-text)' }}>Images:</span>
                           <span className="font-medium text-blue-600">{zipImportResults.compressionStats.imagesProcessed}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-gray-500">Size Reduction:</span>
+                          <span style={{ color: 'var(--secondary-text)' }}>Size Reduction:</span>
                           <span className="font-medium text-green-600">
                             {zipImportResults.compressionStats?.compressionRatio?.toFixed ?
                               zipImportResults.compressionStats.compressionRatio.toFixed(1) : '0.0'}%
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-gray-500">Original:</span>
+                          <span style={{ color: 'var(--secondary-text)' }}>Original:</span>
                           <span className="font-medium">
                             {zipImportResults.compressionStats?.originalSize ?
                               (zipImportResults.compressionStats.originalSize / 1024 / 1024).toFixed(2) : '0.00'} MB
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-gray-500">Compressed:</span>
+                          <span style={{ color: 'var(--secondary-text)' }}>Compressed:</span>
                           <span className="font-medium">
                             {zipImportResults.compressionStats?.compressedSize ?
                               (zipImportResults.compressionStats.compressedSize / 1024 / 1024).toFixed(2) : '0.00'} MB
@@ -362,8 +368,8 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
 
             {zipImportResults.errors.length > 0 && (
               <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-                <h4 className="font-medium text-red-800 dark:text-red-200 mb-2">Errors:</h4>
-                <ul className="text-sm text-red-700 dark:text-red-300 space-y-1">
+                <h4 className="font-medium mb-2 modal-primary-text">Errors:</h4>
+                <ul className="text-sm space-y-1 modal-secondary-text">
                   {zipImportResults.errors.map((error, index) => (
                     <li key={index}>• {error}</li>
                   ))}
@@ -373,8 +379,8 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
 
             {zipImportResults.warnings.length > 0 && (
               <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-                <h4 className="font-medium text-yellow-800 dark:text-yellow-200 mb-2">Warnings:</h4>
-                <ul className="text-sm text-yellow-700 dark:text-yellow-300 space-y-1">
+                <h4 className="font-medium mb-2 modal-primary-text">Warnings:</h4>
+                <ul className="text-sm space-y-1 modal-secondary-text">
                   {zipImportResults.warnings.map((warning, index) => (
                     <li key={index}>• {warning}</li>
                   ))}
@@ -382,7 +388,7 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
               </div>
             )}
 
-            <p className="text-sm text-gray-500 dark:text-gray-400">
+            <p className="text-sm" style={{ color: 'var(--secondary-text)' }}>
               {zipImportResults.success
                 ? user
                   ? 'Your data is now saved to your cloud account and synced across all devices.'
@@ -396,37 +402,43 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
           <div className="space-y-4">
             <div className="text-center">
               <i className="fas fa-check-circle text-green-500 text-4xl mb-4"></i>
-              <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">
+              <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--primary-text)' }}>
                 Migration Complete!
               </h3>
-              <p className="text-gray-600 dark:text-gray-400">
+              <p style={{ color: 'var(--secondary-text)' }}>
                 Your data has been successfully migrated to the cloud.
               </p>
             </div>
 
-            <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
-              <h4 className="font-medium text-gray-800 dark:text-gray-100 mb-3">Migration Summary:</h4>
+            <div
+              className="rounded-lg p-4"
+              style={{
+                backgroundColor: 'var(--secondary-background)',
+                border: '1px solid var(--border-color)'
+              }}
+            >
+              <h4 className="font-medium mb-3" style={{ color: 'var(--primary-text)' }}>Migration Summary:</h4>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Trips:</span>
+                  <span style={{ color: 'var(--secondary-text)' }}>Trips:</span>
                   <span className="font-medium">{migrationResults.tripsMigrated}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Weather Logs:</span>
+                  <span style={{ color: 'var(--secondary-text)' }}>Weather Logs:</span>
                   <span className="font-medium">{migrationResults.weatherLogsMigrated}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Fish Catches:</span>
+                  <span style={{ color: 'var(--secondary-text)' }}>Fish Catches:</span>
                   <span className="font-medium">{migrationResults.fishCatchesMigrated}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Tackle Items:</span>
+                  <span style={{ color: 'var(--secondary-text)' }}>Tackle Items:</span>
                   <span className="font-medium">{migrationResults.tackleItemsMigrated}</span>
                 </div>
               </div>
             </div>
 
-            <p className="text-sm text-gray-500 dark:text-gray-400">
+            <p className="text-sm" style={{ color: 'var(--secondary-text)' }}>
               Your data is now synced across all your devices. Any future changes will automatically sync to the cloud.
             </p>
           </div>
@@ -435,17 +447,17 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
           <div className="space-y-4">
             <div className="text-center">
               <i className="fas fa-file-archive text-green-500 text-4xl mb-4"></i>
-              <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">
+              <h3 className="text-lg font-semibold mb-2 modal-primary-text">
                 Import Legacy Data from Zip File
               </h3>
-              <p className="text-gray-600 dark:text-gray-400">
+              <p className="modal-secondary-text">
                 Upload a zip file exported from your legacy Māori Fishing Calendar app.
               </p>
             </div>
 
             <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
-              <h4 className="font-medium text-green-800 dark:text-green-200 mb-2">How to get your zip file:</h4>
-              <ol className="text-sm text-green-700 dark:text-green-300 space-y-1">
+              <h4 className="font-medium mb-2 modal-primary-text">How to get your zip file:</h4>
+              <ol className="text-sm space-y-1 modal-secondary-text">
                 <li>1. Open your legacy Māori Fishing Calendar app</li>
                 <li>2. Click "Export Data" to download a zip file</li>
                 <li>3. Select that zip file below to import</li>
@@ -466,13 +478,13 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
                 className="cursor-pointer flex flex-col items-center"
               >
                 <i className="fas fa-cloud-upload-alt text-2xl text-gray-400 mb-2"></i>
-                <span className="text-sm text-gray-600 dark:text-gray-400">
+                <span className="text-sm modal-secondary-text">
                   {isZipImporting ? 'Processing zip file...' : 'Click to select zip file'}
                 </span>
               </label>
             </div>
 
-            <div className="text-sm text-gray-500 dark:text-gray-400">
+            <div className="text-sm modal-secondary-text">
               <p className="mb-2">
                 <strong>Perfect for mobile!</strong> No Node.js required - works directly in your browser.
               </p>
@@ -493,17 +505,17 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
           <div className="space-y-4">
             <div className="text-center">
               <i className="fas fa-cloud-upload-alt text-blue-500 text-4xl mb-4"></i>
-              <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">
+              <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--primary-text)' }}>
                 Migrate Your Data
               </h3>
-              <p className="text-gray-600 dark:text-gray-400">
+              <p style={{ color: 'var(--secondary-text)' }}>
                 We found existing fishing data on your device. Would you like to migrate it to the cloud for cross-device syncing?
               </p>
             </div>
 
             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-              <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-2">What happens during migration:</h4>
-              <ul className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
+              <h4 className="font-medium mb-2 modal-primary-text">What happens during migration:</h4>
+              <ul className="text-sm space-y-1 modal-secondary-text">
                 <li>• Your trips, weather logs, and fish catches will be uploaded to the cloud</li>
                 <li>• Your tackle box items will be synced across devices</li>
                 <li>• All data remains secure and private to your account</li>
@@ -511,7 +523,7 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
               </ul>
             </div>
 
-            <div className="text-sm text-gray-500 dark:text-gray-400">
+            <div className="text-sm" style={{ color: 'var(--secondary-text)' }}>
               <p className="mb-2">
                 <strong>Note:</strong> This is a one-time migration. Your local data will remain intact as a backup.
               </p>
@@ -522,7 +534,7 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
 
             {/* Alternative zip import option */}
             <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+              <p className="text-sm modal-secondary-text mb-3">
                 <strong>Alternative:</strong> Import from a zip file exported from your legacy app
               </p>
               <Button
