@@ -380,9 +380,12 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
                     setFilterMonth(null);
                   }
                 }}
-                className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
-                         bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100
-                         focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                style={{ 
+                  backgroundColor: 'var(--input-background)',
+                  borderColor: 'var(--input-border)',
+                  color: 'var(--primary-text)'
+                }}
               >
                 <option value="">All Months</option>
                 {getAvailableMonths().map((month) => (
@@ -398,16 +401,19 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
                 onChange={(e) =>
                   setSortOrder(e.target.value as GallerySortOrder)
                 }
-                className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
-                         bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100
-                         focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                style={{ 
+                  backgroundColor: 'var(--input-background)',
+                  borderColor: 'var(--input-border)',
+                  color: 'var(--primary-text)'
+                }}
               >
                 <option value="desc">Newest First</option>
                 <option value="asc">Oldest First</option>
               </select>
             </div>
 
-            <div className="text-sm text-gray-600 dark:text-gray-400">
+            <div className="text-sm" style={{ color: 'var(--secondary-text)' }}>
               {filteredAndSortedPhotos.length} of {photos.length} photos
             </div>
           </div>
@@ -416,7 +422,7 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
           {loading && (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-              <span className="ml-3 text-gray-600 dark:text-gray-400">
+              <span className="ml-3" style={{ color: 'var(--secondary-text)' }}>
                 Loading photos...
               </span>
             </div>
@@ -437,7 +443,7 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
           {!loading && !error && (
             <div className="space-y-6">
               {filteredAndSortedPhotos.length === 0 ? (
-                <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+                <div className="text-center py-12" style={{ color: 'var(--secondary-text)' }}>
                   <i className="fas fa-camera text-4xl mb-4 opacity-50"></i>
                   <p>No photos found</p>
                   <p className="text-sm mt-2">
@@ -449,9 +455,9 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
               ) : (
                 photosByMonth.map((monthGroup) => (
                   <div key={monthGroup.key} className="space-y-3">
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 border-b pb-2">
+                    <h3 className="text-lg font-semibold border-b pb-2" style={{ color: 'var(--primary-text)', borderColor: 'var(--border-color)' }}>
                       {monthGroup.label}
-                      <span className="text-sm font-normal text-gray-500 dark:text-gray-400 ml-2">
+                      <span className="text-sm font-normal ml-2" style={{ color: 'var(--secondary-text)' }}>
                         ({monthGroup.photos.length} photo
                         {monthGroup.photos.length !== 1 ? "s" : ""})
                       </span>
