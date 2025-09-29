@@ -43,6 +43,8 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set());
   const isEditing = fishId !== undefined;
@@ -89,8 +91,19 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
       }
       setError(null);
       setValidation({ isValid: true, errors: {} });
+      setPhotoPreview(null);
+      setUploadError(null);
     }
   }, [isOpen, isEditing, fishId, loadFishData]);
+
+  // Cleanup photo preview URL when preview changes or component unmounts
+  useEffect(() => {
+    return () => {
+      if (photoPreview && photoPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(photoPreview);
+      }
+    };
+  }, [photoPreview]);
 
   const handleInputChange = useCallback((field: string, value: string | string[]) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -168,7 +181,12 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
 
   const handlePhotoUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !user) return;
+    if (!file) return;
+
+    // Clean up previous preview URL to prevent memory leaks
+    if (photoPreview && photoPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(photoPreview);
+    }
 
     if (!file.type.startsWith('image/')) {
       setError('Please select a valid image file.');
@@ -179,8 +197,36 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
       return;
     }
 
-    setIsUploadingPhoto(true);
+    // Create preview URL for selected file immediately
+  const previewUrl = URL.createObjectURL(file);
+  setPhotoPreview(previewUrl);
+    setUploadError(null);
     setError(null);
+
+    // If not authenticated: persist as data URL (local-only) and keep preview
+    if (!user) {
+      try {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = reader.result as string;
+          handleInputChange("photo", dataUrl);
+          handleInputChange("photoPath", "");
+          setPhotoPreview(dataUrl);
+          if (previewUrl.startsWith('blob:')) {
+            URL.revokeObjectURL(previewUrl);
+          }
+        };
+        reader.onerror = () => {
+          setUploadError('Failed to process photo. Please try again.');
+        };
+        reader.readAsDataURL(file);
+      } catch (e) {
+        setUploadError('Failed to process photo. Please try again.');
+      }
+      return;
+    }
+
+    setIsUploadingPhoto(true);
 
     try {
       const catchId = fishId || `temp_${Date.now()}`;
@@ -192,13 +238,21 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
 
       handleInputChange("photo", downloadURL);
       handleInputChange("photoPath", storagePath);
+
+      // Swap preview to the uploaded URL so it remains visible
+      setPhotoPreview(downloadURL);
+      // Revoke only the temporary blob preview
+      if (previewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(previewUrl);
+      }
     } catch (err) {
       console.error('Photo upload failed:', err);
-      setError('Failed to upload photo. Please try again.');
+      setUploadError('Failed to upload photo. Please try again.');
+      // Keep preview visible on error so user can retry
     } finally {
       setIsUploadingPhoto(false);
     }
-  }, [user, fishId, handleInputChange]);
+  }, [user, fishId, handleInputChange, photoPreview]);
 
   // Filter and group gear items
   const filteredAndGroupedGear = React.useMemo(() => {
@@ -534,7 +588,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
               <label className="form-label">
                 Photo (Optional)
               </label>
-              {isEditing && formData.photo && (
+              {isEditing && formData.photo && !photoPreview && (
                 <div className="mt-2">
                   <div className="text-sm font-medium mb-2" style={{ color: 'var(--secondary-text)' }}>Current Photo</div>
                   <div className="relative inline-block">
@@ -552,12 +606,74 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                         }
                         handleInputChange("photo", "");
                         handleInputChange("photoPath", "");
+                        setPhotoPreview(null);
+                        setUploadError(null);
                       }}
                       className="absolute top-2 right-2 btn btn-danger px-2 py-1 text-xs"
                     >
                       Delete Photo
                     </button>
                   </div>
+                </div>
+              )}
+
+              {/* Photo Preview for newly selected photos */}
+              {photoPreview && (
+                <div className="mt-2">
+                  <div className="text-sm font-medium mb-2" style={{ color: 'var(--secondary-text)' }}>
+                    {isUploadingPhoto ? 'Uploading Photo...' : uploadError ? 'Upload Failed' : 'Selected Photo'}
+                  </div>
+                  <div className="relative inline-block">
+                    <img
+                      src={photoPreview}
+                      alt="Selected catch"
+                      className={`w-32 h-32 object-cover rounded ${uploadError ? 'opacity-50' : ''}`}
+                      style={{ border: `1px solid ${uploadError ? 'var(--error-border)' : 'var(--border-color)'}` }}
+                    />
+                    {uploadError && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 rounded">
+                        <span className="text-white text-xs text-center px-2">
+                          <i className="fas fa-exclamation-triangle block mb-1"></i>
+                          Upload Failed
+                        </span>
+                      </div>
+                    )}
+                    {isUploadingPhoto && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-30 rounded">
+                        <div className="text-white text-xs">
+                          <i className="fas fa-spinner fa-spin block mb-1"></i>
+                          Uploading...
+                        </div>
+                      </div>
+                    )}
+                    {!isUploadingPhoto && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          // Clean up the preview URL to prevent memory leaks
+                          if (photoPreview && photoPreview.startsWith('blob:')) {
+                            URL.revokeObjectURL(photoPreview);
+                          }
+                          setPhotoPreview(null);
+                          setUploadError(null);
+                          // Also clear selected photo from form state so it won't be saved
+                          handleInputChange("photo", "");
+                          handleInputChange("photoPath", "");
+                          // Clear the file input properly
+                          const fileInput = document.getElementById('photo-upload') as HTMLInputElement;
+                          if (fileInput) {
+                            fileInput.value = '';
+                          }
+                        }}
+                        className="absolute top-2 right-2 btn btn-danger px-2 py-1 text-xs"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  {uploadError && (
+                    <p className="mt-1 text-xs" style={{ color: 'var(--error-text)' }}>{uploadError}</p>
+                  )}
                 </div>
               )}
               <div className="mt-4">
