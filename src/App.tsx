@@ -145,6 +145,13 @@ function AppContent() {
     setTripLogRefreshTrigger(prev => prev + 1); // Trigger refresh
   }, []);
 
+  const handleMigrationComplete = useCallback(() => {
+    console.log('App.tsx: Migration completed - refreshing calendar');
+    // Trigger calendar refresh to show any imported trip indicators
+    setCalendarRefreshTrigger(prev => prev + 1);
+    console.log('App.tsx: Calendar refresh triggered after migration');
+  }, []);
+
   const handleTripUpdated = useCallback(() => {
     // Navigate back to the trip log modal after trip is updated
     setCurrentModal("tripLog");
@@ -320,9 +327,10 @@ function AppContent() {
         />
 
         <DataMigrationModal
-          isOpen={currentModal === "dataMigration"}
-          onClose={handleCloseModal}
-        />
+           isOpen={currentModal === "dataMigration"}
+           onClose={handleCloseModal}
+           onMigrationComplete={handleMigrationComplete}
+         />
 
         <LunarModal
           isOpen={currentModal === "lunar"}
