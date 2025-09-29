@@ -441,7 +441,7 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
                             src={photo.photo}
                             alt={`${photo.species} - ${photo.length}`}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                            loading="lazy"
+                            decoding="async"
                             onError={(e) => {
                               const target = e.target as HTMLImageElement;
                               const originalSrc = target.src;
@@ -463,7 +463,7 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
                           />
 
                           {/* Overlay with info */}
-                          <div className="absolute inset-0 bg-gray-700 bg-opacity-0 group-hover:bg-opacity-70
+                          <div className="absolute inset-0 bg-gray-700/0 group-hover:bg-gray-700/70
                                        transition-all duration-200 flex items-end pointer-events-none z-10">
                             <div className="p-3 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200 w-full">
                               <p className="text-sm font-semibold truncate">
