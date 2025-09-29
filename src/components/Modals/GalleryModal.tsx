@@ -56,6 +56,10 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
     selectedYear || null,
   );
 
+  // Touch/swipe handling for mobile
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
+
   // Load photos when modal opens
   useEffect(() => {
     if (isOpen) {
@@ -202,6 +206,32 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
     const nextIndex =
       currentIndex < filteredAndSortedPhotos.length - 1 ? currentIndex + 1 : 0;
     setSelectedPhoto(filteredAndSortedPhotos[nextIndex]);
+  };
+
+  // Touch handlers for swipe navigation
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > 50;
+    const isRightSwipe = distance < -50;
+
+    if (isLeftSwipe && filteredAndSortedPhotos.length > 1) {
+      // Swipe left - go to next photo (forwards)
+      handleNextPhoto();
+    } else if (isRightSwipe && filteredAndSortedPhotos.length > 1) {
+      // Swipe right - go to previous photo (backwards)
+      handlePreviousPhoto();
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -526,7 +556,12 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
             </button>
 
             {/* Photo */}
-            <div className="flex items-center justify-center min-h-[60vh] max-h-[80vh] bg-gray-50 dark:bg-gray-600">
+            <div
+              className="flex items-center justify-center min-h-[60vh] max-h-[80vh] bg-gray-50 dark:bg-gray-600"
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+            >
               <img
                 src={selectedPhoto.photo}
                 alt={`${selectedPhoto.species} - ${selectedPhoto.length}`}
