@@ -4,7 +4,7 @@ import { Modal, ModalHeader, ModalBody, ModalFooter } from "./Modal";
 import { useDatabaseService } from "../../contexts/DatabaseContext";
 import { WeatherLogModal } from "./WeatherLogModal";
 import { FishCatchModal } from "./FishCatchModal";
-import ContextualConfirmation from "../UI/ContextualConfirmation";
+import ConfirmationDialog from "../UI/ConfirmationDialog";
 import type { Trip, WeatherLog, FishCaught, DateModalProps } from "../../types";
 
 export interface TripLogModalProps extends DateModalProps {
@@ -479,11 +479,11 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
       )}
 
       {/* Standardized Delete Confirmation */}
-      <ContextualConfirmation
+      <ConfirmationDialog
         isOpen={showDeleteConfirm && deleteTarget !== null}
         title={`Delete ${deleteTarget?.type === 'trip' ? 'Trip' : deleteTarget?.type === 'weather' ? 'Weather Log' : 'Fish Catch'}`}
         message={
-          deleteTarget?.type === 'trip' 
+          deleteTarget?.type === 'trip'
             ? 'This will permanently delete the entire trip and all associated data (weather logs, fish catches).'
             : `This will permanently delete this ${deleteTarget?.type} from your records.`
         }
@@ -492,7 +492,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
         onConfirm={handleConfirmDelete}
         onCancel={handleCancelDelete}
         variant="danger"
-        position="top-right"
+        overlayStyle="blur"
       />
     </Modal>
   );
