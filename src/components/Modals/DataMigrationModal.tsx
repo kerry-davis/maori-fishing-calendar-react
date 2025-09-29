@@ -32,6 +32,8 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
   const [isZipImporting, setIsZipImporting] = useState(false);
   const [zipImportResults, setZipImportResults] = useState<ZipImportResult | null>(null);
   const [showImportConfirmation, setShowImportConfirmation] = useState(false);
+  const [confirmAcknowledged, setConfirmAcknowledged] = useState(false);
+  const [importStrategy, setImportStrategy] = useState<'wipe' | 'merge'>('wipe');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const initializedRef = useRef(false);
 
@@ -136,6 +138,7 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
     setSelectedFile(file);
 
     // Show confirmation dialog before proceeding
+    setConfirmAcknowledged(false);
     setShowImportConfirmation(true);
   };
 
@@ -152,7 +155,7 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
       console.log('Zip import - User authenticated:', isAuthenticated);
       console.log('Processing file:', selectedFile.name);
 
-      const results = await browserZipImportService.processZipFile(selectedFile, isAuthenticated);
+  const results = await browserZipImportService.processZipFile(selectedFile, isAuthenticated, { strategy: importStrategy });
       setZipImportResults(results);
 
       if (results.success) {
@@ -177,6 +180,7 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
 
   const handleCancelImport = () => {
     setShowImportConfirmation(false);
+    setConfirmAcknowledged(false);
     // Clear the selected file from state and DOM
     setSelectedFile(null);
     const fileInput = document.getElementById('zip-file-input') as HTMLInputElement;
@@ -250,6 +254,52 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
             <p className="text-sm" style={{ color: 'var(--secondary-text)' }}>
               Make sure this is the correct zip file from your legacy Māori Fishing Calendar app before proceeding.
             </p>
+
+            {user && (
+              <>
+              <div className="rounded-lg p-4" style={{ backgroundColor: 'var(--secondary-background)', border: '1px solid var(--border-color)' }}>
+                <h5 className="text-sm font-medium mb-2" style={{ color: 'var(--primary-text)' }}>Import Mode</h5>
+                <div className="space-y-2 text-sm">
+                  <label className="flex items-start space-x-2">
+                    <input
+                      type="radio"
+                      name="import-mode"
+                      checked={importStrategy === 'wipe'}
+                      onChange={() => setImportStrategy('wipe')}
+                    />
+                    <span className="modal-secondary-text">
+                      <strong>Replace (Recommended)</strong> — Wipes your current cloud data and replaces it with the zip contents.
+                    </span>
+                  </label>
+                  <label className="flex items-start space-x-2">
+                    <input
+                      type="radio"
+                      name="import-mode"
+                      checked={importStrategy === 'merge'}
+                      onChange={() => setImportStrategy('merge')}
+                    />
+                    <span className="modal-secondary-text">
+                      <strong>Merge</strong> — Keeps existing cloud data and adds items from the zip (may create duplicates).
+                    </span>
+                  </label>
+                </div>
+              </div>
+              <div className="flex items-start space-x-2 p-3 rounded-md" style={{ backgroundColor: 'var(--secondary-background)', border: '1px solid var(--border-color)' }}>
+                <input
+                  id="confirm-wipe"
+                  type="checkbox"
+                  checked={confirmAcknowledged}
+                  onChange={(e) => setConfirmAcknowledged(e.target.checked)}
+                  className="mt-1"
+                />
+                <label htmlFor="confirm-wipe" className="text-sm" style={{ color: 'var(--secondary-text)' }}>
+                  {importStrategy === 'wipe'
+                    ? 'I understand this will permanently delete all existing trips, weather logs, and fish catches in my cloud account and replace them with the contents of this zip file.'
+                    : 'I understand importing may add to my existing cloud data and could create duplicates.'}
+                </label>
+              </div>
+              </>
+            )}
           </div>
         ) : isChecking ? (
           <div className="flex items-center justify-center py-8">
@@ -568,7 +618,12 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
               }}>
                 Cancel
               </Button>
-              <Button variant="primary" onClick={handleConfirmImport} loading={isZipImporting}>
+              <Button
+                variant="primary"
+                onClick={handleConfirmImport}
+                loading={isZipImporting}
+                disabled={user ? (importStrategy === 'wipe' ? !confirmAcknowledged : false) : false}
+              >
                 {isZipImporting ? 'Importing...' : 'Import & Delete Current Data'}
               </Button>
             </>

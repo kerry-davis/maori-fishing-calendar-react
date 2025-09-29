@@ -3,7 +3,7 @@ function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
 }
 
-type Variant = 'primary' | 'secondary' | 'ghost';
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
 type Size = 'sm' | 'md' | 'lg';
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -24,6 +24,7 @@ const variantClasses: Record<Variant, string> = {
   primary: 'btn btn-primary',
   secondary: 'btn btn-secondary',
   ghost: 'btn btn-ghost',
+  danger: 'btn btn-danger',
 };
 
 export const Button: FC<ButtonProps> = ({
