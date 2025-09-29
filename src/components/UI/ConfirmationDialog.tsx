@@ -9,6 +9,7 @@ interface ConfirmationDialogProps {
     onConfirm: () => void;
     onCancel: () => void;
     variant?: 'danger' | 'warning' | 'info';
+    overlayStyle?: 'default' | 'blur' | 'none';
 }
 
 const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
@@ -19,7 +20,8 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
     cancelText = 'Cancel',
     onConfirm,
     onCancel,
-    variant = 'danger'
+    variant = 'danger',
+    overlayStyle = 'blur'
 }) => {
     if (!isOpen) return null;
 
@@ -50,13 +52,21 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
 
     const styles = getVariantStyles();
 
+    const overlayClasses = overlayStyle === 'none'
+        ? 'pointer-events-none'
+        : overlayStyle === 'blur'
+            ? 'backdrop-blur-sm bg-black/30'
+            : 'bg-gray-500/75';
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             {/* Background overlay */}
-            <div
-                className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
+            {overlayStyle !== 'none' && (
+              <div
+                className={`fixed inset-0 transition-opacity ${overlayClasses}`}
                 onClick={onCancel}
-            ></div>
+              />
+            )}
 
             {/* Modal panel */}
             <div className="relative bg-white dark:bg-gray-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all max-w-lg w-full sm:p-6">
