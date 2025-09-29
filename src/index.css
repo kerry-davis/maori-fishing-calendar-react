@@ -574,3 +574,52 @@ body {
         }
     }
 }
+
+/* Browser-specific text color fixes for Brave/Opera compatibility */
+.modal-primary-text {
+  color: #111827 !important;
+}
+
+.modal-secondary-text {
+  color: #6b7280 !important;
+}
+
+/* Dark theme overrides with higher specificity */
+html.dark .modal-primary-text,
+body.dark-theme .modal-primary-text,
+html.dark body .modal-primary-text,
+.dark .modal-primary-text {
+  color: #f9fafb !important;
+}
+
+html.dark .modal-secondary-text,
+body.dark-theme .modal-secondary-text,
+html.dark body .modal-secondary-text,
+.dark .modal-secondary-text {
+  color: #d1d5db !important;
+}
+
+/* Additional fallback for modals specifically */
+[role="dialog"] .modal-primary-text,
+.modal .modal-primary-text {
+  color: #111827 !important;
+}
+
+[role="dialog"] .modal-secondary-text,
+.modal .modal-secondary-text {
+  color: #6b7280 !important;
+}
+
+html.dark [role="dialog"] .modal-primary-text,
+html.dark .modal .modal-primary-text,
+body.dark-theme [role="dialog"] .modal-primary-text,
+body.dark-theme .modal .modal-primary-text {
+  color: #f9fafb !important;
+}
+
+html.dark [role="dialog"] .modal-secondary-text,
+html.dark .modal .modal-secondary-text,
+body.dark-theme [role="dialog"] .modal-secondary-text,
+body.dark-theme .modal .modal-secondary-text {
+  color: #d1d5db !important;
+}
