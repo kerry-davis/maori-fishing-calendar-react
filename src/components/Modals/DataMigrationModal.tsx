@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './Modal';
+import ConfirmationDialog from '../UI/ConfirmationDialog';
 import { useDatabaseService } from '../../contexts/DatabaseContext';
-import { Button } from '../UI';
+import { Button, ProgressBar } from '../UI';
 import { useAuth } from '../../contexts/AuthContext';
 import { browserZipImportService } from '../../services/browserZipImportService';
 import type { ZipImportResult } from '../../services/browserZipImportService';
@@ -31,6 +32,7 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
   const [showZipImport, setShowZipImport] = useState(false);
   const [isZipImporting, setIsZipImporting] = useState(false);
   const [zipImportResults, setZipImportResults] = useState<ZipImportResult | null>(null);
+  const [zipProgress, setZipProgress] = useState<import('../../types').ImportProgress | null>(null);
   const [showImportConfirmation, setShowImportConfirmation] = useState(false);
   const [confirmAcknowledged, setConfirmAcknowledged] = useState(false);
   const [importStrategy, setImportStrategy] = useState<'wipe' | 'merge'>('wipe');
@@ -120,8 +122,6 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
       localStorage.setItem(`migrationComplete_${user.uid}`, 'true');
     }
     onClose();
-    // Refresh calendar when user exits the import utility
-    onMigrationComplete?.();
   };
 
   const handleZipFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -147,7 +147,8 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
 
     setIsZipImporting(true);
     setError(null);
-    setShowImportConfirmation(false);
+    // Keep the confirmation dialog open while importing to show progress consistently
+    setZipProgress({ phase: 'starting', current: 0, total: 1, percent: 0, message: 'Preparing…' });
 
     try {
       // Check if user is authenticated
@@ -155,24 +156,21 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
       console.log('Zip import - User authenticated:', isAuthenticated);
       console.log('Processing file:', selectedFile.name);
 
-  const results = await browserZipImportService.processZipFile(selectedFile, isAuthenticated, { strategy: importStrategy });
+  const results = await browserZipImportService.processZipFile(selectedFile, isAuthenticated, { strategy: importStrategy }, (p) => setZipProgress(p));
       setZipImportResults(results);
 
-      if (results.success) {
-        if (user) {
-          // Mark migration as complete for authenticated users
-          localStorage.setItem(`migrationComplete_${user.uid}`, 'true');
-          onMigrationComplete?.();
-        } else {
-          // For guest users, just show success message
-          console.log('Guest zip import completed successfully');
-        }
+      if (results.success && user) {
+        // Mark migration as complete for authenticated users
+        localStorage.setItem(`migrationComplete_${user.uid}`, 'true');
       }
     } catch (err) {
       console.error('Zip import failed:', err);
       setError(err instanceof Error ? err.message : 'Zip import failed');
     } finally {
       setIsZipImporting(false);
+      setZipProgress(null);
+      // Close the confirmation dialog after import completes
+      setShowImportConfirmation(false);
       // Clear the selected file after processing
       setSelectedFile(null);
     }
@@ -187,8 +185,7 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
     if (fileInput) {
       fileInput.value = '';
     }
-    // Refresh calendar when user exits the import utility
-    onMigrationComplete?.();
+    // No immediate refresh; will refresh when modal closes
   };
 
 
@@ -349,6 +346,12 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
                     <span className="font-medium">{zipImportResults.photosImported}</span>
                   </div>
                 </div>
+                {typeof zipImportResults.durationMs === 'number' && zipImportResults.durationMs > 0 && (
+                  <div className="mt-3 pt-3 text-xs flex justify-between" style={{ borderTop: '1px solid var(--border-color)' }}>
+                    <span style={{ color: 'var(--secondary-text)' }}>Duration</span>
+                    <span className="font-medium">{Math.max(0, Math.round((zipImportResults.durationMs || 0)/1000))}s</span>
+                  </div>
+                )}
 
                 {(zipImportResults.duplicatesSkipped.trips > 0 ||
                   zipImportResults.duplicatesSkipped.weatherLogs > 0 ||
@@ -441,8 +444,8 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
             <p className="text-sm" style={{ color: 'var(--secondary-text)' }}>
               {zipImportResults.success
                 ? user
-                  ? 'Your data is now saved to your cloud account and synced across all devices.'
-                  : 'Your data is now saved locally. When you log in to your account, it will be uploaded to the cloud automatically.'
+                  ? 'Your data is now saved to your cloud account and synced across all devices. Close this window to refresh the calendar with your new data.'
+                  : 'Your data is now saved locally. When you log in to your account, it will be uploaded to the cloud automatically. Close this window to refresh the calendar with your new data.'
                 : 'Please check the errors above and try again, or contact support if the problem persists.'
               }
             </p>
@@ -534,6 +537,8 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
               </label>
             </div>
 
+            {/* Progress is now displayed within the confirmation dialog to standardize UX */}
+
             <div className="text-sm modal-secondary-text">
               <p className="mb-2">
                 <strong>Perfect for mobile!</strong> No Node.js required - works directly in your browser.
@@ -610,28 +615,10 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
             }}>
               Get Started
             </Button>
-          ) : showImportConfirmation ? (
-            <>
-              <Button variant="secondary" onClick={() => {
-                handleCancelImport();
-                onClose();
-              }}>
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                onClick={handleConfirmImport}
-                loading={isZipImporting}
-                disabled={user ? (importStrategy === 'wipe' ? !confirmAcknowledged : false) : false}
-              >
-                {isZipImporting ? 'Importing...' : 'Import & Delete Current Data'}
-              </Button>
-            </>
           ) : showZipImport || (!hasLocalData && !migrationResults) || (hasCompletedMigration && !migrationResults) ? (
             <>
               <Button variant="secondary" onClick={() => {
                 onClose();
-                onMigrationComplete?.();
               }} disabled={isZipImporting}>
                 Cancel
               </Button>
@@ -653,6 +640,27 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
           )}
         </div>
       </ModalFooter>
+
+      {/* Inline confirmation dialog progress when importing */}
+      <ConfirmationDialog
+        isOpen={showImportConfirmation}
+        title="Import Data"
+        message={selectedFile ? `Are you sure you want to import data from "${selectedFile.name}"? This will overwrite ALL existing log data.` : 'Are you sure you want to import data? This will overwrite ALL existing log data.'}
+        confirmText={isZipImporting ? 'Importing…' : 'Import'}
+        cancelText="Cancel"
+        onConfirm={handleConfirmImport}
+        onCancel={handleCancelImport}
+        variant="danger"
+        overlayStyle="blur"
+        confirmDisabled={isZipImporting}
+        cancelDisabled={isZipImporting}
+      >
+        {isZipImporting && (
+          <div className="mt-3">
+            <ProgressBar progress={zipProgress} />
+          </div>
+        )}
+      </ConfirmationDialog>
     </Modal>
   );
 };

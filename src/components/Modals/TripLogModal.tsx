@@ -721,9 +721,9 @@ const TripCard: React.FC<TripCardProps> = ({
                   <div key={fish.id} className="p-3 rounded" style={{ backgroundColor: 'var(--card-background)', border: '1px solid var(--border-color)' }}>
                     <div className="flex items-start justify-between">
                       <div className="flex items-start gap-3 flex-1">
-                        {fish.photo && (
+                        {(fish.photoUrl || fish.photo) && (
                           <img
-                            src={fish.photo}
+                            src={fish.photoUrl || fish.photo}
                             alt={`${fish.species} photo`}
                             className="w-8 h-8 object-cover rounded border flex-shrink-0"
                             style={{ borderColor: 'var(--border-color)' }}

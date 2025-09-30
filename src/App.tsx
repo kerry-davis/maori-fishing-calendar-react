@@ -48,9 +48,42 @@ type ModalState =
   | "weatherLog"
   | "fishCatch";
 
+// Tiny component to finalize timing once the DB/app is ready
+function TimingOnReady() {
+  useEffect(() => {
+    try {
+      if (typeof performance !== 'undefined') {
+        performance.mark('app-ready');
+        const total = performance.measure('app-reload-total', 'app-reload-start', 'app-ready');
+        const totalMs = Math.round(total.duration);
+        const w: any = typeof window !== 'undefined' ? window : {};
+        // End the console timer if it was started, only once
+        if (w.__reloadTimerActive) {
+          try { console.timeEnd('[reload] total'); } catch {}
+          w.__reloadTimerActive = false;
+        }
+        if (!w.__reloadReadyLogged) {
+          w.__reloadReadyLogged = true;
+          console.info('[reload] ready:', totalMs, 'ms');
+        }
+      }
+    } catch {}
+  }, []);
+  return null;
+}
+
 function AppContent() {
   const { isReady, error } = useDatabaseContext();
   const { user } = useAuth();
+
+  // Timing: mark first render of AppContent
+  useEffect(() => {
+    try {
+      if (typeof performance !== 'undefined') {
+        performance.mark('app-first-render');
+      }
+    } catch {}
+  }, []);
 
   // Modal state management for routing between different views
   const [currentModal, setCurrentModal] = useState<ModalState>("none");
@@ -73,13 +106,7 @@ function AppContent() {
     setCurrentModal("settings");
   }, []);
 
-  const handleLegacyMigration = useCallback(() => {
-    console.log('App.tsx: handleLegacyMigration called - opening dataMigration modal');
-    setCurrentModal("dataMigration");
-    // Set a flag to indicate this is for zip import
-    sessionStorage.setItem('dataMigrationForZipImport', 'true');
-    console.log('App.tsx: DataMigrationModal should now be open');
-  }, []);
+  // Legacy migration handled by unified import in Settings; manual open kept via DataMigration modal entries if used elsewhere.
 
   const handleTackleBoxClick = useCallback(() => {
     setCurrentModal("tackleBox");
@@ -230,6 +257,19 @@ function AppContent() {
 
   // Show loading state while database is initializing
   if (!isReady && !error) {
+    // Timing: report time-to-first-frame/loading
+    try {
+      if (typeof performance !== 'undefined') {
+        performance.mark('app-loading-ui');
+        const firstFrame = performance.measure('app-first-frame', 'app-reload-start', 'app-loading-ui');
+        // Only log once per reload (guard StrictMode double render)
+        const w: any = typeof window !== 'undefined' ? window : {};
+        if (!w.__reloadFirstFrameLogged) {
+          w.__reloadFirstFrameLogged = true;
+          console.info('[reload] first-frame:', Math.round(firstFrame.duration), 'ms');
+        }
+      }
+    } catch {}
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--primary-background)', color: 'var(--primary-text)' }}>
         <div className="text-center">
@@ -273,6 +313,8 @@ function AppContent() {
 
   return (
     <div className={`min-h-screen transition-colors duration-200`} style={{ backgroundColor: 'var(--primary-background)', color: 'var(--primary-text)' }}>
+      {/* Timing: if DB just became ready, end total reload timer */}
+      {isReady && (<TimingOnReady />)}
       <Header
           onSearchClick={handleSearchClick}
           onAnalyticsClick={handleAnalyticsClick}
@@ -313,7 +355,6 @@ function AppContent() {
         <SettingsModal
            isOpen={currentModal === "settings"}
            onClose={handleCloseModal}
-           onLegacyMigration={handleLegacyMigration}
          />
 
         <SearchModal
