@@ -106,13 +106,7 @@ function AppContent() {
     setCurrentModal("settings");
   }, []);
 
-  const handleLegacyMigration = useCallback(() => {
-    console.log('App.tsx: handleLegacyMigration called - opening dataMigration modal');
-    setCurrentModal("dataMigration");
-    // Set a flag to indicate this is for zip import
-    sessionStorage.setItem('dataMigrationForZipImport', 'true');
-    console.log('App.tsx: DataMigrationModal should now be open');
-  }, []);
+  // Legacy migration handled by unified import in Settings; manual open kept via DataMigration modal entries if used elsewhere.
 
   const handleTackleBoxClick = useCallback(() => {
     setCurrentModal("tackleBox");
@@ -361,7 +355,6 @@ function AppContent() {
         <SettingsModal
            isOpen={currentModal === "settings"}
            onClose={handleCloseModal}
-           onLegacyMigration={handleLegacyMigration}
          />
 
         <SearchModal
