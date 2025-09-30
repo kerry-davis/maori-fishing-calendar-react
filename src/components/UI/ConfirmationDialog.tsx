@@ -10,6 +10,9 @@ interface ConfirmationDialogProps {
     onCancel: () => void;
     variant?: 'danger' | 'warning' | 'info';
     overlayStyle?: 'default' | 'blur' | 'none';
+    children?: React.ReactNode;
+    confirmDisabled?: boolean;
+    cancelDisabled?: boolean;
 }
 
 const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
@@ -21,7 +24,10 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
     onConfirm,
     onCancel,
     variant = 'danger',
-    overlayStyle = 'blur'
+    overlayStyle = 'blur',
+    children,
+    confirmDisabled = false,
+    cancelDisabled = false
 }) => {
     if (!isOpen) return null;
 
@@ -85,21 +91,28 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                             <p className="text-sm text-gray-500 dark:text-gray-400">
                                 {message}
                             </p>
+                            {children && (
+                              <div className="mt-3">
+                                {children}
+                              </div>
+                            )}
                         </div>
                     </div>
                 </div>
                 <div className="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
                     <button
                         type="button"
-                        className={`w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 text-base font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 sm:ml-3 sm:w-auto sm:text-sm ${styles.confirmButton}`}
+                        className={`w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 text-base font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 sm:ml-3 sm:w-auto sm:text-sm ${styles.confirmButton} ${confirmDisabled ? 'opacity-70 cursor-not-allowed' : ''}`}
                         onClick={onConfirm}
+                        disabled={confirmDisabled}
                     >
                         {confirmText}
                     </button>
                     <button
                         type="button"
-                        className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-700 text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:w-auto sm:text-sm"
+                        className={`mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-700 text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:w-auto sm:text-sm ${cancelDisabled ? 'opacity-70 cursor-not-allowed' : ''}`}
                         onClick={onCancel}
+                        disabled={cancelDisabled}
                     >
                         {cancelText}
                     </button>
