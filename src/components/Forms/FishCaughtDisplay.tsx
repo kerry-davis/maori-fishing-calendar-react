@@ -195,7 +195,7 @@ const FishCaughtCard: React.FC<FishCaughtCardProps> = ({
       )}
 
       {/* Photo display */}
-      {fish.photo && (
+  {(fish.photoUrl || fish.photo) && (
         <div className="mb-3">
           <div className="flex items-center mb-2">
             <i className="fas fa-camera text-gray-500 mr-2"></i>
@@ -205,23 +205,23 @@ const FishCaughtCard: React.FC<FishCaughtCardProps> = ({
             {(() => {
               try {
                 // Handle different photo data formats
-                let imageSrc = fish.photo;
+                let imageSrc = fish.photoUrl || fish.photo;
 
                 // If it's already a data URL, use it directly
-                if (typeof fish.photo === 'string' && fish.photo.startsWith('data:')) {
-                  imageSrc = fish.photo;
+                if (typeof imageSrc === 'string' && imageSrc.startsWith('data:')) {
+                  // no-op
                 }
                 // If it's a Firebase storage URL, use it directly
-                else if (typeof fish.photo === 'string' && (fish.photo.startsWith('http') || fish.photo.startsWith('gs://'))) {
-                  imageSrc = fish.photo;
+                else if (typeof imageSrc === 'string' && (imageSrc.startsWith('http') || imageSrc.startsWith('gs://'))) {
+                  // no-op
                 }
                 // If it's base64 data without data URL prefix, create data URL
-                else if (typeof fish.photo === 'string' && !fish.photo.startsWith('data:')) {
+                else if (typeof imageSrc === 'string' && !imageSrc.startsWith('data:')) {
                   // Try to detect if it's base64 data
-                  if (fish.photo.length > 100 && !fish.photo.includes(' ')) {
-                    imageSrc = `data:image/jpeg;base64,${fish.photo}`;
+                  if (imageSrc.length > 100 && !imageSrc.includes(' ')) {
+                    imageSrc = `data:image/jpeg;base64,${imageSrc}`;
                   } else {
-                    imageSrc = fish.photo;
+                    // leave as-is
                   }
                 }
 

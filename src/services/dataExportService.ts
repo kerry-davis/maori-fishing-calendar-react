@@ -10,6 +10,25 @@ import Papa from "papaparse";
  * Maintains compatibility with existing vanilla JS data formats
  */
 export class DataExportService {
+  // class body
+  // Utility to emit progress with ETA based on start time and completed units
+  private emitProgress(
+    onProgress: ((p: import("../types").ImportProgress) => void) | undefined,
+    phase: string,
+    current: number,
+    total: number,
+    startTs: number,
+    message?: string
+  ) {
+    if (!onProgress) return;
+    const now = performance.now?.() ?? Date.now();
+    const elapsedSec = (now - startTs) / 1000;
+    const ratio = total > 0 ? Math.min(1, Math.max(0, current / total)) : 0;
+    const speed = elapsedSec > 0 ? current / elapsedSec : 0; // units per sec
+    const remaining = Math.max(0, total - current);
+    const eta = speed > 0 ? remaining / speed : undefined;
+    onProgress({ phase, current, total, percent: Math.round(ratio * 100), etaSeconds: eta, message });
+  }
   /**
    * Export all data as a ZIP file containing JSON data and photos
    */
@@ -188,23 +207,26 @@ export class DataExportService {
   /**
    * Import data from a ZIP file or JSON file
    */
-  async importData(file: File): Promise<void> {
+  async importData(file: File, onProgress?: (p: import("../types").ImportProgress) => void): Promise<ImportResult> {
     const filename = file.name;
     const isZipFile = filename.endsWith(".zip");
 
     if (isZipFile) {
-      await this.importFromZip(file, filename);
+      return await this.importFromZip(file, filename, onProgress);
     } else {
-      await this.importFromJson(file, filename);
+      return await this.importFromJson(file, filename, onProgress);
     }
   }
 
   /**
    * Import data from a ZIP file
    */
-  private async importFromZip(file: File, filename: string): Promise<void> {
+  private async importFromZip(file: File, filename: string, onProgress?: (p: import("../types").ImportProgress) => void): Promise<ImportResult> {
     try {
+      const start = performance.now?.() ?? Date.now();
+      this.emitProgress(onProgress, 'reading', 0, 1, start, 'Reading file…');
       const arrayBuffer = await file.arrayBuffer();
+      this.emitProgress(onProgress, 'parsing', 0, 1, start, 'Parsing ZIP…');
       const zip = await JSZip.loadAsync(arrayBuffer);
 
       const dataFile = zip.file("data.json");
@@ -213,14 +235,23 @@ export class DataExportService {
       if (dataFile) {
         // Import from JSON format
         const content = await dataFile.async("string");
+        this.emitProgress(onProgress, 'parsing', 1, 2, start, 'Parsing JSON…');
         const data = JSON.parse(content);
+
+        // Pre-calc basic stats
+        const preTrips = Array.isArray(data.indexedDB?.trips) ? data.indexedDB.trips.length : 0;
+        const preWeather = Array.isArray(data.indexedDB?.weather_logs) ? data.indexedDB.weather_logs.length : 0;
+        const preFish = Array.isArray(data.indexedDB?.fish_caught) ? data.indexedDB.fish_caught.length : 0;
+        let photosCount = 0;
 
         // Handle photos
         const photoPromises: Promise<{ path: string; data: string }>[] = [];
         const photosFolder = zip.folder("photos");
 
         if (photosFolder) {
+          const files: string[] = [];
           photosFolder.forEach((_relativePath, file) => {
+            files.push(file.name);
             const promise = file.async("base64").then((base64) => {
               const fileExtension =
                 file.name.split(".").pop()?.toLowerCase() || "jpg";
@@ -232,24 +263,61 @@ export class DataExportService {
             });
             photoPromises.push(promise);
           });
+          // Progress for photos decoding
+          this.emitProgress(onProgress, 'photos', 0, files.length, start, 'Decoding photos…');
+          let done = 0;
+          const wrapped = photoPromises.map(p => p.then(r => { done++; this.emitProgress(onProgress, 'photos', done, files.length, start, 'Decoding photos…'); return r; }));
+          const photos = await Promise.all(wrapped);
+          const photoMap = new Map(photos.map((p) => [p.path, p.data]));
+          photosCount = files.length;
+
+          // Restore photo data to fish records
+          if (data.indexedDB?.fish_caught) {
+            data.indexedDB.fish_caught.forEach((fish: FishCaught) => {
+              if (fish.photo && photoMap.has(fish.photo)) {
+                fish.photo = photoMap.get(fish.photo);
+              }
+            });
+          }
+
+          this.emitProgress(onProgress, 'importing', 0, 1, start, 'Writing data…');
+          await this.processImportData(data, filename, onProgress, start);
+          this.emitProgress(onProgress, 'finalizing', 1, 1, start, 'Finalizing…');
+          const end = performance.now?.() ?? Date.now();
+          return {
+            success: true,
+            tripsImported: preTrips,
+            weatherLogsImported: preWeather,
+            fishCatchesImported: preFish,
+            photosImported: photosCount,
+            durationMs: Math.max(0, end - start),
+            errors: [],
+            warnings: []
+          };
         }
 
-        const photos = await Promise.all(photoPromises);
-        const photoMap = new Map(photos.map((p) => [p.path, p.data]));
-
-        // Restore photo data to fish records
-        if (data.indexedDB?.fish_caught) {
-          data.indexedDB.fish_caught.forEach((fish: FishCaught) => {
-            if (fish.photo && photoMap.has(fish.photo)) {
-              fish.photo = photoMap.get(fish.photo);
-            }
-          });
-        }
-
-        await this.processImportData(data, filename);
+        // No photos folder, proceed to import
+        this.emitProgress(onProgress, 'importing', 0, 1, start, 'Writing data…');
+        await this.processImportData(data, filename, onProgress, start);
+        this.emitProgress(onProgress, 'finalizing', 1, 1, start, 'Finalizing…');
+        const end = performance.now?.() ?? Date.now();
+        // Photos might be embedded; count those
+        const embeddedPhotos = Array.isArray(data.indexedDB?.fish_caught)
+          ? (data.indexedDB.fish_caught as FishCaught[]).filter(f => typeof (f as any).photo === 'string' && (f as any).photo.startsWith('data:')).length
+          : 0;
+        return {
+          success: true,
+          tripsImported: Array.isArray(data.indexedDB?.trips) ? data.indexedDB.trips.length : 0,
+          weatherLogsImported: Array.isArray(data.indexedDB?.weather_logs) ? data.indexedDB.weather_logs.length : 0,
+          fishCatchesImported: Array.isArray(data.indexedDB?.fish_caught) ? data.indexedDB.fish_caught.length : 0,
+          photosImported: embeddedPhotos,
+          durationMs: Math.max(0, end - start),
+          errors: [],
+          warnings: []
+        };
       } else if (tripsCsvFile) {
         // Import from CSV format
-        await this.importFromCsvZip(zip, filename);
+        return await this.importFromCsvZip(zip, filename, onProgress);
       } else {
         throw new Error("No valid data files found in ZIP archive");
       }
@@ -264,7 +332,8 @@ export class DataExportService {
   /**
    * Import data from CSV files in ZIP
    */
-  private async importFromCsvZip(zip: JSZip, filename: string): Promise<void> {
+  private async importFromCsvZip(zip: JSZip, filename: string, onProgress?: (p: import("../types").ImportProgress) => void): Promise<ImportResult> {
+    const start = performance.now?.() ?? Date.now();
     const data: {
       indexedDB: {
         trips: any[];
@@ -281,6 +350,7 @@ export class DataExportService {
     const csvFiles = ["trips.csv", "weather.csv", "fish.csv"];
     const storeNames = ["trips", "weather_logs", "fish_caught"];
 
+    this.emitProgress(onProgress, 'parsing', 0, csvFiles.length, start, 'Parsing CSV…');
     for (let i = 0; i < csvFiles.length; i++) {
       const csvFile = zip.file(csvFiles[i]);
       if (csvFile) {
@@ -297,14 +367,18 @@ export class DataExportService {
         data.indexedDB[storeNames[i] as keyof typeof data.indexedDB] =
           parsed.data as any[];
       }
+      this.emitProgress(onProgress, 'parsing', i + 1, csvFiles.length, start, 'Parsing CSV…');
     }
 
     // Handle photos for fish data
     const photosFolder = zip.folder("photos");
+    let photosCount = 0;
     if (photosFolder && data.indexedDB.fish_caught.length > 0) {
       const photoPromises: Promise<{ filename: string; data: string }>[] = [];
+      const files: string[] = [];
 
       photosFolder.forEach((relativePath, file) => {
+        files.push(relativePath);
         const promise = file.async("base64").then((base64) => {
           const fileExtension =
             file.name.split(".").pop()?.toLowerCase() || "jpg";
@@ -316,9 +390,13 @@ export class DataExportService {
         });
         photoPromises.push(promise);
       });
-
-      const photos = await Promise.all(photoPromises);
+      // Progress for photos decoding
+      this.emitProgress(onProgress, 'photos', 0, files.length, start, 'Decoding photos…');
+      let done = 0;
+      const wrapped = photoPromises.map(p => p.then(r => { done++; this.emitProgress(onProgress, 'photos', done, files.length, start, 'Decoding photos…'); return r; }));
+      const photos = await Promise.all(wrapped);
       const photoMap = new Map(photos.map((p) => [p.filename, p.data]));
+  photosCount = files.length;
 
       // Restore photos to fish records
       data.indexedDB.fish_caught.forEach((fish: any) => {
@@ -334,17 +412,49 @@ export class DataExportService {
       });
     }
 
-    await this.processImportData(data, filename);
+    this.emitProgress(onProgress, 'importing', 0, 1, start, 'Writing data…');
+    await this.processImportData(data, filename, onProgress, start);
+    this.emitProgress(onProgress, 'finalizing', 1, 1, start, 'Finalizing…');
+    const end = performance.now?.() ?? Date.now();
+    return {
+      success: true,
+      tripsImported: data.indexedDB.trips.length,
+      weatherLogsImported: data.indexedDB.weather_logs.length,
+      fishCatchesImported: data.indexedDB.fish_caught.length,
+      photosImported: photosCount,
+      durationMs: Math.max(0, end - start),
+      errors: [],
+      warnings: []
+    };
   }
 
   /**
    * Import data from a JSON file
    */
-  private async importFromJson(file: File, filename: string): Promise<void> {
+  private async importFromJson(file: File, filename: string, onProgress?: (p: import("../types").ImportProgress) => void): Promise<ImportResult> {
     try {
+      const start = performance.now?.() ?? Date.now();
+      this.emitProgress(onProgress, 'reading', 0, 1, start, 'Reading file…');
       const text = await file.text();
+      this.emitProgress(onProgress, 'parsing', 1, 1, start, 'Parsing JSON…');
       const data = JSON.parse(text);
-      await this.processImportData(data, filename);
+      this.emitProgress(onProgress, 'importing', 0, 1, start, 'Writing data…');
+      await this.processImportData(data, filename, onProgress, start);
+      this.emitProgress(onProgress, 'finalizing', 1, 1, start, 'Finalizing…');
+      const end = performance.now?.() ?? Date.now();
+      const photosEmbedded = Array.isArray(data.indexedDB?.fish_caught)
+        ? (data.indexedDB.fish_caught as FishCaught[]).filter(f => typeof (f as any).photo === 'string' && (f as any).photo.startsWith('data:')).length
+        : 0;
+      return {
+        success: true,
+        tripsImported: Array.isArray(data.indexedDB?.trips) ? data.indexedDB.trips.length : 0,
+        weatherLogsImported: Array.isArray(data.indexedDB?.weather_logs) ? data.indexedDB.weather_logs.length : 0,
+        fishCatchesImported: Array.isArray(data.indexedDB?.fish_caught) ? data.indexedDB.fish_caught.length : 0,
+        photosImported: photosEmbedded,
+        durationMs: Math.max(0, end - start),
+        errors: [],
+        warnings: []
+      };
     } catch (error) {
       console.error("Error importing from JSON:", error);
       throw new Error(
@@ -356,7 +466,7 @@ export class DataExportService {
   /**
    * Process and validate import data
    */
-  private async processImportData(data: any, filename: string): Promise<void> {
+  private async processImportData(data: any, filename: string, onProgress?: (p: import("../types").ImportProgress) => void, startTs?: number): Promise<void> {
     try {
       // Validate data structure
       if (!this.validateImportData(data)) {
@@ -375,10 +485,10 @@ export class DataExportService {
 
       if (useFirebase) {
         console.log("Importing data to Firebase (authenticated user)...");
-        await this.importToFirebase(cleanData);
+        await this.importToFirebase(cleanData, onProgress, startTs);
       } else {
         console.log("Importing data to local storage (guest mode)...");
-        await this.importToLocal(cleanData);
+        await this.importToLocal(cleanData, onProgress, startTs);
       }
 
       console.log(`Successfully imported data from "${filename}"`);
@@ -393,11 +503,11 @@ export class DataExportService {
   /**
    * Import data to Firebase
    */
-  private async importToFirebase(data: any): Promise<void> {
+  private async importToFirebase(data: any, onProgress?: (p: import("../types").ImportProgress) => void, startTs?: number): Promise<void> {
     // Defensive: if not authenticated, route to local import instead
     if (!firebaseDataService.isAuthenticated?.()) {
       console.warn("importToFirebase called without an authenticated user. Falling back to local import.");
-      await this.importToLocal(data);
+      await this.importToLocal(data, onProgress, startTs);
       return;
     }
     // Import tackle box data via Firebase hooks (this will handle localStorage too)
@@ -411,6 +521,12 @@ export class DataExportService {
     // Import database data to Firebase
     const dbData = data.indexedDB;
 
+    const totalUnits =
+      (Array.isArray(dbData.trips) ? dbData.trips.length : 0) +
+      (Array.isArray(dbData.weather_logs) ? dbData.weather_logs.length : 0) +
+      (Array.isArray(dbData.fish_caught) ? dbData.fish_caught.length : 0);
+    let doneUnits = 0;
+
     if (dbData.trips && Array.isArray(dbData.trips)) {
       for (const trip of dbData.trips) {
         // Data cleaning for 'hours'
@@ -423,19 +539,26 @@ export class DataExportService {
           trip.hours = undefined;
         }
 
-        await firebaseDataService.createTrip(trip);
+        // Use idempotent upsert to prevent duplicates on repeated imports
+        await ((firebaseDataService as any).upsertTripFromImport?.(trip) ?? firebaseDataService.createTrip(trip));
+        doneUnits++;
+        this.emitProgress(onProgress, 'importing', doneUnits, totalUnits || 1, startTs ?? (performance.now?.() ?? Date.now()), 'Writing trips…');
       }
     }
 
     if (dbData.weather_logs && Array.isArray(dbData.weather_logs)) {
       for (const weather of dbData.weather_logs) {
-        await firebaseDataService.createWeatherLog(weather);
+        await ((firebaseDataService as any).upsertWeatherLogFromImport?.(weather) ?? firebaseDataService.createWeatherLog(weather));
+        doneUnits++;
+        this.emitProgress(onProgress, 'importing', doneUnits, totalUnits || 1, startTs ?? (performance.now?.() ?? Date.now()), 'Writing weather…');
       }
     }
 
     if (dbData.fish_caught && Array.isArray(dbData.fish_caught)) {
       for (const fish of dbData.fish_caught) {
-        await firebaseDataService.createFishCaught(fish);
+        await ((firebaseDataService as any).upsertFishCaughtFromImport?.(fish) ?? firebaseDataService.createFishCaught(fish));
+        doneUnits++;
+        this.emitProgress(onProgress, 'importing', doneUnits, totalUnits || 1, startTs ?? (performance.now?.() ?? Date.now()), 'Writing fish…');
       }
     }
   }
@@ -443,7 +566,7 @@ export class DataExportService {
   /**
    * Import data to local storage (fallback)
    */
-  private async importToLocal(data: any): Promise<void> {
+  private async importToLocal(data: any, onProgress?: (p: import("../types").ImportProgress) => void, startTs?: number): Promise<void> {
     // Clear existing data
     await this.clearAllData();
 
@@ -463,6 +586,11 @@ export class DataExportService {
 
     // Import IndexedDB data
     const dbData = data.indexedDB;
+    const totalUnits =
+      (Array.isArray(dbData.trips) ? dbData.trips.length : 0) +
+      (Array.isArray(dbData.weather_logs) ? dbData.weather_logs.length : 0) +
+      (Array.isArray(dbData.fish_caught) ? dbData.fish_caught.length : 0);
+    let doneUnits = 0;
 
     if (dbData.trips && Array.isArray(dbData.trips)) {
       for (const trip of dbData.trips) {
@@ -482,6 +610,8 @@ export class DataExportService {
         } else {
           await databaseService.createTrip(trip);
         }
+        doneUnits++;
+        this.emitProgress(onProgress, 'importing', doneUnits, totalUnits || 1, startTs ?? (performance.now?.() ?? Date.now()), 'Writing trips…');
       }
     }
 
@@ -492,6 +622,8 @@ export class DataExportService {
         } else {
           await databaseService.createWeatherLog(weather);
         }
+        doneUnits++;
+        this.emitProgress(onProgress, 'importing', doneUnits, totalUnits || 1, startTs ?? (performance.now?.() ?? Date.now()), 'Writing weather…');
       }
     }
 
@@ -502,6 +634,8 @@ export class DataExportService {
         } else {
           await databaseService.createFishCaught(fish);
         }
+        doneUnits++;
+        this.emitProgress(onProgress, 'importing', doneUnits, totalUnits || 1, startTs ?? (performance.now?.() ?? Date.now()), 'Writing fish…');
       }
     }
   }
@@ -587,3 +721,15 @@ export class DataExportService {
 
 // Export a singleton instance
 export const dataExportService = new DataExportService();
+
+// Summary of a normal import operation (non-legacy zip importer)
+export interface ImportResult {
+  success: boolean;
+  tripsImported: number;
+  weatherLogsImported: number;
+  fishCatchesImported: number;
+  photosImported: number;
+  durationMs: number;
+  errors: string[];
+  warnings: string[];
+}
