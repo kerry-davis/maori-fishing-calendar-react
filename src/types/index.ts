@@ -237,7 +237,13 @@ export interface FishCaught {
   time: string;
   gear: string[];
   details: string;
+  // Legacy inline/base64 photo or URL (kept for backward compatibility)
   photo?: string;
+  // New Storage-backed photo reference fields
+  photoHash?: string;     // sha256 hex of bytes
+  photoPath?: string;     // storage path: users/{uid}/images/{hash}
+  photoMime?: string;     // e.g., image/jpeg
+  photoUrl?: string;      // optional cached download URL
 }
 
 export interface TackleItem {
@@ -389,6 +395,21 @@ export interface TripModalProps extends ModalProps {
   selectedDate: Date;
   onTripUpdated?: () => void;
   onCancelEdit?: () => void; // Called when canceling edit to return to trip log
+}
+
+// Import progress reporting
+export interface ImportProgress {
+  // High-level step name: reading, parsing, photos, importing, finalizing
+  phase: string;
+  // Units completed and total across the overall import (best-effort)
+  current: number;
+  total: number;
+  // Rounded overall percentage [0-100]
+  percent: number;
+  // Estimated seconds remaining if known
+  etaSeconds?: number;
+  // Optional human-friendly status
+  message?: string;
 }
 
 // Form validation types
