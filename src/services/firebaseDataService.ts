@@ -1,5 +1,5 @@
 import type { Trip, WeatherLog, FishCaught } from "../types";
-import { firestore, auth } from "../services/firebase";
+import { firestore, auth, storage } from "../services/firebase";
 import { databaseService } from "./databaseService";
 import {
   collection,
@@ -15,6 +15,7 @@ import {
   serverTimestamp,
   writeBatch
 } from "firebase/firestore";
+import { ref as storageRef, uploadBytes, getDownloadURL, getMetadata } from "firebase/storage";
 
 /**
  * Firebase Data Service - Cloud-first with offline fallback
@@ -42,6 +43,143 @@ export class FirebaseDataService {
     // Add emergency clear method to window for debugging
     (window as any).clearFirebaseSync = () => this.clearSyncQueue();
     (window as any).debugIdMappings = () => this.debugIdMappings();
+  }
+
+  // Simple stable stringify (sorted keys) for deterministic hashing
+  private stableStringify(obj: any): string {
+    const seen = new WeakSet();
+    const stringify = (value: any): any => {
+      if (value && typeof value === 'object') {
+        if (seen.has(value)) return '[Circular]';
+        seen.add(value);
+        if (Array.isArray(value)) return value.map(stringify);
+        const keys = Object.keys(value).sort();
+        const out: any = {};
+        for (const k of keys) out[k] = stringify(value[k]);
+        return out;
+      }
+      return value;
+    };
+    return JSON.stringify(stringify(obj));
+  }
+
+  // Compute SHA-256 hex for bytes (ArrayBuffer or Uint8Array). Fallback to FNV-1a if subtle unavailable.
+  private async sha256Hex(input: ArrayBuffer | Uint8Array): Promise<string> {
+    try {
+      if (crypto?.subtle?.digest) {
+  const data = input instanceof Uint8Array ? input : new Uint8Array(input);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data as unknown as BufferSource);
+        const bytes = new Uint8Array(hashBuffer);
+        return Array.from(bytes)
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join('');
+      }
+    } catch (_) {
+      // ignore and fallback
+    }
+    // Fallback: hash base64 string version with FNV1a (we'll build base64 outside if needed)
+    const u8 = input instanceof Uint8Array ? input : new Uint8Array(input as ArrayBufferLike);
+    const base64 = typeof Buffer !== 'undefined' ? Buffer.from(u8).toString('base64') : btoa(String.fromCharCode(...u8));
+    return this.hashStringFNV1a(base64);
+  }
+
+  // Parse data URL to bytes and mime; supports data:*;base64,....
+  private dataUrlToBytes(dataUrl: string): { bytes: Uint8Array; mime: string } | null {
+    const match = /^data:([^;]+);base64,(.*)$/i.exec(dataUrl);
+    if (!match) return null;
+    const mime = match[1];
+    const b64 = match[2];
+    try {
+      const binary = typeof atob !== 'undefined' ? atob(b64) : Buffer.from(b64, 'base64').toString('binary');
+      const len = binary.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+      return { bytes, mime };
+    } catch (e) {
+      console.warn('Failed to decode data URL image:', e);
+      return null;
+    }
+  }
+
+  // Ensure photo is present in Storage; returns reference fields
+  private async ensurePhotoInStorage(userId: string, bytes: Uint8Array, mime: string): Promise<{ photoHash: string; photoPath: string; photoMime: string; photoUrl: string }>
+  {
+    const hash = await this.sha256Hex(bytes);
+    const path = `users/${userId}/images/${hash}`;
+    const ref = storageRef(storage, path);
+    try {
+      // Try to get metadata to determine existence
+      await getMetadata(ref);
+    } catch (e) {
+      // Not found or other error: attempt to upload
+      try {
+        await uploadBytes(ref, bytes, { contentType: mime });
+      } catch (uploadErr) {
+        // If another client raced and already uploaded, proceed quietly
+        // console.warn('Upload failed (may already exist):', uploadErr);
+      }
+    }
+    let url = '';
+    try {
+      url = await getDownloadURL(ref);
+    } catch (e) {
+      // ignore; URL can be fetched later on demand
+    }
+    return { photoHash: hash, photoPath: path, photoMime: mime, photoUrl: url };
+  }
+
+  // Fast FNV-1a 32-bit hash for strings -> hex
+  private hashStringFNV1a(str: string): string {
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < str.length; i++) {
+      hash ^= str.charCodeAt(i);
+      hash = (hash >>> 0) * 0x01000193;
+    }
+    // Convert to 8-char hex
+    return ('0000000' + (hash >>> 0).toString(16)).slice(-8);
+  }
+
+  private computeFishContentHash(fish: FishCaught): string {
+    // Only include meaningful fields
+    const payload = {
+      id: fish.id,
+      tripId: fish.tripId,
+      species: fish.species,
+      length: fish.length,
+      weight: fish.weight,
+      time: fish.time,
+      gear: Array.isArray(fish.gear) ? [...fish.gear].sort() : fish.gear,
+      details: fish.details,
+      photoHash: fish.photoHash || null,
+    };
+    return this.hashStringFNV1a(this.stableStringify(payload));
+  }
+
+  private computeTripContentHash(trip: Trip): string {
+    const payload = {
+      id: trip.id,
+      date: trip.date,
+      water: trip.water,
+      location: trip.location,
+      hours: trip.hours,
+      companions: trip.companions,
+      notes: trip.notes,
+    };
+    return this.hashStringFNV1a(this.stableStringify(payload));
+  }
+
+  private computeWeatherContentHash(weather: WeatherLog): string {
+    const payload = {
+      id: weather.id,
+      tripId: weather.tripId,
+      timeOfDay: weather.timeOfDay,
+      sky: weather.sky,
+      windCondition: weather.windCondition,
+      windDirection: weather.windDirection,
+      waterTemp: weather.waterTemp,
+      airTemp: weather.airTemp,
+    };
+    return this.hashStringFNV1a(this.stableStringify(payload));
   }
 
   /**
@@ -143,6 +281,100 @@ export class FirebaseDataService {
     } else {
       return this.queueOperation('create', 'trips', tripWithUser);
     }
+  }
+
+  /**
+   * Upsert a trip for import flows (idempotent by local ID for this user)
+   * - If a trip with the same local id already exists in Firestore, update it
+   * - Otherwise, create a new document
+   */
+  async upsertTripFromImport(trip: Trip): Promise<number> {
+    if (!this.isReady()) throw new Error('Service not initialized');
+
+    // When in guest mode, just upsert locally
+    if (this.isGuest) {
+      try {
+        await databaseService.updateTrip(trip);
+      } catch {
+        await databaseService.createTrip({
+          date: trip.date,
+          water: trip.water,
+          location: trip.location,
+          hours: trip.hours,
+          companions: trip.companions,
+          notes: trip.notes,
+        });
+      }
+      return trip.id;
+    }
+
+    const localId = trip.id;
+    const cleanTrip: any = {};
+    Object.entries(trip).forEach(([k, v]) => { if (v !== undefined) (cleanTrip as any)[k] = v; });
+  const tripWithUser: any = { ...cleanTrip, userId: this.userId };
+  const contentHash = this.computeTripContentHash(trip);
+  tripWithUser.contentHash = contentHash;
+
+    if (this.isOnline) {
+      // Try mapping first
+      const mappedId = await this.getFirebaseId('trips', localId.toString());
+      if (mappedId) {
+        try {
+          const docRef = doc(firestore, 'trips', mappedId);
+          const snap = await getDoc(docRef);
+          if (snap.exists()) {
+            const existing = snap.data();
+            if ((existing as any).contentHash === contentHash) {
+              return localId;
+            }
+            await updateDoc(docRef, { ...tripWithUser, updatedAt: serverTimestamp() });
+            return localId;
+          } else {
+            // Stale mapping, remove and continue to query
+            localStorage.removeItem(`idMapping_${this.userId}_trips_${localId}`);
+          }
+        } catch {
+          // fall through to query path
+        }
+      }
+
+      // Query by unique tuple (userId, id)
+      try {
+        const q = query(
+          collection(firestore, 'trips'),
+          where('userId', '==', this.userId),
+          where('id', '==', localId)
+        );
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          const existing = snapshot.docs[0];
+          const existingData = existing.data();
+          if ((existingData as any).contentHash === contentHash) {
+            await this.storeLocalMapping('trips', localId.toString(), existing.id);
+            return localId;
+          }
+          await updateDoc(existing.ref, { ...tripWithUser, updatedAt: serverTimestamp() });
+          await this.storeLocalMapping('trips', localId.toString(), existing.id);
+          return localId;
+        }
+      } catch (e) {
+        console.warn('Trip upsert query failed, falling back to create:', e);
+      }
+
+      // Create new
+      const docRef = await addDoc(collection(firestore, 'trips'), {
+        ...tripWithUser,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      await this.storeLocalMapping('trips', localId.toString(), docRef.id);
+      return localId;
+    }
+
+    // Offline: queue as upsert (use update semantics with mapping later)
+    await databaseService.updateTrip(trip);
+    this.queueOperation('update', 'trips', tripWithUser);
+    return localId;
   }
 
   /**
@@ -526,6 +758,91 @@ await batch.commit();
     }
   }
 
+  /**
+   * Upsert a weather log for import flows (idempotent by local string ID)
+   */
+  async upsertWeatherLogFromImport(weather: WeatherLog): Promise<string> {
+    if (!this.isReady()) throw new Error('Service not initialized');
+
+    if (this.isGuest) {
+      try {
+        await databaseService.updateWeatherLog(weather);
+      } catch {
+        await databaseService.createWeatherLog({
+          tripId: weather.tripId,
+          timeOfDay: weather.timeOfDay,
+          sky: weather.sky,
+          windCondition: weather.windCondition,
+          windDirection: weather.windDirection,
+          waterTemp: weather.waterTemp,
+          airTemp: weather.airTemp,
+        });
+      }
+      return weather.id;
+    }
+
+    const localId = weather.id;
+    const cleanWeather: any = {};
+    Object.entries(weather).forEach(([k, v]) => { if (v !== undefined) (cleanWeather as any)[k] = v; });
+  const weatherWithUser: any = { ...cleanWeather, userId: this.userId };
+  const contentHash = this.computeWeatherContentHash(weather);
+  weatherWithUser.contentHash = contentHash;
+
+    if (this.isOnline) {
+      const mappedId = await this.getFirebaseId('weatherLogs', localId);
+      if (mappedId) {
+        try {
+          const docRef = doc(firestore, 'weatherLogs', mappedId);
+          const snap = await getDoc(docRef);
+          if (snap.exists()) {
+            const existing = snap.data();
+            if ((existing as any).contentHash === contentHash) {
+              return localId;
+            }
+            await updateDoc(docRef, { ...weatherWithUser, updatedAt: serverTimestamp() });
+            return localId;
+          } else {
+            localStorage.removeItem(`idMapping_${this.userId}_weatherLogs_${localId}`);
+          }
+        } catch {/* continue */}
+      }
+
+      try {
+        const q = query(
+          collection(firestore, 'weatherLogs'),
+          where('userId', '==', this.userId),
+          where('id', '==', localId)
+        );
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          const existing = snapshot.docs[0];
+          const existingData = existing.data();
+          if ((existingData as any).contentHash === contentHash) {
+            await this.storeLocalMapping('weatherLogs', localId, existing.id);
+            return localId;
+          }
+          await updateDoc(existing.ref, { ...weatherWithUser, updatedAt: serverTimestamp() });
+          await this.storeLocalMapping('weatherLogs', localId, existing.id);
+          return localId;
+        }
+      } catch (e) {
+        console.warn('Weather upsert query failed, falling back to create:', e);
+      }
+
+      const docRef = await addDoc(collection(firestore, 'weatherLogs'), {
+        ...weatherWithUser,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      await this.storeLocalMapping('weatherLogs', localId, docRef.id);
+      return localId;
+    }
+
+    await databaseService.updateWeatherLog(weather);
+    this.queueOperation('update', 'weatherLogs', weatherWithUser);
+    return localId;
+  }
+
   async getWeatherLogById(id: string): Promise<WeatherLog | null> {
     if (!this.isReady()) throw new Error('Service not initialized');
     if (this.isGuest) {
@@ -742,7 +1059,24 @@ await batch.commit();
     };
 
     const localId = `${fishData.tripId}-${Date.now()}`;
-    const fishWithIds = { ...sanitizedFishData, id: localId, userId: this.userId };
+    const fishWithIds: any = { ...sanitizedFishData, id: localId, userId: this.userId };
+
+    // If an inline photo is provided and we're online, move it to Storage
+    if (this.isOnline && sanitizedFishData.photo && typeof sanitizedFishData.photo === 'string') {
+      const data = this.dataUrlToBytes(sanitizedFishData.photo);
+      if (data && this.userId) {
+        try {
+          const refInfo = await this.ensurePhotoInStorage(this.userId, data.bytes, data.mime);
+          fishWithIds.photoHash = refInfo.photoHash;
+          fishWithIds.photoPath = refInfo.photoPath;
+          fishWithIds.photoMime = refInfo.photoMime;
+          if (refInfo.photoUrl) fishWithIds.photoUrl = refInfo.photoUrl;
+          delete fishWithIds.photo; // do not store inline
+        } catch (e) {
+          console.warn('Failed to move photo to Storage, keeping inline for now:', e);
+        }
+      }
+    }
 
     console.log('[Fish Create] Creating fish catch with data:', fishWithIds);
 
@@ -766,6 +1100,111 @@ await batch.commit();
       this.queueOperation('create', 'fishCaught', fishWithIds);
       return localId;
     }
+  }
+
+  /**
+   * Upsert a fish record for import flows (idempotent by local string ID)
+   */
+  async upsertFishCaughtFromImport(fish: FishCaught): Promise<string> {
+    if (!this.isReady()) throw new Error('Service not initialized');
+
+    if (this.isGuest) {
+      try {
+        await databaseService.updateFishCaught(fish);
+      } catch {
+        await databaseService.createFishCaught({
+          tripId: fish.tripId,
+          species: fish.species,
+          length: fish.length,
+          weight: fish.weight,
+          time: fish.time,
+          gear: fish.gear,
+          details: fish.details,
+          photo: fish.photo,
+        });
+      }
+      return fish.id;
+    }
+
+  const localId = fish.id;
+  const cleanFish: any = {};
+    Object.entries(fish).forEach(([k, v]) => { if (v !== undefined) (cleanFish as any)[k] = v; });
+  const fishWithUser: any = { ...cleanFish, userId: this.userId };
+
+  // If we have an inline photo and we're online, move it to Storage
+  if (this.isOnline && typeof fishWithUser.photo === 'string' && this.userId) {
+    const data = this.dataUrlToBytes(fishWithUser.photo);
+    if (data) {
+      try {
+        const refInfo = await this.ensurePhotoInStorage(this.userId, data.bytes, data.mime);
+        fishWithUser.photoHash = refInfo.photoHash;
+        fishWithUser.photoPath = refInfo.photoPath;
+        fishWithUser.photoMime = refInfo.photoMime;
+        if (refInfo.photoUrl) fishWithUser.photoUrl = refInfo.photoUrl;
+        delete fishWithUser.photo;
+      } catch (e) {
+        console.warn('Failed to move import photo to Storage, keeping inline for now:', e);
+      }
+    }
+  }
+
+  const contentHash = this.computeFishContentHash(fishWithUser as FishCaught);
+  fishWithUser.contentHash = contentHash;
+
+    if (this.isOnline) {
+      const mappedId = await this.getFirebaseId('fishCaught', localId);
+      if (mappedId) {
+        try {
+          const docRef = doc(firestore, 'fishCaught', mappedId);
+          const snap = await getDoc(docRef);
+          if (snap.exists()) {
+            const existing = snap.data();
+            if ((existing as any).contentHash === contentHash) {
+              // No changes; skip update
+              return localId;
+            }
+            await updateDoc(docRef, { ...fishWithUser, updatedAt: serverTimestamp() });
+            return localId;
+          } else {
+            localStorage.removeItem(`idMapping_${this.userId}_fishCaught_${localId}`);
+          }
+        } catch {/* continue */}
+      }
+
+      try {
+        const q = query(
+          collection(firestore, 'fishCaught'),
+          where('userId', '==', this.userId),
+          where('id', '==', localId)
+        );
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          const existing = snapshot.docs[0];
+          const existingData = existing.data();
+          if ((existingData as any).contentHash === contentHash) {
+            await this.storeLocalMapping('fishCaught', localId, existing.id);
+            return localId;
+          }
+          await updateDoc(existing.ref, { ...fishWithUser, updatedAt: serverTimestamp() });
+          await this.storeLocalMapping('fishCaught', localId, existing.id);
+          return localId;
+        }
+      } catch (e) {
+        console.warn('Fish upsert query failed, falling back to create:', e);
+      }
+
+      const docRef = await addDoc(collection(firestore, 'fishCaught'), {
+        ...fishWithUser,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      await this.storeLocalMapping('fishCaught', localId, docRef.id);
+      return localId;
+    }
+
+    await databaseService.updateFishCaught(fish);
+    this.queueOperation('update', 'fishCaught', fishWithUser);
+    return localId;
   }
 
   async getFishCaughtById(id: string): Promise<FishCaught | null> {
@@ -881,8 +1320,23 @@ await batch.commit();
       return databaseService.updateFishCaught(fishCaught);
     }
 
-
-    const fishWithUser = { ...fishCaught, userId: this.userId };
+    const fishWithUser: any = { ...fishCaught, userId: this.userId };
+    // If updating with an inline photo and online, move to Storage
+    if (this.isOnline && typeof fishWithUser.photo === 'string' && this.userId) {
+      const data = this.dataUrlToBytes(fishWithUser.photo);
+      if (data) {
+        try {
+          const refInfo = await this.ensurePhotoInStorage(this.userId, data.bytes, data.mime);
+          fishWithUser.photoHash = refInfo.photoHash;
+          fishWithUser.photoPath = refInfo.photoPath;
+          fishWithUser.photoMime = refInfo.photoMime;
+          if (refInfo.photoUrl) fishWithUser.photoUrl = refInfo.photoUrl;
+          delete fishWithUser.photo;
+        } catch (e) {
+          console.warn('Failed to move updated photo to Storage, keeping inline for now:', e);
+        }
+      }
+    }
     console.log('[Fish Update] Starting update for fish ID:', fishCaught.id);
 
     if (this.isOnline) {
