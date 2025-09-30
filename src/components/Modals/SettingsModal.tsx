@@ -1,7 +1,8 @@
-import React, { useState, useRef } from 'react';
-import { Button } from '../UI';
+import React, { useState, useRef, useCallback } from 'react';
+import { Button, ProgressBar } from '../UI';
 import { Modal, ModalHeader, ModalBody } from './Modal';
-import { dataExportService } from '../../services/dataExportService';
+import { dataExportService, type ImportResult } from '../../services/dataExportService';
+import { browserZipImportService, type ZipImportResult } from '../../services/browserZipImportService';
 import ConfirmationDialog from '../UI/ConfirmationDialog';
 import { useAuth } from '../../contexts/AuthContext';
 import { firebaseDataService } from '../../services/firebaseDataService';
@@ -10,10 +11,9 @@ import { databaseService } from '../../services/databaseService';
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onLegacyMigration?: () => void; // Add callback for legacy migration
 }
 
-export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onLegacyMigration }) => {
+export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   const { user } = useAuth();
   const [isExportingJSON, setIsExportingJSON] = useState(false);
   const [isExportingCSV, setIsExportingCSV] = useState(false);
@@ -26,11 +26,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   const [isDeletingAll, setIsDeletingAll] = useState(false);
   const [showImportConfirm, setShowImportConfirm] = useState(false);
   const [pendingImportFile, setPendingImportFile] = useState<File | null>(null);
+  const [importProgress, setImportProgress] = useState<import('../../types').ImportProgress | null>(null);
+  const [importStats, setImportStats] = useState<ImportResult | ZipImportResult | null>(null);
+
+  // Trigger file chooser for import
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
 
   const handleExportJSON = async () => {
     setIsExportingJSON(true);
     setExportError(null);
-    
     try {
       const blob = await dataExportService.exportDataAsZip();
       const timestamp = new Date().toISOString().split('T')[0];
@@ -43,11 +49,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
       setIsExportingJSON(false);
     }
   };
+  // Close Settings: if import ran, refresh after modal closes
+  const handleCloseSettings = useCallback(() => {
+    const hadImport = !!importStats;
+    onClose();
+    if (hadImport) {
+      setTimeout(() => window.location.reload(), 0);
+    }
+  }, [onClose, importStats]);
 
   const handleExportCSV = async () => {
     setIsExportingCSV(true);
     setExportError(null);
-    
     try {
       const blob = await dataExportService.exportDataAsCSV();
       const timestamp = new Date().toISOString().split('T')[0];
@@ -59,10 +72,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
     } finally {
       setIsExportingCSV(false);
     }
-  };
-
-  const handleImportClick = () => {
-    fileInputRef.current?.click();
   };
 
   const handleFileImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -77,24 +86,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
     if (!pendingImportFile) return;
     const file = pendingImportFile;
     setIsImporting(true);
+    setImportProgress({ phase: 'starting', current: 0, total: 1, percent: 0, message: 'Preparing…' });
     setImportError(null);
     setImportSuccess(null);
+    setImportStats(null);
 
     try {
-      await dataExportService.importData(file);
-      setImportSuccess(`Successfully imported data from "${file.name}". The page will reload to reflect changes.`);
+      const isZip = file.name.toLowerCase().endsWith('.zip');
+      let stats: ImportResult | ZipImportResult;
+      if (isZip) {
+        // Use browser-based zip importer for both legacy and normal zips
+        const isAuthenticated = !!user;
+        stats = await browserZipImportService.processZipFile(file, isAuthenticated, { strategy: 'wipe' }, (p) => setImportProgress(p));
+      } else {
+        // JSON imports handled by standard importer
+        stats = await dataExportService.importData(file, (p) => setImportProgress(p));
+      }
+      setImportStats(stats);
+      const seconds = Math.max(0, Math.round((stats.durationMs || 0) / 1000));
+      setImportSuccess(`Successfully imported data from "${file.name}" in ${seconds}s.`);
       setShowImportConfirm(false);
       setPendingImportFile(null);
-
-      // Reload page after a short delay to show success message
-      setTimeout(() => {
-        window.location.reload();
-      }, 2000);
     } catch (error) {
       console.error('Import error:', error);
       setImportError(error instanceof Error ? error.message : 'Failed to import data');
     } finally {
       setIsImporting(false);
+      setImportProgress(null);
       // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
@@ -144,10 +162,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose}>
-      <ModalHeader title="Settings" onClose={onClose} />
+    <Modal isOpen={isOpen} onClose={handleCloseSettings}>
+      <ModalHeader title="Settings" onClose={handleCloseSettings} />
       <ModalBody>
         <div className="space-y-6">
+
         {/* Data Export Section */}
         <div className="pb-6" style={{ borderBottom: '1px solid var(--border-color)' }}>
           <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--primary-text)' }}>
@@ -178,41 +197,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
           </div>
         </div>
 
-        {/* Legacy Data Migration Section */}
-        <div className="pb-6" style={{ borderBottom: '1px solid var(--border-color)' }}>
-          <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--primary-text)' }}>
-            Legacy Data Migration
-          </h3>
-          <p className="text-sm mb-4" style={{ color: 'var(--secondary-text)' }}>
-            Import fishing data from your previous Māori Fishing Calendar app (legacy version).
-          </p>
-
-          <div className="flex flex-col gap-3">
-            <Button
-              onClick={() => {
-                console.log('Import Legacy Data button clicked');
-                console.log('Calling onLegacyMigration callback');
-                onLegacyMigration?.(); // Open migration modal - parent will handle modal transitions
-              }}
-              variant="secondary"
-            >
-              <i className="fas fa-file-import mr-2"></i>
-              Import Legacy Data
-            </Button>
-
-            <p className="text-xs" style={{ color: 'var(--secondary-text)' }}>
-              Supports zip files exported from the legacy app. Perfect for mobile devices!
-            </p>
-          </div>
-        </div>
-
-        {/* Data Import Section */}
-        <div className="pb-6" style={{ borderBottom: '1px solid var(--border-color)' }}>
+        {/* Data Import Section - Single button auto-detects legacy or normal */}
+        <div className="pb-6">
           <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--primary-text)' }}>
             Import Data
           </h3>
           <p className="text-sm mb-4" style={{ color: 'var(--secondary-text)' }}>
-            Import data from a previously exported ZIP file or JSON file. This will replace all existing data.
+            Import data from a ZIP or JSON file. We’ll detect legacy vs normal format automatically. This will replace all existing data.
           </p>
 
           <div className="flex flex-col gap-3">
@@ -239,8 +230,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
           </div>
         </div>
 
-        {/* Error/Success Messages */}
-        {(exportError || importError || importSuccess) && (
+        {/* Legacy section removed: single import handles both */}
+
+        {/* Error/Success Messages + Import stats */}
+        {(exportError || importError || importSuccess || importStats) && (
           <div className="space-y-3">
             {exportError && (
               <div className="p-3 rounded-lg" style={{ backgroundColor: 'var(--error-background)', border: '1px solid var(--error-border)' }}>
@@ -311,28 +304,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
                     <p className="text-sm mt-1" style={{ color: 'var(--success-text)' }}>
                       {importSuccess}
                     </p>
+                    {importStats && (
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                        <div className="flex justify-between"><span>Trips</span><span className="font-medium">{importStats.tripsImported}</span></div>
+                        <div className="flex justify-between"><span>Weather</span><span className="font-medium">{importStats.weatherLogsImported}</span></div>
+                        <div className="flex justify-between"><span>Fish</span><span className="font-medium">{importStats.fishCatchesImported}</span></div>
+                        <div className="flex justify-between"><span>Photos</span><span className="font-medium">{importStats.photosImported}</span></div>
+                        <div className="col-span-2 flex justify-between pt-2" style={{ borderTop: '1px solid var(--border-color)' }}>
+                          <span>Duration</span><span className="font-medium">{Math.max(0, Math.round((importStats.durationMs || 0)/1000))}s</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <button
-                    onClick={clearErrors}
-                    className="transition-colors"
-                    style={{ color: 'var(--success-text)' }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.color = 'var(--success-text)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.color = 'var(--success-text)';
-                    }}
-                  >
-                    <i className="fas fa-times"></i>
-                  </button>
                 </div>
               </div>
             )}
           </div>
         )}
 
-        {/* Danger Zone */}
-        <div className="mt-6 pt-6" style={{ borderTop: '1px solid var(--border-color)' }}>
+  {/* Danger Zone */}
+  <div className="mt-6 pt-6">
           <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--primary-text)' }}>Danger Zone</h3>
           <p className="text-sm mb-3" style={{ color: 'var(--secondary-text)' }}>
             Permanently delete all your {user ? 'cloud and local' : 'local'} data. This cannot be undone.
@@ -370,7 +361,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
         onCancel={handleCancelImport}
         variant="danger"
         overlayStyle="blur"
-      />
+        confirmDisabled={isImporting}
+        cancelDisabled={isImporting}
+      >
+        {isImporting && (
+          <div className="mt-3">
+            <ProgressBar progress={importProgress} />
+          </div>
+        )}
+      </ConfirmationDialog>
     </Modal>
   );
 };

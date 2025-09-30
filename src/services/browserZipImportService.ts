@@ -7,9 +7,10 @@
  * Uses JSZip for proper zip file parsing and handles large files with streaming
  */
 
-import type { Trip, WeatherLog, FishCaught } from "../types";
+import type { Trip, WeatherLog, FishCaught, ImportProgress } from "../types";
 import { firebaseDataService } from "./firebaseDataService";
 import { databaseService } from "./databaseService";
+import { photoCacheService } from "./photoCacheService";
 
 // Dynamically import JSZip to avoid bundling it if not needed
 let JSZip: any = null;
@@ -20,6 +21,7 @@ export interface ZipImportResult {
   weatherLogsImported: number;
   fishCatchesImported: number;
   photosImported: number;
+  durationMs: number;
   duplicatesSkipped: {
     trips: number;
     weatherLogs: number;
@@ -100,13 +102,19 @@ export class BrowserZipImportService {
    * @param file - The zip file to process
    * @param isAuthenticated - Whether the user is authenticated (has Firebase access)
    */
-  async processZipFile(file: File, isAuthenticated: boolean = false, options?: { strategy?: ImportStrategy }): Promise<ZipImportResult> {
+  async processZipFile(
+    file: File,
+    isAuthenticated: boolean = false,
+    options?: { strategy?: ImportStrategy },
+    onProgress?: (p: ImportProgress) => void
+  ): Promise<ZipImportResult> {
     const result: ZipImportResult = {
       success: false,
       tripsImported: 0,
       weatherLogsImported: 0,
       fishCatchesImported: 0,
       photosImported: 0,
+      durationMs: 0,
       duplicatesSkipped: {
         trips: 0,
         weatherLogs: 0,
@@ -117,16 +125,20 @@ export class BrowserZipImportService {
     };
 
     try {
-      console.log('Starting zip file processing for:', file.name);
+    console.log('Starting zip file processing for:', file.name);
+    onProgress?.({ phase: 'reading', current: 0, total: 1, percent: 0, message: 'Reading file…' });
 
-      // Read file as array buffer
+  performance.mark('zip-start');
+  // Read file as array buffer
       const arrayBuffer = await this.readFileAsArrayBuffer(file);
+    onProgress?.({ phase: 'parsing', current: 0, total: 1, percent: 0, message: 'Parsing ZIP…' });
 
-      // Process the zip content
+  // Process the zip content
       const zipContent = await this.parseZipContent(arrayBuffer);
 
-      // Extract legacy data
-      let extractResult = await this.extractLegacyData(zipContent);
+  // Extract legacy data
+    let extractResult = await this.extractLegacyData(zipContent, onProgress);
+  performance.mark('zip-extracted');
 
       if (!extractResult.data) {
         console.log('No legacy data found, trying alternative parsing methods...');
@@ -171,7 +183,10 @@ export class BrowserZipImportService {
 
   // Import the data (clear existing data first)
   const strategy: ImportStrategy = options?.strategy ?? 'wipe';
+  performance.mark('import-start');
+  onProgress?.({ phase: 'importing', current: 0, total: 1, percent: 0, message: 'Writing data…' });
   const importResult = await this.importLegacyData(extractResult.data, isAuthenticated, strategy);
+  performance.mark('import-end');
 
       result.success = importResult.success;
       result.tripsImported = importResult.tripsImported;
@@ -181,7 +196,12 @@ export class BrowserZipImportService {
       result.errors.push(...importResult.errors);
       result.warnings.push(...importResult.warnings);
 
-      console.log('Zip import completed:', result);
+  const zipTime = performance.measure('zip-total', 'zip-start', 'zip-extracted').duration;
+  const importTime = performance.measure('import-total', 'import-start', 'import-end').duration;
+  const totalMs = Math.round(zipTime + importTime);
+  result.durationMs = totalMs;
+  onProgress?.({ phase: 'finalizing', current: 1, total: 1, percent: 100, etaSeconds: 0, message: `Done in ${totalMs}ms` });
+  console.log('Zip import completed:', { result, timings: { zipMs: Math.round(zipTime), importMs: Math.round(importTime) } });
       return result;
 
     } catch (error) {
@@ -297,7 +317,7 @@ export class BrowserZipImportService {
   /**
    * Extract legacy data from zip content
    */
-  private async extractLegacyData(zipContent: Map<string, Uint8Array>): Promise<{ data: LegacyDataStructure | null, warnings: string[], compressionStats?: any }> {
+  private async extractLegacyData(zipContent: Map<string, Uint8Array>, onProgress?: (p: ImportProgress) => void): Promise<{ data: LegacyDataStructure | null, warnings: string[], compressionStats?: any }> {
     let legacyData: LegacyDataStructure = {
       trips: [],
       weatherLogs: [],
@@ -378,25 +398,32 @@ export class BrowserZipImportService {
         console.log('No trips.csv found in zip');
       }
 
-      // Process photos with memory-efficient approach and compression
-      console.log('Looking for photo files...');
-      const totalPhotos = Array.from(zipContent.keys()).filter(fileName =>
-        (fileName.startsWith('photos/') || fileName.startsWith('images/')) && this.isImageFile(fileName)
-      ).length;
-
-      console.log(`Found ${totalPhotos} photo files to process`);
+      // Process photos that are actually referenced by fish catches to minimize work/memory
+      console.log('Looking for referenced photo files...');
+      const referencedPhotoKeys = new Set<string>();
+      for (const fc of legacyData.fishCatches) {
+        if (fc && typeof (fc as any).photo === 'string') {
+          const key = (fc as any).photo.startsWith('photos/') || (fc as any).photo.startsWith('images/')
+            ? (fc as any).photo
+            : `photos/${(fc as any).photo}`;
+          if (zipContent.has(key)) referencedPhotoKeys.add(key);
+        }
+      }
+      const totalPhotos = referencedPhotoKeys.size;
+      console.log(`Photos referenced by fish: ${totalPhotos}`);
 
       // Check total size to warn about memory usage
       const totalImageSize = Array.from(zipContent.entries())
-        .filter(([fileName]) => this.isImageFile(fileName))
-        .reduce((total, [, content]) => total + content.length, 0);
+        .filter(([fileName]) => referencedPhotoKeys.has(fileName))
+        .reduce((total, [, content]) => total + (content?.length || 0), 0);
 
       console.log(`Total image size: ${(totalImageSize / 1024 / 1024).toFixed(2)} MB`);
 
       const photoWarnings: string[] = [];
 
       // Determine compression strategy based on total size
-      const shouldCompress = totalImageSize > 10 * 1024 * 1024; // Compress if > 10MB (aggressive for legacy imports)
+  // Compress only when extremely large to avoid CPU spikes on typical imports
+  const shouldCompress = totalImageSize > 100 * 1024 * 1024; // >100MB
 
       if (totalImageSize > 100 * 1024 * 1024) { // 100MB limit
         console.warn('⚠️ Large image files detected. Will compress images to reduce size.');
@@ -418,12 +445,27 @@ export class BrowserZipImportService {
         format: 'jpeg' as const
       };
 
-      console.log('Starting photo processing with compression settings:', compressionOptions);
+    console.log('Starting photo processing with compression settings:', compressionOptions);
 
-      const photoResult = await this.processImagesWithCompression(zipContent, compressionOptions);
+    const photoResult = await this.processImagesWithCompression(zipContent, compressionOptions, onProgress, referencedPhotoKeys);
 
-      // Add compressed photos to legacy data
-      Object.assign(legacyData.photos, photoResult.photos);
+      // Attach photos directly to fish catches to avoid keeping a large photos map in memory
+      if (totalPhotos > 0) {
+        const photoMap = photoResult.photos; // fileName -> dataUri
+        for (const fc of legacyData.fishCatches) {
+          if (fc && typeof (fc as any).photo === 'string') {
+            const key = (fc as any).photo.startsWith('photos/') || (fc as any).photo.startsWith('images/')
+              ? (fc as any).photo
+              : `photos/${(fc as any).photo}`;
+            const dataUri = photoMap[key];
+            if (dataUri) {
+              (fc as any).photo = dataUri;
+            }
+          }
+        }
+        // Clear photos map to free memory
+        legacyData.photos = {};
+      }
 
       // Add compression statistics to warnings
       if (photoResult.compressionStats.imagesProcessed > 0) {
@@ -434,7 +476,7 @@ export class BrowserZipImportService {
         photoWarnings.push(`Photos compressed: ${originalMB}MB → ${compressedMB}MB (${compressionPercent}% size reduction)`);
       }
 
-      console.log('Total photos processed:', Object.keys(legacyData.photos).length);
+  console.log('Total referenced photos processed:', totalPhotos);
 
       // Validate we have some data
       const hasData = legacyData.trips.length > 0 ||
@@ -447,7 +489,7 @@ export class BrowserZipImportService {
         trips: legacyData.trips.length,
         weatherLogs: legacyData.weatherLogs.length,
         fishCatches: legacyData.fishCatches.length,
-        photos: Object.keys(legacyData.photos).length
+        photos: totalPhotos
       });
 
       return hasData ? { data: legacyData, warnings: photoWarnings, compressionStats: photoResult.compressionStats } : { data: null, warnings: photoWarnings, compressionStats: photoResult.compressionStats };
@@ -516,6 +558,7 @@ export class BrowserZipImportService {
       weatherLogsImported: 0,
       fishCatchesImported: 0,
       photosImported: 0,
+      durationMs: 0,
       duplicatesSkipped: {
         trips: 0,
         weatherLogs: 0,
@@ -555,8 +598,12 @@ export class BrowserZipImportService {
             } else if (typeof (trip as any).hours === 'number' && (trip as any).hours < 0) {
               (trip as any).hours = Math.abs((trip as any).hours);
             }
-
-            await firebaseDataService.createTrip(trip);
+            // Idempotent upsert to prevent duplicates on repeated imports
+            if (strategy === 'merge') {
+              await firebaseDataService.upsertTripFromImport(trip as any);
+            } else {
+              await firebaseDataService.createTrip(trip);
+            }
             result.tripsImported++;
           } catch (error) {
             result.errors.push(`Failed to import trip: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -566,7 +613,11 @@ export class BrowserZipImportService {
         // Import weather logs
         for (const weatherLog of weatherLogsToImport) {
           try {
-            await firebaseDataService.createWeatherLog(weatherLog);
+            if (strategy === 'merge') {
+              await firebaseDataService.upsertWeatherLogFromImport(weatherLog as any);
+            } else {
+              await firebaseDataService.createWeatherLog(weatherLog);
+            }
             result.weatherLogsImported++;
           } catch (error) {
             result.errors.push(`Failed to import weather log: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -592,7 +643,11 @@ export class BrowserZipImportService {
               }
             }
 
-            await firebaseDataService.createFishCaught(fishCatch);
+            if (strategy === 'merge') {
+              await firebaseDataService.upsertFishCaughtFromImport(fishCatch as any);
+            } else {
+              await firebaseDataService.createFishCaught(fishCatch);
+            }
             result.fishCatchesImported++;
           } catch (error) {
             result.errors.push(`Failed to import fish catch: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -662,16 +717,11 @@ export class BrowserZipImportService {
         localStorage.setItem('guestHasImportedData', 'true');
       }
 
-      // Process photos
-      result.photosImported = Object.keys(legacyData.photos).length;
-
-      if (result.photosImported > 0) {
-        const photosAttached = result.fishCatchesImported; // Photos are attached to fish catches
-        if (photosAttached > 0) {
-          result.warnings.push(`✅ Successfully attached ${photosAttached} photo(s) to fish catches. Photos are now visible in the app.`);
-        } else {
-          result.warnings.push(`ℹ️ Found ${result.photosImported} photos in zip file but no fish catches to attach them to.`);
-        }
+      // Compute photos imported as those fish catches that have a photo string (data URL)
+      const photosAttached = legacyData.fishCatches.filter(fc => typeof (fc as any).photo === 'string' && (fc as any).photo.startsWith('data:')).length;
+      result.photosImported = photosAttached;
+      if (photosAttached > 0) {
+        result.warnings.push(`✅ Successfully attached ${photosAttached} photo(s) to fish catches. Photos are now visible in the app.`);
       }
 
       console.log('Legacy data import completed:', result);
@@ -1074,7 +1124,31 @@ export class BrowserZipImportService {
 
     const config = { ...defaultOptions, ...options };
 
-    return new Promise((resolve, reject) => {
+    // Fallback for non-DOM environments (e.g., Vitest jsdom without Canvas/Image)
+    if (typeof document === 'undefined' || typeof Image === 'undefined') {
+      // Return original data unchanged; caching still benefits perf in tests
+      const originalSize = imageData.length;
+      const compressedSize = imageData.length;
+      return Promise.resolve({
+        compressedData: imageData,
+        originalSize,
+        compressedSize,
+        compressionRatio: 0,
+      });
+    }
+
+    return new Promise((resolve) => {
+      const resolveIdentity = () => {
+        const originalSize = imageData.length;
+        const compressedSize = imageData.length;
+        resolve({
+          compressedData: imageData,
+          originalSize,
+          compressedSize,
+          compressionRatio: 0,
+        });
+      };
+
       try {
         // Create blob from image data
         const blob = new Blob([imageData as unknown as ArrayBuffer], { type: this.getMimeType(fileName) });
@@ -1082,11 +1156,15 @@ export class BrowserZipImportService {
         // Create image element for processing
         const img = new Image();
         const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-
-        if (!ctx) {
-          throw new Error('Canvas context not available');
+        let ctx: CanvasRenderingContext2D | null = null;
+        try {
+          ctx = canvas.getContext('2d');
+        } catch {
+          // jsdom may throw "Not implemented"; fall back to identity
+          return resolveIdentity();
         }
+
+        if (!ctx) return resolveIdentity();
 
         img.onload = () => {
           try {
@@ -1134,14 +1212,12 @@ export class BrowserZipImportService {
               compressionRatio
             });
 
-          } catch (error) {
-            reject(new Error(`Failed to compress image: ${error instanceof Error ? error.message : 'Unknown error'}`));
+          } catch {
+            return resolveIdentity();
           }
         };
 
-        img.onerror = () => {
-          reject(new Error('Failed to load image for compression'));
-        };
+        img.onerror = () => resolveIdentity();
 
         // Create object URL for the image
         const objectUrl = URL.createObjectURL(blob);
@@ -1152,8 +1228,9 @@ export class BrowserZipImportService {
           URL.revokeObjectURL(objectUrl);
         }, 1000);
 
-      } catch (error) {
-        reject(new Error(`Image compression setup failed: ${error instanceof Error ? error.message : 'Unknown error'}`));
+      } catch {
+        // Any setup failure -> identity
+        return resolveIdentity();
       }
     });
   }
@@ -1207,14 +1284,20 @@ export class BrowserZipImportService {
       maxHeight: 1080,
       quality: 0.85,
       format: 'jpeg'
-    }
+    },
+    onProgress?: (p: ImportProgress) => void,
+    referencedPhotoKeys?: Set<string>
   ): Promise<{ photos: { [key: string]: string }, compressionStats: any }> {
 
-    const imageFiles = Array.from(zipContent.entries()).filter(([fileName]) =>
+    let imageFiles = Array.from(zipContent.entries()).filter(([fileName]) =>
       this.isImageFile(fileName)
     );
+    if (referencedPhotoKeys && referencedPhotoKeys.size > 0) {
+      imageFiles = imageFiles.filter(([fileName]) => referencedPhotoKeys.has(fileName));
+    }
 
-    console.log(`Processing ${imageFiles.length} images with compression...`);
+  console.log(`Processing ${imageFiles.length} images with compression...`);
+  onProgress?.({ phase: 'photos', current: 0, total: imageFiles.length, percent: 0, message: 'Processing photos…' });
 
     const photos: { [key: string]: string } = {};
     const compressionStats = {
@@ -1224,8 +1307,9 @@ export class BrowserZipImportService {
       averageCompressionRatio: 0
     };
 
-    // Process images in smaller chunks to avoid browser memory issues
-    const chunkSize = 3; // Process 3 images at a time
+  // Process images in chunks to avoid browser memory issues
+  const cores = (typeof navigator !== 'undefined' && (navigator as any).hardwareConcurrency) ? (navigator as any).hardwareConcurrency : 4;
+  const chunkSize = Math.max(2, Math.min(cores, 4)); // keep conservative parallelism to reduce lockups
 
     for (let i = 0; i < imageFiles.length; i += chunkSize) {
       const chunk = imageFiles.slice(i, i + chunkSize);
@@ -1233,6 +1317,21 @@ export class BrowserZipImportService {
 
       const chunkPromises = chunk.map(async ([fileName, fileContent]) => {
         try {
+          // Compute content hash for cache key
+          const hash = await this.sha256Hex(fileContent);
+          const optionsKey = `${compressionOptions.enabled ? '1' : '0'}:${compressionOptions.maxWidth}x${compressionOptions.maxHeight}:${compressionOptions.quality}:${compressionOptions.format}`;
+          const cacheKey = `${hash}|${optionsKey}`;
+
+          // Try cache first
+          const cached = await photoCacheService.get(cacheKey);
+          if (cached) {
+            // Update stats using cached sizes
+            compressionStats.totalOriginalSize += cached.originalSize;
+            compressionStats.totalCompressedSize += cached.compressedSize;
+            compressionStats.imagesProcessed++;
+            return { fileName, data: cached.dataUri };
+          }
+
           if (compressionOptions.enabled) {
             // Compress the image
             const compressionResult = await this.compressImage(fileContent, fileName, {
@@ -1250,7 +1349,19 @@ export class BrowserZipImportService {
             // Convert compressed data to base64
             const base64Data = this.arrayBufferToBase64(compressionResult.compressedData);
             const mimeType = `image/${compressionOptions.format}`;
-            return { fileName, data: `data:${mimeType};base64,${base64Data}` };
+            const dataUri = `data:${mimeType};base64,${base64Data}`;
+
+            // Store in cache
+            await photoCacheService.set({
+              key: cacheKey,
+              dataUri,
+              mimeType,
+              originalSize: compressionResult.originalSize,
+              compressedSize: compressionResult.compressedSize,
+              createdAt: Date.now(),
+            });
+
+            return { fileName, data: dataUri };
           } else {
             // No compression - use original
             const base64Data = this.arrayBufferToBase64(fileContent);
@@ -1258,7 +1369,17 @@ export class BrowserZipImportService {
             compressionStats.totalOriginalSize += fileContent.length;
             compressionStats.totalCompressedSize += fileContent.length;
             compressionStats.imagesProcessed++;
-            return { fileName, data: `data:${mimeType};base64,${base64Data}` };
+            const dataUri = `data:${mimeType};base64,${base64Data}`;
+            // Store uncompressed in cache as well to skip recomputation
+            await photoCacheService.set({
+              key: cacheKey,
+              dataUri,
+              mimeType,
+              originalSize: fileContent.length,
+              compressedSize: fileContent.length,
+              createdAt: Date.now(),
+            });
+            return { fileName, data: dataUri };
           }
         } catch (error) {
           console.error(`Failed to process image ${fileName}:`, error);
@@ -1277,10 +1398,12 @@ export class BrowserZipImportService {
         }
       }
 
-      // Small delay to allow garbage collection
-      if (i + chunkSize < imageFiles.length) {
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
+      // Yield to UI to avoid long main-thread blocks
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      const processed = Math.min(imageFiles.length, i + chunk.length);
+      const percent = imageFiles.length > 0 ? Math.round((processed / imageFiles.length) * 100) : 100;
+      onProgress?.({ phase: 'photos', current: processed, total: imageFiles.length, percent, message: `Processing photos… (${processed}/${imageFiles.length})` });
     }
 
     // Calculate final stats
@@ -1304,6 +1427,47 @@ export class BrowserZipImportService {
     };
 
     return { photos, compressionStats: finalCompressionStats };
+  }
+
+  // TEST-ONLY: expose image processing for smoke/perf tests without needing a real browser zip
+  // Not used in production code paths
+  public async __test_processImages(zipContent: Map<string, Uint8Array>, enableCompression = false) {
+    return this.processImagesWithCompression(zipContent, {
+      enabled: enableCompression,
+      maxWidth: 1080,
+      maxHeight: 1080,
+      quality: 0.85,
+      format: 'jpeg'
+    });
+  }
+
+  /** Compute SHA-256 hex for a Uint8Array */
+  private async sha256Hex(data: Uint8Array): Promise<string> {
+    try {
+      if (globalThis.crypto?.subtle) {
+        // Create a real ArrayBuffer to satisfy TS DOM typings (avoid SharedArrayBuffer)
+        const ab = new ArrayBuffer(data.byteLength);
+        new Uint8Array(ab).set(data);
+        const digest = await globalThis.crypto.subtle.digest('SHA-256', ab);
+        const bytes = new Uint8Array(digest);
+        let hex = '';
+        for (let i = 0; i < bytes.length; i++) hex += bytes[i].toString(16).padStart(2, '0');
+        return hex;
+      }
+      throw new Error('subtle crypto unavailable');
+    } catch {
+      // Fallback: FNV-1a over bytes (fast, adequate for cache keys in tests)
+      let hash1 = 0x811c9dc5;
+      let hash2 = 0x811c9dc5 ^ 0xabcdef01; // mix into two lanes for 64-bit like output
+      for (let i = 0; i < data.length; i++) {
+        const c = data[i];
+        hash1 ^= c; hash1 = Math.imul(hash1, 0x01000193);
+        hash2 ^= (c ^ 0xa5); hash2 = Math.imul(hash2, 0x01000193);
+      }
+      const h1 = (hash1 >>> 0).toString(16).padStart(8, '0');
+      const h2 = (hash2 >>> 0).toString(16).padStart(8, '0');
+      return h1 + h2;
+    }
   }
 
   /**
