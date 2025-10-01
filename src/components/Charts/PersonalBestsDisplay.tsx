@@ -54,11 +54,11 @@ export const PersonalBestsDisplay: React.FC<PersonalBestsDisplayProps> = ({
               {largestFish.species}
             </p>
             <p className="text-sm text-gray-500 dark:text-gray-500">
-              {largestFish.weight ? `${largestFish.weight} kg` : 'Weight not recorded'}
+              {largestFish.weight ? `${largestFish.weight}` : 'Weight not recorded'}
             </p>
             {largestFish.length && (
               <p className="text-sm text-gray-500 dark:text-gray-500">
-                {largestFish.length} cm
+                {largestFish.length}
               </p>
             )}
           </div>
@@ -89,11 +89,11 @@ export const PersonalBestsDisplay: React.FC<PersonalBestsDisplayProps> = ({
               {longestFish.species}
             </p>
             <p className="text-sm text-gray-500 dark:text-gray-500">
-              {longestFish.length} cm
+              {longestFish.length}
             </p>
             {longestFish.weight && (
               <p className="text-sm text-gray-500 dark:text-gray-500">
-                {longestFish.weight} kg
+                {longestFish.weight}
               </p>
             )}
           </div>
