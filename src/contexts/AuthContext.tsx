@@ -44,18 +44,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isProcessingRedirect, setIsProcessingRedirect] = useState(true);
   const { isPWA } = usePWA();
   const previousUserRef = useRef<User | null>(null);
 
-  // Effect 1: Handle auth state listener and redirect result. Runs only once on mount.
+  // Effect 1: Handle redirect result. Runs only on mount.
+  // This runs first to ensure the redirect is processed before the auth state listener is set up.
   useEffect(() => {
     if (!auth) {
+      setIsProcessingRedirect(false);
       setLoading(false);
       return;
     }
 
-    // Handle redirect result on page load. This allows onAuthStateChanged to wait
-    // for the redirect to complete before triggering.
     getRedirectResult(auth)
       .then((result) => {
         if (result) {
@@ -66,7 +67,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.error('getRedirectResult error:', err);
         const errorMessage = err instanceof Error ? err.message : 'Google sign-in failed';
         setError(errorMessage);
+      })
+      .finally(() => {
+        setIsProcessingRedirect(false);
       });
+  }, []);
+
+  // Effect 2: Set up the auth state listener.
+  // This waits for the redirect processing to finish before running.
+  useEffect(() => {
+    if (isProcessingRedirect || !auth) {
+      return;
+    }
 
     const unsubscribe = onAuthStateChanged(auth, (newUser) => {
       console.log('Auth state changed - user:', newUser?.uid || 'null', 'email:', newUser?.email || 'none');
@@ -75,9 +87,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     return unsubscribe;
-  }, []); // Empty dependency array ensures this runs only once.
+  }, [isProcessingRedirect]);
 
-  // Effect 2: Handle data logic on user state change (login/logout).
+  // Effect 3: Handle data logic on user state change (login/logout).
+  // This runs after the initial auth state has been determined.
   useEffect(() => {
     const newUser = user;
     const previousUser = previousUserRef.current;
