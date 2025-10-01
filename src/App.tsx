@@ -126,6 +126,43 @@ function AppContent() {
     }
   }, [currentModal]); // Run when modal state changes
 
+  // AGGRESSIVE: Force modal close event listener
+  useEffect(() => {
+    const handleForceModalClose = () => {
+      console.log('🚫 FORCE MODAL CLOSE EVENT RECEIVED');
+      console.log('Current modal before force close:', currentModal);
+      if (currentModal !== "none") {
+        console.log('🧹 Forcing modal state to none');
+        setCurrentModal("none");
+        setSelectedDate(null);
+        setEditingTripId(null);
+        setEditingWeatherId(null);
+      }
+    };
+
+    window.addEventListener('forceModalClose', handleForceModalClose);
+
+    return () => {
+      window.removeEventListener('forceModalClose', handleForceModalClose);
+    };
+  }, [currentModal]);
+
+  // AGGRESSIVE: Monitor for Settings modal opening during auth
+  useEffect(() => {
+    if (currentModal === "settings") {
+      console.log('⚠️ Settings modal opened - checking if during authentication...');
+
+      // Check if this might be during PWA authentication
+      const timeSinceLastAuth = Date.now() - (window as any).lastAuthTime || 0;
+      const isRecentAuth = timeSinceLastAuth < 10000; // Within 10 seconds
+
+      if (isRecentAuth) {
+        console.log('🚫 Settings modal opened during recent authentication - blocking!');
+        setCurrentModal("none");
+      }
+    }
+  }, [currentModal]);
+
   // Modal handlers
   const handleSearchClick = useCallback(() => {
     setCurrentModal("search");
