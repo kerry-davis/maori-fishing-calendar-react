@@ -228,6 +228,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signInWithGoogle = async () => {
+    console.log('=== AGGRESSIVE MODAL LOCK ENGAGED ===');
     console.log('signInWithGoogle called');
     console.log('auth available:', !!auth);
     console.log('isPWA:', isPWA);
@@ -240,6 +241,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       setError(null);
+
+      // Set authentication start timestamp for modal monitoring
+      if (typeof window !== 'undefined') {
+        (window as any).lastAuthTime = Date.now();
+      }
+
+      // AGGRESSIVE: Clear any existing modal state immediately
+      console.log('🧹 AGGRESSIVE: Clearing all modal state before authentication');
+      if (typeof window !== 'undefined') {
+        // Clear URL hash
+        if (window.location.hash) {
+          window.history.replaceState(null, '', window.location.pathname);
+        }
+
+        // Clear modal-related localStorage
+        const modalKeys = Object.keys(localStorage).filter(key =>
+          key.includes('modal') || key.includes('Modal') || key.includes('settings')
+        );
+        modalKeys.forEach(key => {
+          console.log('Clearing localStorage key:', key);
+          localStorage.removeItem(key);
+        });
+
+        // Dispatch event to force modal closure
+        window.dispatchEvent(new CustomEvent('forceModalClose'));
+      }
+
       console.log('Creating GoogleAuthProvider...');
       const provider = new GoogleAuthProvider();
 
@@ -305,6 +333,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.log('Regular popup successful');
         setSuccessMessage('Successfully signed in with Google!');
       }
+
+      // AGGRESSIVE: Final cleanup after authentication
+      setTimeout(() => {
+        console.log('🧹 AGGRESSIVE: Final modal state cleanup after authentication');
+        if (typeof window !== 'undefined') {
+          // Ensure URL is clean
+          if (window.location.hash) {
+            window.history.replaceState(null, '', window.location.pathname);
+          }
+
+          // Dispatch another force close event
+          window.dispatchEvent(new CustomEvent('forceModalClose'));
+
+          // Set timestamp for monitoring
+          (window as any).lastAuthTime = Date.now();
+        }
+      }, 100);
+
     } catch (err) {
       console.error('signInWithGoogle error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Google sign-in failed';
