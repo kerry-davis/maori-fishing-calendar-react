@@ -126,39 +126,36 @@ function AppContent() {
     }
   }, [currentModal]); // Run when modal state changes
 
-  // AGGRESSIVE: Force modal close event listener
+  // ELEGANT: Modal state protection during PWA authentication
   useEffect(() => {
-    const handleForceModalClose = () => {
-      console.log('🚫 FORCE MODAL CLOSE EVENT RECEIVED');
-      console.log('Current modal before force close:', currentModal);
-      if (currentModal !== "none") {
-        console.log('🧹 Forcing modal state to none');
-        setCurrentModal("none");
-        setSelectedDate(null);
-        setEditingTripId(null);
-        setEditingWeatherId(null);
-      }
-    };
+    // This effect runs when modal state changes during auth window
+    // The monitoring effect above will handle any unwanted modal openings smoothly
 
-    window.addEventListener('forceModalClose', handleForceModalClose);
-
-    return () => {
-      window.removeEventListener('forceModalClose', handleForceModalClose);
-    };
+    // Only log if we're in an auth window
+    const timeSinceLastAuth = Date.now() - (window as any).lastAuthTime || 0;
+    if (timeSinceLastAuth < 8000) {
+      console.log('🛡️ Modal protection monitoring active for', Math.round((8000 - timeSinceLastAuth) / 1000), 'more seconds');
+    }
   }, [currentModal]);
 
-  // AGGRESSIVE: Monitor for Settings modal opening during auth
+  // ELEGANT: Prevent Settings modal during PWA authentication
   useEffect(() => {
     if (currentModal === "settings") {
-      console.log('⚠️ Settings modal opened - checking if during authentication...');
+      console.log('⚙️ Settings modal opening request detected');
 
       // Check if this might be during PWA authentication
       const timeSinceLastAuth = Date.now() - (window as any).lastAuthTime || 0;
-      const isRecentAuth = timeSinceLastAuth < 10000; // Within 10 seconds
+      const isRecentAuth = timeSinceLastAuth < 8000; // Within 8 seconds
 
       if (isRecentAuth) {
-        console.log('🚫 Settings modal opened during recent authentication - blocking!');
-        setCurrentModal("none");
+        console.log('🚫 Settings modal blocked during authentication window');
+        console.log('⏰ Time since auth:', Math.round(timeSinceLastAuth / 1000), 'seconds');
+
+        // Don't force close - just log and return to none state smoothly
+        setTimeout(() => {
+          console.log('✅ Modal state reset to none after auth completion');
+          setCurrentModal("none");
+        }, 100);
       }
     }
   }, [currentModal]);
@@ -288,11 +285,22 @@ function AppContent() {
     }
   }, [currentModal, user]);
 
-  // Check for data migration when user logs in
+  // Check for data migration when user logs in (with modal protection)
   useEffect(() => {
     const checkDataMigration = async () => {
       if (user && isReady) {
         console.log('🔍 Checking data migration for user:', user.email);
+
+        // Check if this is during PWA authentication (within 8 seconds)
+        const timeSinceLastAuth = Date.now() - (window as any).lastAuthTime || 0;
+        const isDuringAuth = timeSinceLastAuth < 8000;
+
+        if (isDuringAuth) {
+          console.log('⏰ Migration check during auth window - deferring to avoid modal conflicts');
+          console.log('⏳ Will retry migration check in 10 seconds');
+          setTimeout(() => checkDataMigration(), 10000);
+          return;
+        }
 
         try {
           // Use the Firebase data service for migration checks
