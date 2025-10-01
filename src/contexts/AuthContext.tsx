@@ -82,20 +82,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(false);
     });
 
-    // Handle redirect result with mobile PWA improvements
+    // Enhanced redirect result handling for mobile PWAs
     const handleRedirectResult = async () => {
+      const browserInfo = {
+        isChrome: navigator.userAgent.includes('Chrome') && !navigator.userAgent.includes('OPR/'),
+        isAndroid: /Android/i.test(navigator.userAgent),
+        isMobile: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+      };
+
+      console.log('=== REDIRECT RESULT HANDLER ===');
+      console.log('Browser info:', browserInfo);
+
       try {
         console.log('Checking for redirect result...');
         const result = await getRedirectResult(auth);
 
         if (result && result.user) {
-          console.log('Redirect result successful for user:', result.user.email);
+          console.log('✅ Redirect result successful for user:', result.user.email);
           setSuccessMessage('Successfully signed in with Google!');
         } else {
-          console.log('No redirect result found');
+          console.log('❓ No redirect result found');
+
+          // For Chrome Android PWA, try a more aggressive approach
+          if (browserInfo.isChrome && browserInfo.isAndroid && isPWA) {
+            console.log('🔄 Chrome Android PWA - no result, trying again in 2 seconds...');
+            setTimeout(() => {
+              console.log('🔄 Retrying redirect result for Chrome Android PWA...');
+              handleRedirectResult();
+            }, 2000);
+          }
         }
       } catch (err) {
-        console.error('getRedirectResult error:', err);
+        console.error('❌ getRedirectResult error:', err);
+
+        // Enhanced error handling for Chrome PWA
+        if (browserInfo.isChrome && browserInfo.isAndroid && isPWA) {
+          console.log('🔍 Chrome Android PWA specific error handling');
+
+          if (err instanceof Error && err.message.includes('no-auth-event')) {
+            console.log('No auth event - this might be normal for Chrome PWA, retrying...');
+            setTimeout(() => handleRedirectResult(), 1000);
+            return;
+          }
+        }
 
         // Only show error for actual authentication failures, not "no result" cases
         if (err instanceof Error && !err.message.includes('no-auth-event')) {
@@ -159,11 +188,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('Creating GoogleAuthProvider...');
       const provider = new GoogleAuthProvider();
 
-      // Check if we're in a mobile browser
-      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-      const isOpera = navigator.userAgent.includes('OPR/') || navigator.userAgent.includes('Opera');
+      // Enhanced browser detection for debugging
+      const userAgent = navigator.userAgent;
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+      const isOpera = userAgent.includes('OPR/') || userAgent.includes('Opera');
+      const isChrome = userAgent.includes('Chrome') && !isOpera;
+      const isAndroid = /Android/i.test(userAgent);
+      const isIOS = /iPhone|iPad|iPod/i.test(userAgent);
 
-      console.log('Mobile:', isMobile, 'Opera:', isOpera);
+      console.log('=== BROWSER DETECTION ===');
+      console.log('User Agent:', userAgent);
+      console.log('isPWA:', isPWA);
+      console.log('isMobile:', isMobile);
+      console.log('isOpera:', isOpera);
+      console.log('isChrome:', isChrome);
+      console.log('isAndroid:', isAndroid);
+      console.log('isIOS:', isIOS);
+      console.log('Display Mode:', window.matchMedia('(display-mode: standalone)').matches);
 
       if (isPWA && isMobile && isOpera) {
         // Opera mobile PWA - use redirect with specific configuration
@@ -173,11 +214,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         await signInWithRedirect(auth, provider);
         console.log('Opera PWA redirect initiated');
+      } else if (isPWA && isMobile && isChrome && isAndroid) {
+        // Chrome Android PWA - try popup first, fallback to redirect
+        console.log('Chrome Android PWA detected - trying popup first...');
+        try {
+          await signInWithPopup(auth, provider);
+          console.log('Chrome Android PWA popup successful');
+          setSuccessMessage('Successfully signed in with Google!');
+        } catch (popupError) {
+          console.log('Chrome Android PWA popup failed, using redirect...', popupError);
+          await signInWithRedirect(auth, provider);
+          console.log('Chrome Android PWA redirect initiated');
+        }
       } else if (isPWA && isMobile) {
         // Other mobile PWA browsers - use redirect
-        console.log('Mobile PWA detected - using signInWithRedirect...');
+        console.log('Other mobile PWA detected - using signInWithRedirect...');
         await signInWithRedirect(auth, provider);
-        console.log('Mobile PWA redirect initiated');
+        console.log('Other mobile PWA redirect initiated');
       } else if (isPWA) {
         // Desktop PWA - try popup first, fallback to redirect
         console.log('Desktop PWA detected - trying popup first...');
@@ -314,10 +367,69 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Expose debug method to window
+  // Expose debug methods to window for Chrome PWA troubleshooting
   useEffect(() => {
     (window as any).clearSyncQueue = clearSyncQueue;
-  }, []);
+    (window as any).debugChromePWA = {
+      checkDetection: () => {
+        const userAgent = navigator.userAgent;
+        const isPWA = window.matchMedia('(display-mode: standalone)').matches;
+        const isChrome = userAgent.includes('Chrome') && !userAgent.includes('OPR/');
+        const isAndroid = /Android/i.test(userAgent);
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+
+        console.log('=== CHROME PWA DETECTION DEBUG ===');
+        console.log('User Agent:', userAgent);
+        console.log('isPWA:', isPWA);
+        console.log('isChrome:', isChrome);
+        console.log('isAndroid:', isAndroid);
+        console.log('isMobile:', isMobile);
+        console.log('Display Mode:', window.matchMedia('(display-mode: standalone)').matches);
+
+        return {
+          isPWA,
+          isChrome,
+          isAndroid,
+          isMobile,
+          userAgent,
+          currentUser: user?.email || 'none'
+        };
+      },
+      testRedirect: async () => {
+        console.log('=== TESTING REDIRECT RESULT ===');
+        try {
+          const result = await getRedirectResult(auth);
+          console.log('Redirect result:', result);
+          if (result && result.user) {
+            console.log('✅ User found:', result.user.email);
+          } else {
+            console.log('❓ No user in redirect result');
+          }
+        } catch (err) {
+          console.log('❌ Redirect result error:', err);
+        }
+      },
+      forceRetry: () => {
+        console.log('=== FORCED RETRY ===');
+        setError(null);
+        // Manually call handleRedirectResult for retry
+        if (isPWA && auth) {
+          getRedirectResult(auth)
+            .then((result) => {
+              if (result && result.user) {
+                console.log('✅ Manual retry successful:', result.user.email);
+                setSuccessMessage('Successfully signed in with Google!');
+              } else {
+                console.log('❓ Manual retry - no result');
+              }
+            })
+            .catch((err) => {
+              console.error('❌ Manual retry error:', err);
+            });
+        }
+      }
+    };
+  }, [user, isPWA, auth]);
 
   const value = {
     user,
