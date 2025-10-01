@@ -247,25 +247,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         (window as any).lastAuthTime = Date.now();
       }
 
-      // AGGRESSIVE: Clear any existing modal state immediately
-      console.log('🧹 AGGRESSIVE: Clearing all modal state before authentication');
+      // ELEGANT: Clean modal state before authentication
+      console.log('🧹 Cleaning modal state before authentication');
       if (typeof window !== 'undefined') {
-        // Clear URL hash
-        if (window.location.hash) {
+        // Clear URL hash if it contains modal state
+        if (window.location.hash && window.location.hash.includes('settings')) {
+          console.log('Clearing settings-related URL hash');
           window.history.replaceState(null, '', window.location.pathname);
         }
 
-        // Clear modal-related localStorage
-        const modalKeys = Object.keys(localStorage).filter(key =>
-          key.includes('modal') || key.includes('Modal') || key.includes('settings')
-        );
-        modalKeys.forEach(key => {
-          console.log('Clearing localStorage key:', key);
-          localStorage.removeItem(key);
+        // Clear specific modal trigger keys (less aggressive)
+        const specificModalKeys = ['pendingModal', 'intendedModal', 'settingsModalOpen'];
+        specificModalKeys.forEach(key => {
+          if (localStorage.getItem(key)) {
+            console.log('Clearing specific modal key:', key);
+            localStorage.removeItem(key);
+          }
         });
-
-        // Dispatch event to force modal closure
-        window.dispatchEvent(new CustomEvent('forceModalClose'));
       }
 
       console.log('Creating GoogleAuthProvider...');
@@ -334,19 +332,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSuccessMessage('Successfully signed in with Google!');
       }
 
-      // AGGRESSIVE: Final cleanup after authentication
+      // ELEGANT: Final cleanup after authentication
       setTimeout(() => {
-        console.log('🧹 AGGRESSIVE: Final modal state cleanup after authentication');
+        console.log('🧹 Final modal state cleanup after authentication');
         if (typeof window !== 'undefined') {
           // Ensure URL is clean
-          if (window.location.hash) {
+          if (window.location.hash && window.location.hash.includes('settings')) {
+            console.log('Final cleanup: clearing settings URL hash');
             window.history.replaceState(null, '', window.location.pathname);
           }
 
-          // Dispatch another force close event
-          window.dispatchEvent(new CustomEvent('forceModalClose'));
-
-          // Set timestamp for monitoring
+          // Set timestamp for monitoring window
           (window as any).lastAuthTime = Date.now();
         }
       }, 100);
