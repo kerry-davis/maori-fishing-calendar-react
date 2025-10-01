@@ -177,11 +177,21 @@ function formatWeatherData(
     );
   }
 
-  // Get data for the requested date (should be first/only item)
-  const tempMax = daily.temperature_2m_max[0];
-  const tempMin = daily.temperature_2m_min[0];
-  const windSpeed = daily.windspeed_10m_max[0];
-  const windDirection = daily.winddirection_10m_dominant[0];
+  // Find the index for the requested date
+  const dateIndex = daily.time.indexOf(dateStr);
+
+  if (dateIndex === -1) {
+    throw createWeatherError(
+      "validation",
+      "Weather data for the specified date was not found in the API response",
+    );
+  }
+
+  // Get data for the requested date using the found index
+  const tempMax = daily.temperature_2m_max[dateIndex];
+  const tempMin = daily.temperature_2m_min[dateIndex];
+  const windSpeed = daily.windspeed_10m_max[dateIndex];
+  const windDirection = daily.winddirection_10m_dominant[dateIndex];
 
   // Validate numeric values
   if (
