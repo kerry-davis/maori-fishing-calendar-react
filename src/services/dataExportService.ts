@@ -3,6 +3,17 @@ import { databaseService } from "./databaseService";
 import { firebaseDataService } from "./firebaseDataService";
 import JSZip from "jszip";
 import Papa from "papaparse";
+import { auth, firestore } from "./firebase";
+import {
+  collection,
+  doc,
+  getDocs,
+  query,
+  serverTimestamp,
+  setDoc,
+  where,
+  writeBatch,
+} from "firebase/firestore";
 
 /**
  * Data Export Service for the Māori Fishing Calendar
@@ -516,6 +527,66 @@ export class DataExportService {
     }
     if (data.localStorage?.gearTypes) {
       localStorage.setItem("gearTypes", JSON.stringify(data.localStorage.gearTypes));
+    }
+
+    // Additionally, persist gear types for authenticated users into Firestore userSettings
+    try {
+      const uid = auth?.currentUser?.uid;
+      if (uid && firestore && Array.isArray(data.localStorage?.gearTypes)) {
+        const settingsRef = doc(firestore, "userSettings", uid);
+        await setDoc(
+          settingsRef,
+          {
+            userId: uid,
+            gearTypes: data.localStorage.gearTypes,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+    } catch (e) {
+      console.warn("Failed to write gear types to Firestore userSettings during import:", e);
+    }
+
+    // If tacklebox items are present, mirror them into Firestore for authenticated users
+    try {
+      const uid = auth?.currentUser?.uid;
+      const items: any[] | undefined = data.localStorage?.tacklebox;
+      if (uid && firestore && Array.isArray(items) && items.length > 0) {
+        // Wipe existing user's tackleItems to avoid duplicates, then insert fresh set
+        const q = query(collection(firestore, "tackleItems"), where("userId", "==", uid));
+        const snapshot = await getDocs(q);
+
+        // Delete in chunks to respect batch limits
+        const DEL_CHUNK = 400;
+        for (let i = 0; i < snapshot.docs.length; i += DEL_CHUNK) {
+          const batch = writeBatch(firestore);
+          for (const d of snapshot.docs.slice(i, i + DEL_CHUNK)) {
+            batch.delete(d.ref);
+          }
+          await batch.commit();
+        }
+
+        // Insert new items in chunks
+        const INS_CHUNK = 400;
+        for (let i = 0; i < items.length; i += INS_CHUNK) {
+          const batch = writeBatch(firestore);
+          for (const item of items.slice(i, i + INS_CHUNK)) {
+            const { id, ...rest } = item || {};
+            const ref = doc(collection(firestore, "tackleItems"));
+            batch.set(ref, {
+              ...rest,
+              userId: uid,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            });
+          }
+          await batch.commit();
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to import tackle items into Firestore during import:", e);
     }
 
     // Import database data to Firebase
