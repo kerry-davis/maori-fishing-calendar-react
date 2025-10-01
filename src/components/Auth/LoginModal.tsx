@@ -56,7 +56,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onMobil
   };
 
   const handleGoogleSignIn = async () => {
-    console.log('Google sign-in button clicked');
+    console.log('=== GOOGLE SIGN-IN BUTTON CLICKED ===');
     console.log('isFirebaseConfigured:', isFirebaseConfigured);
 
     setError('');
@@ -65,23 +65,27 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onMobil
     try {
       console.log('Attempting Google sign-in...');
       await signInWithGoogle();
-      console.log('Google sign-in successful');
+      console.log('Google sign-in initiated successfully');
 
-      // For PWA mode, we need to wait a bit for the redirect to complete
+      // For PWA mode, we need to wait a bit for the authentication to complete
       // The modal will be closed by the useEffect when user state changes
       setTimeout(() => {
         if (!user) {
-          console.log('No user after Google sign-in, keeping modal open for redirect result');
+          console.log('No user after Google sign-in attempt, keeping modal open for result');
+          // Don't set error here - let the AuthContext handle timeout/errors
         }
-      }, 1000);
+      }, 2000);
 
     } catch (err) {
+      console.error('=== GOOGLE SIGN-IN BUTTON ERROR ===');
       console.error('Google sign-in error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Google sign-in failed';
 
       // Provide more specific error messages for PWA issues
-      if (errorMessage.includes('redirect') || errorMessage.includes('popup')) {
-        setError(`${errorMessage}. If using PWA mode, try refreshing the page or using email/password login.`);
+      if (errorMessage.includes('popup') || errorMessage.includes('blocked')) {
+        setError(`${errorMessage}. This might be a PWA compatibility issue. Try using email/password login instead.`);
+      } else if (errorMessage.includes('redirect')) {
+        setError(`${errorMessage}. The login process is continuing in the background. Please wait...`);
       } else {
         setError(errorMessage);
       }
