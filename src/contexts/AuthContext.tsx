@@ -10,7 +10,8 @@ import {
   signOut,
   onAuthStateChanged
 } from 'firebase/auth';
-import { auth } from '../services/firebase';
+import { auth, authInitPromise } from '../services/firebase';
+import { shouldUseRedirect } from '../services/authHelpers';
 import { firebaseDataService } from '../services/firebaseDataService';
 import { usePWA } from './PWAContext';
 
@@ -48,29 +49,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { isPWA } = usePWA();
   const previousUserRef = useRef<User | null>(null);
 
-  // Effect 1: Handle redirect result. Runs only on mount.
-  // This runs first to ensure the redirect is processed before the auth state listener is set up.
+  // Effect 1: Ensure Firebase Auth persistence is initialized before anything else
   useEffect(() => {
-    if (!auth) {
-      setIsProcessingRedirect(false);
-      setLoading(false);
-      return;
-    }
-
-    getRedirectResult(auth)
-      .then((result) => {
+    let cancelled = false;
+    const init = async () => {
+      if (!auth) {
+        setIsProcessingRedirect(false);
+        setLoading(false);
+        return;
+      }
+      try {
+        if (authInitPromise) {
+          if (import.meta.env.DEV) console.log('Waiting for Firebase Auth persistence initialization...');
+          await authInitPromise;
+        }
+      } catch (e) {
+        console.warn('Auth persistence init failed or unavailable:', e);
+      }
+      if (cancelled) return;
+      // After persistence is ready, process redirect result once
+      try {
+        const result = await getRedirectResult(auth);
         if (result) {
           setSuccessMessage('Successfully signed in with Google!');
         }
-      })
-      .catch((err) => {
+      } catch (err) {
         console.error('getRedirectResult error:', err);
         const errorMessage = err instanceof Error ? err.message : 'Google sign-in failed';
         setError(errorMessage);
-      })
-      .finally(() => {
-        setIsProcessingRedirect(false);
-      });
+      } finally {
+        if (!cancelled) setIsProcessingRedirect(false);
+      }
+    };
+    init();
+    return () => { cancelled = true; };
   }, []);
 
   // Effect 2: Set up the auth state listener.
@@ -171,11 +183,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setError(null);
       console.log('Creating GoogleAuthProvider...');
       const provider = new GoogleAuthProvider();
-      if (isPWA) {
-        console.log('PWA mode detected, calling signInWithRedirect...');
+      const shouldRedirect = shouldUseRedirect({
+        userAgent: navigator.userAgent,
+        isPWA,
+        isStandalone: window.matchMedia('(display-mode: standalone)').matches,
+      });
+
+      if (authInitPromise) {
+        try {
+          await authInitPromise; // Ensure persistence before starting sign-in
+        } catch {}
+      }
+
+      if (shouldRedirect) {
+        console.log('Mobile/PWA/Safari detected, using signInWithRedirect');
         await signInWithRedirect(auth, provider);
       } else {
-        console.log('Calling signInWithPopup...');
+        console.log('Using signInWithPopup');
         await signInWithPopup(auth, provider);
         console.log('signInWithPopup successful');
         setSuccessMessage('Successfully signed in with Google!');
