@@ -11,6 +11,8 @@ import type { Trip, WeatherLog, FishCaught, ImportProgress } from "../types";
 import { firebaseDataService } from "./firebaseDataService";
 import { databaseService } from "./databaseService";
 import { photoCacheService } from "./photoCacheService";
+import { auth, firestore } from "./firebase";
+import { collection, doc, getDocs, query, serverTimestamp, setDoc, where, writeBatch } from "firebase/firestore";
 
 // Dynamically import JSZip to avoid bundling it if not needed
 let JSZip: any = null;
@@ -42,6 +44,9 @@ export interface LegacyDataStructure {
   weatherLogs: WeatherLog[];
   fishCatches: FishCaught[];
   photos: { [key: string]: string }; // filename -> base64 data
+  // Optional settings from legacy/localStorage export
+  tacklebox?: any[];
+  gearTypes?: string[];
 }
 
 type ImportStrategy = 'wipe' | 'merge';
@@ -363,9 +368,11 @@ export class BrowserZipImportService {
           if (data.localStorage) {
             if (data.localStorage.tacklebox) {
               console.log('Found tacklebox in localStorage:', data.localStorage.tacklebox.length);
+              legacyData.tacklebox = Array.isArray(data.localStorage.tacklebox) ? data.localStorage.tacklebox : undefined;
             }
             if (data.localStorage.gearTypes) {
               console.log('Found gearTypes in localStorage:', data.localStorage.gearTypes.length);
+              legacyData.gearTypes = Array.isArray(data.localStorage.gearTypes) ? data.localStorage.gearTypes : undefined;
             }
           }
 
@@ -575,18 +582,77 @@ export class BrowserZipImportService {
   console.log('Clearing existing data before import...');
   await this.clearExistingData(isAuthenticated, strategy);
 
-      // Use all data from the zip file (no duplicate checking)
+  // Use all data from the zip file (no duplicate checking)
       const tripsToImport = legacyData.trips;
       const weatherLogsToImport = legacyData.weatherLogs;
       const fishCatchesToImport = legacyData.fishCatches;
 
       console.log(`Import summary: ${tripsToImport.length} trips, ${weatherLogsToImport.length} weather logs, ${fishCatchesToImport.length} fish catches`);
 
+      // Persist tacklebox and gear types before records so UI reads correct values after import
+      try {
+        if (legacyData.gearTypes) {
+          // Always update localStorage for immediate UI continuity
+          localStorage.setItem('gearTypes', JSON.stringify(legacyData.gearTypes));
+        }
+        if (legacyData.tacklebox) {
+          localStorage.setItem('tacklebox', JSON.stringify(legacyData.tacklebox));
+        }
+
+        if (isAuthenticated) {
+          const uid = auth?.currentUser?.uid;
+          if (uid && firestore) {
+            // Upsert userSettings gearTypes
+            if (Array.isArray(legacyData.gearTypes)) {
+              const settingsRef = doc(firestore, 'userSettings', uid);
+              await setDoc(settingsRef, {
+                userId: uid,
+                gearTypes: legacyData.gearTypes,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+              }, { merge: true });
+            }
+
+            // Replace tackleItems with imported items to avoid duplicates
+            if (Array.isArray(legacyData.tacklebox) && legacyData.tacklebox.length > 0) {
+              const q = query(collection(firestore, 'tackleItems'), where('userId', '==', uid));
+              const snapshot = await getDocs(q);
+              // Delete existing in chunks
+              const DEL_CHUNK = 400;
+              for (let i = 0; i < snapshot.docs.length; i += DEL_CHUNK) {
+                const batch = writeBatch(firestore);
+                for (const d of snapshot.docs.slice(i, i + DEL_CHUNK)) batch.delete(d.ref);
+                await batch.commit();
+              }
+
+              // Insert new items in chunks
+              const INS_CHUNK = 400;
+              for (let i = 0; i < legacyData.tacklebox.length; i += INS_CHUNK) {
+                const batch = writeBatch(firestore);
+                for (const item of legacyData.tacklebox.slice(i, i + INS_CHUNK)) {
+                  const { id, ...rest } = item || {};
+                  const ref = doc(collection(firestore, 'tackleItems'));
+                  batch.set(ref, {
+                    ...rest,
+                    userId: uid,
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp(),
+                  });
+                }
+                await batch.commit();
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to persist gear types or tacklebox during legacy import:', e);
+      }
+
       if (isAuthenticated) {
         // Authenticated user - store in Firebase
         console.log('Importing to Firebase (authenticated user)...');
 
-        // Import trips first
+        // Import trips first (ALWAYS upsert to preserve legacy IDs and associations)
         for (const trip of tripsToImport) {
           try {
             // Normalize hours coming from legacy formats (could be string/empty/negative)
@@ -598,33 +664,24 @@ export class BrowserZipImportService {
             } else if (typeof (trip as any).hours === 'number' && (trip as any).hours < 0) {
               (trip as any).hours = Math.abs((trip as any).hours);
             }
-            // Idempotent upsert to prevent duplicates on repeated imports
-            if (strategy === 'merge') {
-              await firebaseDataService.upsertTripFromImport(trip as any);
-            } else {
-              await firebaseDataService.createTrip(trip);
-            }
+            await firebaseDataService.upsertTripFromImport(trip as any);
             result.tripsImported++;
           } catch (error) {
             result.errors.push(`Failed to import trip: ${error instanceof Error ? error.message : 'Unknown error'}`);
           }
         }
 
-        // Import weather logs
+        // Import weather logs (ALWAYS upsert)
         for (const weatherLog of weatherLogsToImport) {
           try {
-            if (strategy === 'merge') {
-              await firebaseDataService.upsertWeatherLogFromImport(weatherLog as any);
-            } else {
-              await firebaseDataService.createWeatherLog(weatherLog);
-            }
+            await firebaseDataService.upsertWeatherLogFromImport(weatherLog as any);
             result.weatherLogsImported++;
           } catch (error) {
             result.errors.push(`Failed to import weather log: ${error instanceof Error ? error.message : 'Unknown error'}`);
           }
         }
 
-        // Import fish catches with photo data
+        // Import fish catches with photo data (ALWAYS upsert)
         for (const fishCatch of fishCatchesToImport) {
           try {
             // If fish catch has a photo reference, try to find and attach the actual photo data
@@ -643,11 +700,7 @@ export class BrowserZipImportService {
               }
             }
 
-            if (strategy === 'merge') {
-              await firebaseDataService.upsertFishCaughtFromImport(fishCatch as any);
-            } else {
-              await firebaseDataService.createFishCaught(fishCatch);
-            }
+            await firebaseDataService.upsertFishCaughtFromImport(fishCatch as any);
             result.fishCatchesImported++;
           } catch (error) {
             result.errors.push(`Failed to import fish catch: ${error instanceof Error ? error.message : 'Unknown error'}`);
