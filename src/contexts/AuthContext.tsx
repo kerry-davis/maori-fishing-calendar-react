@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import type { User } from 'firebase/auth';
 import {
   signInWithEmailAndPassword,
@@ -45,16 +45,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { isPWA } = usePWA();
+  const previousUserRef = useRef<User | null>(null);
 
+  // Effect 1: Handle auth state listener and redirect result. Runs only once on mount.
   useEffect(() => {
     if (!auth) {
       setLoading(false);
       return;
     }
 
-    const unsubscribe = onAuthStateChanged(auth, async (newUser) => {
-      const previousUser = user;
+    // Handle redirect result on page load. This allows onAuthStateChanged to wait
+    // for the redirect to complete before triggering.
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result) {
+          setSuccessMessage('Successfully signed in with Google!');
+        }
+      })
+      .catch((err) => {
+        console.error('getRedirectResult error:', err);
+        const errorMessage = err instanceof Error ? err.message : 'Google sign-in failed';
+        setError(errorMessage);
+      });
 
+    const unsubscribe = onAuthStateChanged(auth, (newUser) => {
+      console.log('Auth state changed - user:', newUser?.uid || 'null', 'email:', newUser?.email || 'none');
+      setUser(newUser);
+      setLoading(false);
+    });
+
+    return unsubscribe;
+  }, []); // Empty dependency array ensures this runs only once.
+
+  // Effect 2: Handle data logic on user state change (login/logout).
+  useEffect(() => {
+    const newUser = user;
+    const previousUser = previousUserRef.current;
+
+    const handleDataLogic = async () => {
       if (newUser && !previousUser) {
         // User is logging in
         console.log('User logging in, checking for local data and merging...');
@@ -76,27 +104,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await firebaseDataService.initialize(); // Re-initialize in guest mode.
         console.log('Switched to guest mode - local data remains visible');
       }
+    };
 
-      console.log('Auth state changed - user:', newUser?.uid || 'null', 'email:', newUser?.email || 'none');
-      setUser(newUser);
-      setLoading(false);
-    });
+    // Only run this logic after the initial auth state has been determined.
+    if (!loading) {
+      handleDataLogic();
+    }
 
-    // Handle redirect result
-    getRedirectResult(auth)
-      .then((result) => {
-        if (result) {
-          setSuccessMessage('Successfully signed in with Google!');
-        }
-      })
-      .catch((err) => {
-        console.error('getRedirectResult error:', err);
-        const errorMessage = err instanceof Error ? err.message : 'Google sign-in failed';
-        setError(errorMessage);
-      });
-
-    return unsubscribe;
-  }, [user]);
+    // Update the ref for the next render cycle.
+    previousUserRef.current = user;
+  }, [user, loading]);
 
   const login = async (email: string, password: string) => {
     if (!auth) {
