@@ -55,34 +55,67 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribe = onAuthStateChanged(auth, async (newUser) => {
       const previousUser = user;
 
+      // Update user state IMMEDIATELY for responsive UI
+      console.log('Auth state changed - user:', newUser?.uid || 'null', 'email:', newUser?.email || 'none');
+      setUser(newUser);
+      setLoading(false);
+
+      // Handle data operations asynchronously WITHOUT blocking UI
       if (newUser && !previousUser) {
-        // User is logging in
-        console.log('User logging in, checking for local data and merging...');
-        await firebaseDataService.switchToUser(newUser.uid);
-        
-        // First merge any local data to Firebase, THEN clear local data
-        console.log('Merging any local guest data to Firebase...');
-        await firebaseDataService.mergeLocalDataForUser();
-        
-        // Now clear local data to prevent duplicates with Firebase data
-        console.log('Clearing local data after merge to prevent duplicates');
-        await firebaseDataService.clearAllData();
-        
-        console.log('Login completed - local data merged and Firebase data will be loaded fresh');
+        // User is logging in - handle data operations in background
+        console.log('User logging in, handling data operations in background...');
+
+        // Use setTimeout to avoid blocking the UI update
+        setTimeout(async () => {
+          try {
+            console.log('Background: Switching to user context...');
+            await firebaseDataService.switchToUser(newUser.uid);
+
+            // For Chrome PWA, minimize background operations for faster UI response
+            const isChromePWA = navigator.userAgent.includes('Chrome') &&
+                               !navigator.userAgent.includes('OPR/') &&
+                               window.matchMedia('(display-mode: standalone)').matches;
+
+            if (isChromePWA) {
+              console.log('Chrome PWA detected - minimizing background operations for faster UI...');
+              // Only do essential operations for Chrome PWA
+              try {
+                await firebaseDataService.mergeLocalDataForUser();
+              } catch (mergeError) {
+                console.warn('Chrome PWA merge failed, continuing anyway:', mergeError);
+              }
+            } else {
+              // Full data operations for other browsers
+              console.log('Background: Merging local guest data to Firebase...');
+              await firebaseDataService.mergeLocalDataForUser();
+
+              console.log('Background: Clearing local data to prevent duplicates...');
+              await firebaseDataService.clearAllData();
+            }
+
+            console.log('Background: Login data operations completed');
+          } catch (error) {
+            console.error('Background data operations error:', error);
+            // Don't set error state here as it would overwrite the successful login
+          }
+        }, 50); // Even smaller delay for faster response
+
       } else if (!newUser && previousUser) {
         // User is logging out
         console.log('User logging out, switching to guest mode...');
         // Don't clear local data - keep it visible for better UX
-        await firebaseDataService.initialize(); // Re-initialize in guest mode.
-        console.log('Switched to guest mode - local data remains visible');
+        setTimeout(async () => {
+          try {
+            await firebaseDataService.initialize(); // Re-initialize in guest mode.
+            console.log('Background: Switched to guest mode - local data remains visible');
+          } catch (error) {
+            console.error('Background logout data operations error:', error);
+          }
+        }, 100);
       }
-
-      console.log('Auth state changed - user:', newUser?.uid || 'null', 'email:', newUser?.email || 'none');
-      setUser(newUser);
-      setLoading(false);
     });
 
-    // Enhanced redirect result handling for mobile PWAs
+    // Optimized redirect result handling for mobile PWAs
     const handleRedirectResult = async () => {
       const browserInfo = {
         isChrome: navigator.userAgent.includes('Chrome') && !navigator.userAgent.includes('OPR/'),
@@ -90,43 +123,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isMobile: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
       };
 
-      console.log('=== REDIRECT RESULT HANDLER ===');
+      console.log('=== FAST REDIRECT RESULT HANDLER ===');
       console.log('Browser info:', browserInfo);
 
       try {
-        console.log('Checking for redirect result...');
+        console.log('Quick check for redirect result...');
         const result = await getRedirectResult(auth);
 
         if (result && result.user) {
-          console.log('✅ Redirect result successful for user:', result.user.email);
+          console.log('✅ Fast redirect result successful for user:', result.user.email);
           setSuccessMessage('Successfully signed in with Google!');
+          return; // Exit early on success
         } else {
           console.log('❓ No redirect result found');
-
-          // For Chrome Android PWA, try a more aggressive approach
-          if (browserInfo.isChrome && browserInfo.isAndroid && isPWA) {
-            console.log('🔄 Chrome Android PWA - no result, trying again in 2 seconds...');
-            setTimeout(() => {
-              console.log('🔄 Retrying redirect result for Chrome Android PWA...');
-              handleRedirectResult();
-            }, 2000);
-          }
         }
       } catch (err) {
         console.error('❌ getRedirectResult error:', err);
 
-        // Enhanced error handling for Chrome PWA
+        // For Chrome Android PWA, only retry once quickly
         if (browserInfo.isChrome && browserInfo.isAndroid && isPWA) {
-          console.log('🔍 Chrome Android PWA specific error handling');
-
           if (err instanceof Error && err.message.includes('no-auth-event')) {
-            console.log('No auth event - this might be normal for Chrome PWA, retrying...');
-            setTimeout(() => handleRedirectResult(), 1000);
+            console.log('Chrome PWA no-auth-event - single quick retry...');
+            setTimeout(async () => {
+              try {
+                const retryResult = await getRedirectResult(auth);
+                if (retryResult && retryResult.user) {
+                  console.log('✅ Chrome PWA retry successful:', retryResult.user.email);
+                  setSuccessMessage('Successfully signed in with Google!');
+                }
+              } catch (retryError) {
+                console.log('❌ Chrome PWA retry failed:', retryError);
+              }
+            }, 500); // Quick 500ms retry for Chrome PWA
             return;
           }
         }
 
-        // Only show error for actual authentication failures, not "no result" cases
+        // Only show error for actual failures
         if (err instanceof Error && !err.message.includes('no-auth-event')) {
           const errorMessage = err.message || 'Google sign-in failed';
           setError(errorMessage);
@@ -134,9 +167,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
 
-    // Handle redirect result for PWA
+    // Handle redirect result for PWA (immediate for faster UI response)
     if (isPWA) {
-      handleRedirectResult();
+      // Use setTimeout to avoid blocking initial auth state change
+      setTimeout(() => handleRedirectResult(), 50);
     }
 
     return unsubscribe;
