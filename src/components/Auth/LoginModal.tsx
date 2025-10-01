@@ -65,21 +65,15 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onMobil
     try {
       console.log('Attempting Google sign-in...');
       await signInWithGoogle();
-      console.log('Google sign-in initiated successfully');
-
-      // For PWA redirect mode, the page will reload and modal will close automatically
-      // For popup mode, modal will be closed by useEffect when user state changes
-
+      console.log('Google sign-in successful');
+      onClose(); // Close modal on successful Google sign-in
+      // Close mobile menu after successful Google sign-in
+      if (onMobileMenuClose) {
+        onMobileMenuClose();
+      }
     } catch (err) {
       console.error('Google sign-in error:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Google sign-in failed';
-
-      // Simplified error handling
-      if (errorMessage.includes('popup') || errorMessage.includes('blocked')) {
-        setError('Popup blocked. Try using email/password login or enable popups for this site.');
-      } else {
-        setError(errorMessage);
-      }
+      setError(err instanceof Error ? err.message : 'Google sign-in failed');
     } finally {
       setLoading(false);
     }

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { User } from 'firebase/auth';
 import {
   signInWithEmailAndPassword,
@@ -44,7 +44,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [redirectAttempts, setRedirectAttempts] = useState(0);
   const { isPWA } = usePWA();
 
   useEffect(() => {
@@ -83,64 +82,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(false);
     });
 
-    // Call handleRedirectResult for PWA mode
-    if (isPWA && auth) {
+    // Handle redirect result with mobile PWA improvements
+    const handleRedirectResult = async () => {
+      try {
+        console.log('Checking for redirect result...');
+        const result = await getRedirectResult(auth);
+
+        if (result && result.user) {
+          console.log('Redirect result successful for user:', result.user.email);
+          setSuccessMessage('Successfully signed in with Google!');
+        } else {
+          console.log('No redirect result found');
+        }
+      } catch (err) {
+        console.error('getRedirectResult error:', err);
+
+        // Only show error for actual authentication failures, not "no result" cases
+        if (err instanceof Error && !err.message.includes('no-auth-event')) {
+          const errorMessage = err.message || 'Google sign-in failed';
+          setError(errorMessage);
+        }
+      }
+    };
+
+    // Handle redirect result for PWA
+    if (isPWA) {
       handleRedirectResult();
     }
 
     return unsubscribe;
   }, [user]);
-
-  // Handle redirect result for PWA authentication
-  const handleRedirectResult = useCallback(async () => {
-    const browserInfo = getBrowserInfo();
-    console.log('=== HANDLING REDIRECT RESULT ===');
-    console.log('Browser info:', browserInfo);
-    console.log('Checking for redirect result... (attempt:', redirectAttempts + 1, ')');
-
-    try {
-      const result = await getRedirectResult(auth);
-
-      if (result && result.user) {
-        console.log('✅ Redirect result successful, user:', result.user.email);
-        setSuccessMessage('Successfully signed in with Google!');
-        setRedirectAttempts(0); // Reset counter on success
-      } else {
-        console.log('❓ No redirect result or no user in result');
-        setRedirectAttempts(prev => prev + 1);
-
-        // For PWA, set a more specific timeout
-        if (redirectAttempts === 0) {
-          setTimeout(() => {
-            console.log('⏰ First redirect check timeout - may need manual retry');
-          }, 3000);
-        }
-      }
-    } catch (err) {
-      console.error('❌ getRedirectResult error:', err);
-      setRedirectAttempts(prev => prev + 1);
-
-      // More specific error handling for different browsers
-      if (err instanceof Error) {
-        if (err.message.includes('auth/user-not-found') || err.message.includes('no-auth-event')) {
-          console.log('No pending redirect result - this is normal');
-          return;
-        }
-
-        // Browser-specific error handling
-        if (browserInfo.isOpera && browserInfo.isMobile) {
-          console.log('Opera PWA redirect error - may need page refresh');
-        } else if (browserInfo.isChrome && browserInfo.isMobile) {
-          console.log('Chrome PWA redirect error - trying alternative approach');
-        }
-
-        // Only show error after multiple attempts
-        if (redirectAttempts >= 2) {
-          setError(`Authentication issue: ${err.message}. Try refreshing the page.`);
-        }
-      }
-    }
-  }, [auth, redirectAttempts]);
 
   const login = async (email: string, password: string) => {
     if (!auth) {
@@ -172,39 +143,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Enhanced browser detection helper
-  const getBrowserInfo = () => {
-    const userAgent = navigator.userAgent.toLowerCase();
-    const isOpera = userAgent.includes('opr/') || userAgent.includes('opera');
-    const isChrome = userAgent.includes('chrome') && !isOpera && !userAgent.includes('edg/');
-    const isMobile = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
-    const isIOS = /iphone|ipad|ipod/.test(userAgent);
-    const isAndroid = /android/.test(userAgent);
-
-    // More specific PWA detection
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
-    const isInstalled = isStandalone || (isMobile && (window.navigator as any).standalone === true);
-
-    return {
-      isOpera,
-      isChrome,
-      isMobile,
-      isIOS,
-      isAndroid,
-      isStandalone,
-      isInstalled,
-      userAgent: navigator.userAgent
-    };
-  };
-
   const signInWithGoogle = async () => {
-    console.log('=== GOOGLE SIGN-IN START ===');
     console.log('signInWithGoogle called');
     console.log('auth available:', !!auth);
     console.log('isPWA:', isPWA);
-
-    const browserInfo = getBrowserInfo();
-    console.log('Browser info:', browserInfo);
 
     if (!auth) {
       const errorMsg = 'Firebase authentication is not configured. Please set up your Firebase environment variables.';
@@ -217,50 +159,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('Creating GoogleAuthProvider...');
       const provider = new GoogleAuthProvider();
 
-      // Determine authentication method based on browser and PWA status
-      const isActualPWA = browserInfo.isInstalled || isPWA;
-      console.log('isActualPWA:', isActualPWA);
+      // Check if we're in a mobile browser
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      const isOpera = navigator.userAgent.includes('OPR/') || navigator.userAgent.includes('Opera');
 
-      if (isActualPWA && browserInfo.isOpera && browserInfo.isMobile) {
-        // Opera PWA: Use redirect with optimized settings
-        console.log('Opera PWA detected - using redirect with optimized settings...');
+      console.log('Mobile:', isMobile, 'Opera:', isOpera);
+
+      if (isPWA && isMobile && isOpera) {
+        // Opera mobile PWA - use redirect with specific configuration
+        console.log('Opera mobile PWA detected - using redirect with custom parameters...');
         provider.setCustomParameters({
-          prompt: 'select_account',
-          redirect_uri: window.location.origin
+          prompt: 'select_account'
         });
         await signInWithRedirect(auth, provider);
-        console.log('Opera PWA redirect initiated - will complete on page reload');
-
-      } else if (isActualPWA && browserInfo.isChrome && browserInfo.isMobile) {
-        // Chrome PWA: Use redirect with enhanced result handling
-        console.log('Chrome PWA detected - using redirect with enhanced handling...');
+        console.log('Opera PWA redirect initiated');
+      } else if (isPWA && isMobile) {
+        // Other mobile PWA browsers - use redirect
+        console.log('Mobile PWA detected - using signInWithRedirect...');
         await signInWithRedirect(auth, provider);
-        console.log('Chrome PWA redirect initiated - will complete on page reload');
-
-      } else if (isActualPWA) {
-        // Other PWA browsers: Try popup first, fallback to redirect
-        console.log('Other PWA detected - trying popup first...');
+        console.log('Mobile PWA redirect initiated');
+      } else if (isPWA) {
+        // Desktop PWA - try popup first, fallback to redirect
+        console.log('Desktop PWA detected - trying popup first...');
         try {
-          const result = await signInWithPopup(auth, provider);
-          console.log('PWA popup successful, user:', result.user?.email);
+          await signInWithPopup(auth, provider);
+          console.log('Desktop PWA popup successful');
           setSuccessMessage('Successfully signed in with Google!');
-          return;
         } catch (popupError) {
-          console.log('PWA popup failed, using redirect...', popupError);
+          console.log('Desktop PWA popup failed, using redirect...', popupError);
           await signInWithRedirect(auth, provider);
-          console.log('PWA redirect initiated after popup failure');
+          console.log('Desktop PWA redirect initiated');
         }
-
       } else {
-        // Regular web mode: Use popup
+        // Regular web mode - use popup
         console.log('Regular web mode - using signInWithPopup...');
-        const result = await signInWithPopup(auth, provider);
-        console.log('Regular popup successful, user:', result.user?.email);
+        await signInWithPopup(auth, provider);
+        console.log('Regular popup successful');
         setSuccessMessage('Successfully signed in with Google!');
       }
-
     } catch (err) {
-      console.error('=== GOOGLE SIGN-IN ERROR ===');
       console.error('signInWithGoogle error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Google sign-in failed';
       setError(errorMessage);
@@ -377,40 +314,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Expose debug methods to window for troubleshooting
+  // Expose debug method to window
   useEffect(() => {
     (window as any).clearSyncQueue = clearSyncQueue;
-    (window as any).debugAuth = {
-      getBrowserInfo: () => {
-        const browserInfo = getBrowserInfo();
-        return {
-          ...browserInfo,
-          redirectAttempts,
-          currentUser: user?.email || 'none',
-          isPWA,
-          authConfigured: !!auth
-        };
-      },
-      retryRedirect: () => {
-        console.log('Manual redirect retry requested');
-        setRedirectAttempts(0);
-        setError(null);
-        if (isPWA && auth) {
-          handleRedirectResult();
-        }
-      },
-      checkAuthState: () => {
-        console.log('Current auth state:', {
-          user: user?.email || 'none',
-          loading,
-          error,
-          successMessage,
-          redirectAttempts,
-          isPWA
-        });
-      }
-    };
-  }, [redirectAttempts, user, isPWA, auth, loading, error, successMessage]);
+  }, []);
 
   const value = {
     user,
