@@ -93,6 +93,39 @@ function AppContent() {
   const [tripLogRefreshTrigger, setTripLogRefreshTrigger] = useState(0);
   const [calendarRefreshTrigger, setCalendarRefreshTrigger] = useState(0);
 
+  // Ensure modal state is clean on app initialization (especially for PWA)
+  useEffect(() => {
+    console.log('🚀 App initialized - ensuring clean modal state');
+    console.log('Initial modal state:', currentModal);
+    console.log('URL:', window.location.href);
+    console.log('URL hash:', window.location.hash);
+
+    // Clear any modal-related URL parameters that might be preserved during PWA redirect
+    if (window.location.hash && (window.location.hash.includes('settings') || window.location.hash.includes('modal'))) {
+      console.log('🧹 Clearing modal-related URL hash on app init');
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+
+    // Force modal to none if it's in an unexpected state (but allow dataMigration)
+    if (currentModal !== "none" && currentModal !== "dataMigration") {
+      console.log('⚠️ Unexpected modal state on init, resetting to none');
+      setCurrentModal("none");
+    }
+  }, []); // Only run on mount
+
+  // Additional check for PWA redirect scenarios
+  useEffect(() => {
+    // Check if this is a PWA redirect scenario that might have preserved modal state
+    const isPWA = window.matchMedia('(display-mode: standalone)').matches;
+    const hasModalHash = window.location.hash && window.location.hash.includes('settings');
+
+    if (isPWA && hasModalHash && currentModal === "settings") {
+      console.log('🔍 PWA redirect with Settings modal detected - this might be unintended');
+      console.log('Clearing Settings modal state from PWA redirect');
+      setCurrentModal("none");
+    }
+  }, [currentModal]); // Run when modal state changes
+
   // Modal handlers
   const handleSearchClick = useCallback(() => {
     setCurrentModal("search");
@@ -103,6 +136,7 @@ function AppContent() {
   }, []);
 
   const handleSettingsClick = useCallback(() => {
+    console.log('⚙️ Settings button clicked - opening Settings modal');
     setCurrentModal("settings");
   }, []);
 
@@ -206,10 +240,23 @@ function AppContent() {
     console.log('App.tsx: Modal closed, set to none');
   }, [currentModal]);
 
+  // Debug effect to track modal state changes
+  useEffect(() => {
+    console.log('🔍 Modal state changed to:', currentModal);
+    if (currentModal === "settings") {
+      console.log('⚠️ Settings modal opened - checking why...');
+      console.log('Current user:', user?.email || 'none');
+      console.log('URL:', window.location.href);
+      console.log('LocalStorage keys:', Object.keys(localStorage));
+    }
+  }, [currentModal, user]);
+
   // Check for data migration when user logs in
   useEffect(() => {
     const checkDataMigration = async () => {
       if (user && isReady) {
+        console.log('🔍 Checking data migration for user:', user.email);
+
         try {
           // Use the Firebase data service for migration checks
           const firebaseDb = (await import('./services/firebaseDataService')).firebaseDataService;
@@ -242,12 +289,17 @@ function AppContent() {
             firebaseDb.hasCompletedMigration()
           ]);
 
+          console.log('Migration check results:', { hasLocalData, hasCompletedMigration });
+
           if (hasLocalData && !hasCompletedMigration) {
+            console.log('📋 Showing data migration modal');
             // Show migration modal
             setCurrentModal("dataMigration");
+          } else {
+            console.log('✅ No migration needed');
           }
         } catch (error) {
-          console.error('Error checking data migration:', error);
+          console.error('❌ Error checking data migration:', error);
         }
       }
     };

@@ -57,6 +57,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Update user state IMMEDIATELY for responsive UI
       console.log('Auth state changed - user:', newUser?.uid || 'null', 'email:', newUser?.email || 'none');
+
+      // Clear any unintended modal state that might be preserved during PWA redirect
+      if (newUser && !previousUser) {
+        console.log('🧹 Clearing potentially preserved modal state after login');
+
+        // Clear URL hash if it contains modal state
+        if (window.location.hash && window.location.hash.includes('modal')) {
+          console.log('Clearing modal-related URL hash:', window.location.hash);
+          window.history.replaceState(null, '', window.location.pathname);
+        }
+
+        // Clear any localStorage values that might trigger modals
+        const modalKeys = ['pendingModal', 'intendedModal', 'settingsModalOpen'];
+        modalKeys.forEach(key => {
+          if (localStorage.getItem(key)) {
+            console.log('Clearing localStorage modal key:', key);
+            localStorage.removeItem(key);
+          }
+        });
+      }
+
       setUser(newUser);
       setLoading(false);
 
