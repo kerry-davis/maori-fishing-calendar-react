@@ -16,6 +16,17 @@ import {
 import type { TackleItem } from '../types';
 import { DEFAULT_GEAR_TYPES } from '../types';
 
+// Generate a stable numeric ID from a string (e.g., Firestore doc.id) to satisfy TackleItem.id:number
+function stableNumericId(str: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    hash ^= str.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  // Ensure positive 32-bit integer
+  return (hash >>> 0);
+}
+
 /**
  * Firebase-based hook for tackle box management
  * Replaces localStorage with Firestore for cloud sync
@@ -51,8 +62,11 @@ export function useFirebaseTackleBox(): [
 
         querySnapshot.forEach((doc) => {
           const data = doc.data();
+          // Use numeric parse when possible, else stable hash to avoid NaN IDs
+          const parsed = parseInt(doc.id, 10);
+          const idNum = Number.isNaN(parsed) ? stableNumericId(doc.id) : parsed;
           items.push({
-            id: parseInt(doc.id), // Convert Firebase ID to number for compatibility
+            id: idNum,
             ...data
           } as TackleItem);
         });

@@ -84,14 +84,17 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
      const photoItems: PhotoItem[] = [];
 
      fishCaught.forEach((fish: any) => {
-       if (fish.photo) {
+       // Support both legacy inline photos and new Firebase Storage-backed URLs
+       const rawPhoto: string | undefined = fish.photoUrl || fish.photo;
+       if (rawPhoto) {
          const trip = trips.find((t: any) => t.id === fish.tripId);
          if (trip) {
            const photoItem = {
              id: `${fish.id}-${fish.tripId}`,
              fishId: fish.id,
              tripId: fish.tripId,
-             photo: fixPhotoData(fish.photo),
+             // Normalize the selected source to a displayable value
+             photo: fixPhotoData(rawPhoto),
              species: fish.species,
              length: fish.length,
              weight: fish.weight,
