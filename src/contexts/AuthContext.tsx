@@ -48,6 +48,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isProcessingRedirect, setIsProcessingRedirect] = useState(true);
   const { isPWA } = usePWA();
   const previousUserRef = useRef<User | null>(null);
+  const REDIRECT_FLAG = 'authRedirectPending';
 
   // Effect 1: Ensure Firebase Auth persistence is initialized before anything else
   useEffect(() => {
@@ -67,17 +68,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('Auth persistence init failed or unavailable:', e);
       }
       if (cancelled) return;
-      // After persistence is ready, process redirect result once
+      // Only process redirect result if we initiated a redirect on this device
+      const redirectPending = (() => {
+        try { return localStorage.getItem(REDIRECT_FLAG) === '1'; } catch { return false; }
+      })();
+      if (!redirectPending) {
+        if (import.meta.env.DEV) console.log('No redirect pending, skipping getRedirectResult');
+        setIsProcessingRedirect(false);
+        return;
+      }
       try {
         const result = await getRedirectResult(auth);
         if (result) {
           setSuccessMessage('Successfully signed in with Google!');
         }
-      } catch (err) {
-        console.error('getRedirectResult error:', err);
-        const errorMessage = err instanceof Error ? err.message : 'Google sign-in failed';
-        setError(errorMessage);
+      } catch (err: any) {
+        const msg = (err && err.message) ? String(err.message) : '';
+        const code = err && err.code ? String(err.code) : '';
+        // Ignore benign errors when no valid redirect state is present in storage-partitioned environments
+        const isBenign = code === 'auth/no-auth-event' || msg.toLowerCase().includes('missing initial state');
+        if (!isBenign) {
+          console.error('getRedirectResult error:', err);
+          const errorMessage = err instanceof Error ? err.message : 'Google sign-in failed';
+          setError(errorMessage);
+        } else if (import.meta.env.DEV) {
+          console.warn('Ignoring benign getRedirectResult error:', err);
+        }
       } finally {
+        try { localStorage.removeItem(REDIRECT_FLAG); } catch {}
         if (!cancelled) setIsProcessingRedirect(false);
       }
     };
@@ -197,6 +215,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (shouldRedirect) {
         console.log('Environment prefers redirect, using signInWithRedirect');
+        try { localStorage.setItem(REDIRECT_FLAG, '1'); } catch {}
         await signInWithRedirect(auth, provider);
       } else {
         console.log('Attempting signInWithPopup');
@@ -211,6 +230,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const isIOS = /iphone|ipad|ipod/.test(ua) || (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1);
           if (!isIOS) {
             console.log('Falling back to signInWithRedirect after popup failure');
+            try { localStorage.setItem(REDIRECT_FLAG, '1'); } catch {}
             await signInWithRedirect(auth, provider);
           } else {
             throw popupErr; // Bubble up for iOS where redirect decision is handled earlier
