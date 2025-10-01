@@ -196,13 +196,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (shouldRedirect) {
-        console.log('Mobile/PWA/Safari detected, using signInWithRedirect');
+        console.log('Environment prefers redirect, using signInWithRedirect');
         await signInWithRedirect(auth, provider);
       } else {
-        console.log('Using signInWithPopup');
-        await signInWithPopup(auth, provider);
-        console.log('signInWithPopup successful');
-        setSuccessMessage('Successfully signed in with Google!');
+        console.log('Attempting signInWithPopup');
+        try {
+          await signInWithPopup(auth, provider);
+          console.log('signInWithPopup successful');
+          setSuccessMessage('Successfully signed in with Google!');
+        } catch (popupErr) {
+          console.warn('signInWithPopup failed, evaluating fallback to redirect...', popupErr);
+          // Fallback to redirect on non-iOS environments to keep flow working
+          const ua = navigator.userAgent.toLowerCase();
+          const isIOS = /iphone|ipad|ipod/.test(ua) || (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1);
+          if (!isIOS) {
+            console.log('Falling back to signInWithRedirect after popup failure');
+            await signInWithRedirect(auth, provider);
+          } else {
+            throw popupErr; // Bubble up for iOS where redirect decision is handled earlier
+          }
+        }
       }
     } catch (err) {
       console.error('signInWithGoogle error:', err);

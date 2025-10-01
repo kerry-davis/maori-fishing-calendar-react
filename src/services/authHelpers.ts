@@ -16,12 +16,16 @@ export function shouldUseRedirect(params?: {
   const isStandalone = !!params?.isStandalone;
 
   const isIOS = /iphone|ipad|ipod/.test(ua) || (typeof navigator !== 'undefined' && (navigator as any).platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1);
-  const isAndroid = /android/.test(ua);
   const isSafari = /safari/.test(ua) && !/chrome|crios|android/.test(ua);
 
-  // Use redirect on platforms where popup or third-party cookies are unreliable
-  if (isPWA || isStandalone || isIOS || isAndroid || isSafari) {
+  // Prefer popup in PWA/standalone to keep flow inside the app
+  if (isPWA || isStandalone) {
+    return false;
+  }
+  // iOS Safari (non-PWA) often blocks popups/3rd-party cookies
+  if (isIOS || isSafari) {
     return true;
   }
+  // Default to popup for Android Chrome/others; redirect if future checks require
   return false;
 }

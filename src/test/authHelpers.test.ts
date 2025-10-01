@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { shouldUseRedirect } from '../services/authHelpers';
 
 describe('shouldUseRedirect', () => {
-  it('uses redirect for PWA/standalone', () => {
-    expect(shouldUseRedirect({ isPWA: true })).toBe(true);
-    expect(shouldUseRedirect({ isStandalone: true })).toBe(true);
+  it('uses popup for PWA/standalone', () => {
+    expect(shouldUseRedirect({ isPWA: true })).toBe(false);
+    expect(shouldUseRedirect({ isStandalone: true })).toBe(false);
   });
 
   it('uses redirect for iOS Safari', () => {
@@ -12,9 +12,9 @@ describe('shouldUseRedirect', () => {
     expect(shouldUseRedirect({ userAgent: ua })).toBe(true);
   });
 
-  it('uses redirect for Android WebView/Chrome', () => {
+  it('uses popup for Android Chrome by default', () => {
     const chromeAndroid = 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.127 Mobile Safari/537.36';
-    expect(shouldUseRedirect({ userAgent: chromeAndroid })).toBe(true);
+    expect(shouldUseRedirect({ userAgent: chromeAndroid })).toBe(false);
   });
 
   it('uses redirect for Safari on macOS (non-Chrome)', () => {
