@@ -17,7 +17,6 @@ import {
   SettingsModal,
   SearchModal,
   GalleryModal,
-  DataMigrationModal,
   LunarModal,
   TripLogModal,
   TripFormModal,
@@ -44,7 +43,6 @@ type ModalState =
   | "settings"
   | "search"
   | "gallery"
-  | "dataMigration"
   | "weatherLog"
   | "fishCatch";
 
@@ -92,6 +90,83 @@ function AppContent() {
   const [editingWeatherId, setEditingWeatherId] = useState<number | null>(null);
   const [tripLogRefreshTrigger, setTripLogRefreshTrigger] = useState(0);
   const [calendarRefreshTrigger, setCalendarRefreshTrigger] = useState(0);
+  // Track explicit user intent to open Settings (prevents accidental openings)
+  const [lastSettingsClickAt, setLastSettingsClickAt] = useState<number | null>(null);
+
+  // Ensure modal state is clean on app initialization (especially for PWA)
+  useEffect(() => {
+    console.log('🚀 App initialized - ensuring clean modal state');
+    console.log('Initial modal state:', currentModal);
+    console.log('URL:', window.location.href);
+    console.log('URL hash:', window.location.hash);
+
+    // Clear any modal-related URL parameters that might be preserved during PWA redirect
+    if (window.location.hash && (window.location.hash.includes('settings') || window.location.hash.includes('modal'))) {
+      console.log('🧹 Clearing modal-related URL hash on app init');
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+
+  // Force modal to none if it's in an unexpected state
+  if (currentModal !== "none") {
+      console.log('⚠️ Unexpected modal state on init, resetting to none');
+      setCurrentModal("none");
+    }
+  }, []); // Only run on mount
+
+  // Additional check for PWA redirect scenarios
+  useEffect(() => {
+    // Check if this is a PWA redirect scenario that might have preserved modal state
+    const isPWA = window.matchMedia('(display-mode: standalone)').matches;
+    const hasModalHash = window.location.hash && window.location.hash.includes('settings');
+
+    if (isPWA && hasModalHash && currentModal === "settings") {
+      console.log('🔍 PWA redirect with Settings modal detected - this might be unintended');
+      console.log('Clearing Settings modal state from PWA redirect');
+      setCurrentModal("none");
+    }
+  }, [currentModal]); // Run when modal state changes
+
+  // ELEGANT: Modal state protection during PWA authentication
+  useEffect(() => {
+    // This effect runs when modal state changes during auth window
+    // The monitoring effect above will handle any unwanted modal openings smoothly
+
+    // Only log if we're in an auth window
+    const lastAuthTime: number | undefined = (window as any).lastAuthTime;
+    const timeSinceLastAuth = typeof lastAuthTime === 'number'
+      ? Date.now() - lastAuthTime
+      : Number.POSITIVE_INFINITY;
+    if (timeSinceLastAuth < 8000) {
+      console.log('🛡️ Modal protection monitoring active for', Math.round((8000 - timeSinceLastAuth) / 1000), 'more seconds');
+    }
+  }, [currentModal]);
+
+  // ELEGANT: Prevent Settings modal during PWA authentication
+  useEffect(() => {
+    if (currentModal === "settings") {
+      console.log('⚙️ Settings modal opening request detected');
+
+      // Check if this might be during PWA authentication
+      const lastAuthTime: number | undefined = (window as any).lastAuthTime;
+      const timeSinceLastAuth = typeof lastAuthTime === 'number'
+        ? Date.now() - lastAuthTime
+        : Number.POSITIVE_INFINITY;
+      const isRecentAuth = timeSinceLastAuth < 8000; // Within 8 seconds
+      const userInitiated = typeof lastSettingsClickAt === 'number' && (Date.now() - lastSettingsClickAt) < 2000;
+
+      if (isRecentAuth && !userInitiated) {
+        console.log('🚫 Settings modal blocked during authentication window');
+        console.log('⏰ Time since auth:', Math.round(timeSinceLastAuth / 1000), 'seconds');
+        console.log('ℹ️ Block reason: not user-initiated');
+
+        // Don't force close - just log and return to none state smoothly
+        setTimeout(() => {
+          console.log('✅ Modal state reset to none after auth completion');
+          setCurrentModal("none");
+        }, 100);
+      }
+    }
+  }, [currentModal, lastSettingsClickAt]);
 
   // Modal handlers
   const handleSearchClick = useCallback(() => {
@@ -103,10 +178,12 @@ function AppContent() {
   }, []);
 
   const handleSettingsClick = useCallback(() => {
+    console.log('⚙️ Settings button clicked - opening Settings modal');
+    setLastSettingsClickAt(Date.now());
     setCurrentModal("settings");
   }, []);
 
-  // Legacy migration handled by unified import in Settings; manual open kept via DataMigration modal entries if used elsewhere.
+  // Legacy migration is handled via Settings workflows; migration modal removed.
 
   const handleTackleBoxClick = useCallback(() => {
     setCurrentModal("tackleBox");
@@ -172,12 +249,7 @@ function AppContent() {
     setTripLogRefreshTrigger(prev => prev + 1); // Trigger refresh
   }, []);
 
-  const handleMigrationComplete = useCallback(() => {
-    console.log('App.tsx: Migration completed - refreshing calendar');
-    // Trigger calendar refresh to show any imported trip indicators
-    setCalendarRefreshTrigger(prev => prev + 1);
-    console.log('App.tsx: Calendar refresh triggered after migration');
-  }, []);
+  // Migration complete handler removed along with migration modal.
 
   const handleTripUpdated = useCallback(() => {
     // Navigate back to the trip log modal after trip is updated
@@ -206,54 +278,18 @@ function AppContent() {
     console.log('App.tsx: Modal closed, set to none');
   }, [currentModal]);
 
-  // Check for data migration when user logs in
+  // Debug effect to track modal state changes
   useEffect(() => {
-    const checkDataMigration = async () => {
-      if (user && isReady) {
-        try {
-          // Use the Firebase data service for migration checks
-          const firebaseDb = (await import('./services/firebaseDataService')).firebaseDataService;
+    console.log('🔍 Modal state changed to:', currentModal);
+    if (currentModal === "settings") {
+      console.log('⚠️ Settings modal opened - checking why...');
+      console.log('Current user:', user?.email || 'none');
+      console.log('URL:', window.location.href);
+      console.log('LocalStorage keys:', Object.keys(localStorage));
+    }
+  }, [currentModal, user]);
 
-          // Check if guest has imported data that needs migration
-          const guestHasImportedData = localStorage.getItem('guestHasImportedData') === 'true';
-
-          if (guestHasImportedData) {
-            console.log('Guest has imported data - attempting automatic migration to Firebase...');
-            try {
-              // Attempt to migrate local data to Firebase
-              await firebaseDb.mergeLocalDataForUser();
-              console.log('Guest data successfully migrated to Firebase');
-
-              // Clear the guest flag
-              localStorage.removeItem('guestHasImportedData');
-
-              // Mark migration as complete
-              localStorage.setItem(`migrationComplete_${user.uid}`, 'true');
-
-              console.log('Migration completed automatically for newly logged in user');
-            } catch (migrationError) {
-              console.error('Automatic migration failed:', migrationError);
-              // Still show the migration modal if automatic migration fails
-            }
-          }
-
-          const [hasLocalData, hasCompletedMigration] = await Promise.all([
-            firebaseDb.hasLocalData(),
-            firebaseDb.hasCompletedMigration()
-          ]);
-
-          if (hasLocalData && !hasCompletedMigration) {
-            // Show migration modal
-            setCurrentModal("dataMigration");
-          }
-        } catch (error) {
-          console.error('Error checking data migration:', error);
-        }
-      }
-    };
-
-    checkDataMigration();
-  }, [user, isReady]);
+  // Data migration modal and check removed per requirements.
 
   // Show loading state while database is initializing
   if (!isReady && !error) {
@@ -367,11 +403,7 @@ function AppContent() {
           onClose={handleCloseModal}
         />
 
-        <DataMigrationModal
-           isOpen={currentModal === "dataMigration"}
-           onClose={handleCloseModal}
-           onMigrationComplete={handleMigrationComplete}
-         />
+        {/* DataMigrationModal removed */}
 
         <LunarModal
           isOpen={currentModal === "lunar"}

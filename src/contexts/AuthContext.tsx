@@ -55,45 +55,144 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribe = onAuthStateChanged(auth, async (newUser) => {
       const previousUser = user;
 
+      // Update user state IMMEDIATELY for responsive UI
+      console.log('Auth state changed - user:', newUser?.uid || 'null', 'email:', newUser?.email || 'none');
+
+      // Clear any unintended modal state that might be preserved during PWA redirect
       if (newUser && !previousUser) {
-        // User is logging in
-        console.log('User logging in, checking for local data and merging...');
-        await firebaseDataService.switchToUser(newUser.uid);
-        
-        // First merge any local data to Firebase, THEN clear local data
-        console.log('Merging any local guest data to Firebase...');
-        await firebaseDataService.mergeLocalDataForUser();
-        
-        // Now clear local data to prevent duplicates with Firebase data
-        console.log('Clearing local data after merge to prevent duplicates');
-        await firebaseDataService.clearAllData();
-        
-        console.log('Login completed - local data merged and Firebase data will be loaded fresh');
+        console.log('🧹 Clearing potentially preserved modal state after login');
+
+        // Clear URL hash if it contains modal state
+        if (window.location.hash && window.location.hash.includes('modal')) {
+          console.log('Clearing modal-related URL hash:', window.location.hash);
+          window.history.replaceState(null, '', window.location.pathname);
+        }
+
+        // Clear any localStorage values that might trigger modals
+        const modalKeys = ['pendingModal', 'intendedModal', 'settingsModalOpen'];
+        modalKeys.forEach(key => {
+          if (localStorage.getItem(key)) {
+            console.log('Clearing localStorage modal key:', key);
+            localStorage.removeItem(key);
+          }
+        });
+      }
+
+      setUser(newUser);
+      setLoading(false);
+
+      // Handle data operations asynchronously WITHOUT blocking UI
+      if (newUser && !previousUser) {
+        // User is logging in - handle data operations in background
+        console.log('User logging in, handling data operations in background...');
+
+        // Use setTimeout to avoid blocking the UI update
+        setTimeout(async () => {
+          try {
+            console.log('Background: Switching to user context...');
+            await firebaseDataService.switchToUser(newUser.uid);
+
+            // For Chrome PWA, minimize background operations for faster UI response
+            const isChromePWA = navigator.userAgent.includes('Chrome') &&
+                               !navigator.userAgent.includes('OPR/') &&
+                               window.matchMedia('(display-mode: standalone)').matches;
+
+            if (isChromePWA) {
+              console.log('Chrome PWA detected - minimizing background operations for faster UI...');
+              // Only do essential operations for Chrome PWA
+              try {
+                await firebaseDataService.mergeLocalDataForUser();
+              } catch (mergeError) {
+                console.warn('Chrome PWA merge failed, continuing anyway:', mergeError);
+              }
+            } else {
+              // Full data operations for other browsers
+              console.log('Background: Merging local guest data to Firebase...');
+              await firebaseDataService.mergeLocalDataForUser();
+
+              console.log('Background: Clearing local data to prevent duplicates...');
+              await firebaseDataService.clearAllData();
+            }
+
+            console.log('Background: Login data operations completed');
+          } catch (error) {
+            console.error('Background data operations error:', error);
+            // Don't set error state here as it would overwrite the successful login
+          }
+        }, 50); // Even smaller delay for faster response
+
       } else if (!newUser && previousUser) {
         // User is logging out
         console.log('User logging out, switching to guest mode...');
         // Don't clear local data - keep it visible for better UX
-        await firebaseDataService.initialize(); // Re-initialize in guest mode.
-        console.log('Switched to guest mode - local data remains visible');
+        setTimeout(async () => {
+          try {
+            await firebaseDataService.initialize(); // Re-initialize in guest mode.
+            console.log('Background: Switched to guest mode - local data remains visible');
+          } catch (error) {
+            console.error('Background logout data operations error:', error);
+          }
+        }, 100);
       }
-
-      console.log('Auth state changed - user:', newUser?.uid || 'null', 'email:', newUser?.email || 'none');
-      setUser(newUser);
-      setLoading(false);
     });
 
-    // Handle redirect result
-    getRedirectResult(auth)
-      .then((result) => {
-        if (result) {
+    // Optimized redirect result handling for mobile PWAs
+    const handleRedirectResult = async () => {
+      const browserInfo = {
+        isChrome: navigator.userAgent.includes('Chrome') && !navigator.userAgent.includes('OPR/'),
+        isAndroid: /Android/i.test(navigator.userAgent),
+        isMobile: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+      };
+
+      console.log('=== FAST REDIRECT RESULT HANDLER ===');
+      console.log('Browser info:', browserInfo);
+
+      try {
+        console.log('Quick check for redirect result...');
+        const result = await getRedirectResult(auth);
+
+        if (result && result.user) {
+          console.log('✅ Fast redirect result successful for user:', result.user.email);
           setSuccessMessage('Successfully signed in with Google!');
+          return; // Exit early on success
+        } else {
+          console.log('❓ No redirect result found');
         }
-      })
-      .catch((err) => {
-        console.error('getRedirectResult error:', err);
-        const errorMessage = err instanceof Error ? err.message : 'Google sign-in failed';
-        setError(errorMessage);
-      });
+      } catch (err) {
+        console.error('❌ getRedirectResult error:', err);
+
+        // For Chrome Android PWA, only retry once quickly
+        if (browserInfo.isChrome && browserInfo.isAndroid && isPWA) {
+          if (err instanceof Error && err.message.includes('no-auth-event')) {
+            console.log('Chrome PWA no-auth-event - single quick retry...');
+            setTimeout(async () => {
+              try {
+                const retryResult = await getRedirectResult(auth);
+                if (retryResult && retryResult.user) {
+                  console.log('✅ Chrome PWA retry successful:', retryResult.user.email);
+                  setSuccessMessage('Successfully signed in with Google!');
+                }
+              } catch (retryError) {
+                console.log('❌ Chrome PWA retry failed:', retryError);
+              }
+            }, 500); // Quick 500ms retry for Chrome PWA
+            return;
+          }
+        }
+
+        // Only show error for actual failures
+        if (err instanceof Error && !err.message.includes('no-auth-event')) {
+          const errorMessage = err.message || 'Google sign-in failed';
+          setError(errorMessage);
+        }
+      }
+    };
+
+    // Handle redirect result for PWA (immediate for faster UI response)
+    if (isPWA) {
+      // Use setTimeout to avoid blocking initial auth state change
+      setTimeout(() => handleRedirectResult(), 50);
+    }
 
     return unsubscribe;
   }, [user]);
@@ -104,6 +203,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     try {
       setError(null);
+      // Mark auth start for PWA modal protection logic
+      if (typeof window !== 'undefined') {
+        (window as any).lastAuthTime = Date.now();
+      }
       await signInWithEmailAndPassword(auth, email, password);
       setSuccessMessage('Successfully signed in!');
     } catch (err) {
@@ -119,6 +222,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     try {
       setError(null);
+      // Mark auth start for PWA modal protection logic
+      if (typeof window !== 'undefined') {
+        (window as any).lastAuthTime = Date.now();
+      }
       await createUserWithEmailAndPassword(auth, email, password);
       setSuccessMessage('Account created successfully!');
     } catch (err) {
@@ -129,27 +236,125 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signInWithGoogle = async () => {
+    console.log('=== AGGRESSIVE MODAL LOCK ENGAGED ===');
     console.log('signInWithGoogle called');
     console.log('auth available:', !!auth);
+    console.log('isPWA:', isPWA);
 
     if (!auth) {
       const errorMsg = 'Firebase authentication is not configured. Please set up your Firebase environment variables.';
       console.error('Auth not available:', errorMsg);
       throw new Error(errorMsg);
     }
+
     try {
       setError(null);
+
+      // Set authentication start timestamp for modal monitoring
+      if (typeof window !== 'undefined') {
+        (window as any).lastAuthTime = Date.now();
+      }
+
+      // ELEGANT: Clean modal state before authentication
+      console.log('🧹 Cleaning modal state before authentication');
+      if (typeof window !== 'undefined') {
+        // Clear URL hash if it contains modal state
+        if (window.location.hash && window.location.hash.includes('settings')) {
+          console.log('Clearing settings-related URL hash');
+          window.history.replaceState(null, '', window.location.pathname);
+        }
+
+        // Clear specific modal trigger keys (less aggressive)
+        const specificModalKeys = ['pendingModal', 'intendedModal', 'settingsModalOpen'];
+        specificModalKeys.forEach(key => {
+          if (localStorage.getItem(key)) {
+            console.log('Clearing specific modal key:', key);
+            localStorage.removeItem(key);
+          }
+        });
+      }
+
       console.log('Creating GoogleAuthProvider...');
       const provider = new GoogleAuthProvider();
-      if (isPWA) {
-        console.log('PWA mode detected, calling signInWithRedirect...');
+
+      // Enhanced browser detection for debugging
+      const userAgent = navigator.userAgent;
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+      const isOpera = userAgent.includes('OPR/') || userAgent.includes('Opera');
+      const isChrome = userAgent.includes('Chrome') && !isOpera;
+      const isAndroid = /Android/i.test(userAgent);
+      const isIOS = /iPhone|iPad|iPod/i.test(userAgent);
+
+      console.log('=== BROWSER DETECTION ===');
+      console.log('User Agent:', userAgent);
+      console.log('isPWA:', isPWA);
+      console.log('isMobile:', isMobile);
+      console.log('isOpera:', isOpera);
+      console.log('isChrome:', isChrome);
+      console.log('isAndroid:', isAndroid);
+      console.log('isIOS:', isIOS);
+      console.log('Display Mode:', window.matchMedia('(display-mode: standalone)').matches);
+
+      if (isPWA && isMobile && isOpera) {
+        // Opera mobile PWA - use redirect with specific configuration
+        console.log('Opera mobile PWA detected - using redirect with custom parameters...');
+        provider.setCustomParameters({
+          prompt: 'select_account'
+        });
         await signInWithRedirect(auth, provider);
+        console.log('Opera PWA redirect initiated');
+      } else if (isPWA && isMobile && isChrome && isAndroid) {
+        // Chrome Android PWA - try popup first, fallback to redirect
+        console.log('Chrome Android PWA detected - trying popup first...');
+        try {
+          await signInWithPopup(auth, provider);
+          console.log('Chrome Android PWA popup successful');
+          setSuccessMessage('Successfully signed in with Google!');
+        } catch (popupError) {
+          console.log('Chrome Android PWA popup failed, using redirect...', popupError);
+          await signInWithRedirect(auth, provider);
+          console.log('Chrome Android PWA redirect initiated');
+        }
+      } else if (isPWA && isMobile) {
+        // Other mobile PWA browsers - use redirect
+        console.log('Other mobile PWA detected - using signInWithRedirect...');
+        await signInWithRedirect(auth, provider);
+        console.log('Other mobile PWA redirect initiated');
+      } else if (isPWA) {
+        // Desktop PWA - try popup first, fallback to redirect
+        console.log('Desktop PWA detected - trying popup first...');
+        try {
+          await signInWithPopup(auth, provider);
+          console.log('Desktop PWA popup successful');
+          setSuccessMessage('Successfully signed in with Google!');
+        } catch (popupError) {
+          console.log('Desktop PWA popup failed, using redirect...', popupError);
+          await signInWithRedirect(auth, provider);
+          console.log('Desktop PWA redirect initiated');
+        }
       } else {
-        console.log('Calling signInWithPopup...');
+        // Regular web mode - use popup
+        console.log('Regular web mode - using signInWithPopup...');
         await signInWithPopup(auth, provider);
-        console.log('signInWithPopup successful');
+        console.log('Regular popup successful');
         setSuccessMessage('Successfully signed in with Google!');
       }
+
+      // ELEGANT: Final cleanup after authentication
+      setTimeout(() => {
+        console.log('🧹 Final modal state cleanup after authentication');
+        if (typeof window !== 'undefined') {
+          // Ensure URL is clean
+          if (window.location.hash && window.location.hash.includes('settings')) {
+            console.log('Final cleanup: clearing settings URL hash');
+            window.history.replaceState(null, '', window.location.pathname);
+          }
+
+          // Set timestamp for monitoring window
+          (window as any).lastAuthTime = Date.now();
+        }
+      }, 100);
+
     } catch (err) {
       console.error('signInWithGoogle error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Google sign-in failed';
@@ -267,10 +472,69 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Expose debug method to window
+  // Expose debug methods to window for Chrome PWA troubleshooting
   useEffect(() => {
     (window as any).clearSyncQueue = clearSyncQueue;
-  }, []);
+    (window as any).debugChromePWA = {
+      checkDetection: () => {
+        const userAgent = navigator.userAgent;
+        const isPWA = window.matchMedia('(display-mode: standalone)').matches;
+        const isChrome = userAgent.includes('Chrome') && !userAgent.includes('OPR/');
+        const isAndroid = /Android/i.test(userAgent);
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+
+        console.log('=== CHROME PWA DETECTION DEBUG ===');
+        console.log('User Agent:', userAgent);
+        console.log('isPWA:', isPWA);
+        console.log('isChrome:', isChrome);
+        console.log('isAndroid:', isAndroid);
+        console.log('isMobile:', isMobile);
+        console.log('Display Mode:', window.matchMedia('(display-mode: standalone)').matches);
+
+        return {
+          isPWA,
+          isChrome,
+          isAndroid,
+          isMobile,
+          userAgent,
+          currentUser: user?.email || 'none'
+        };
+      },
+      testRedirect: async () => {
+        console.log('=== TESTING REDIRECT RESULT ===');
+        try {
+          const result = await getRedirectResult(auth);
+          console.log('Redirect result:', result);
+          if (result && result.user) {
+            console.log('✅ User found:', result.user.email);
+          } else {
+            console.log('❓ No user in redirect result');
+          }
+        } catch (err) {
+          console.log('❌ Redirect result error:', err);
+        }
+      },
+      forceRetry: () => {
+        console.log('=== FORCED RETRY ===');
+        setError(null);
+        // Manually call handleRedirectResult for retry
+        if (isPWA && auth) {
+          getRedirectResult(auth)
+            .then((result) => {
+              if (result && result.user) {
+                console.log('✅ Manual retry successful:', result.user.email);
+                setSuccessMessage('Successfully signed in with Google!');
+              } else {
+                console.log('❓ Manual retry - no result');
+              }
+            })
+            .catch((err) => {
+              console.error('❌ Manual retry error:', err);
+            });
+        }
+      }
+    };
+  }, [user, isPWA, auth]);
 
   const value = {
     user,
