@@ -1,0 +1,89 @@
+name: Promote Vercel to GitHub Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Commit SHA to mirror (optional; defaults to PR head)"
+        required: false
+      env_contains:
+        description: "Substring to match in Vercel environment (e.g., 'Preview')"
+        required: false
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  promote-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mirror Vercel preview to GitHub Preview
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const sha = core.getInput('sha') || (context.payload.pull_request?.head?.sha) || context.sha;
+            const envContains = (core.getInput('env_contains') || 'Preview').toLowerCase();
+
+            const maxAttempts = 30;
+            const delayMs = 10000;
+            async function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+            async function findVercelPreview() {
+              for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                const { data } = await github.request('GET /repos/{owner}/{repo}/deployments', {
+                  owner,
+                  repo,
+                  per_page: 100,
+                });
+                let candidates = data.filter(d => d.ref === sha && d.creator && d.creator.login === 'vercel[bot]');
+                candidates = candidates.filter(c => (c.environment || '').toLowerCase().includes(envContains));
+                if (candidates.length) {
+                  candidates.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+                  return candidates[0];
+                }
+                core.info(`Attempt ${attempt}/${maxAttempts}: No Vercel preview deployment for ${sha} yet. Waiting ${delayMs/1000}s...`);
+                await sleep(delayMs);
+              }
+              return null;
+            }
+
+            const vercelDeployment = await findVercelPreview();
+            if (!vercelDeployment) {
+              core.notice('No Vercel preview found for this commit after waiting. Skipping mirror.');
+              return;
+            }
+
+            const statuses = await github.request('GET /repos/{owner}/{repo}/deployments/{deployment_id}/statuses', {
+              owner, repo, deployment_id: vercelDeployment.id
+            });
+            const success = statuses.data.find(s => s.state === 'success') || statuses.data[0];
+            const vercelUrl = (success && (success.environment_url || success.target_url || success.log_url)) || '';
+
+            const createResp = await github.request('POST /repos/{owner}/{repo}/deployments', {
+              owner,
+              repo,
+              ref: sha,
+              environment: 'Preview',
+              description: `Vercel: ${vercelDeployment.environment}`,
+              auto_merge: false,
+              required_contexts: [],
+              production_environment: false,
+              transient_environment: true
+            });
+
+            const deploymentId = createResp.data.id;
+            await github.request('POST /repos/{owner}/{repo}/deployments/{deployment_id}/statuses', {
+              owner, repo, deployment_id: deploymentId,
+              state: 'success',
+              environment: 'Preview',
+              environment_url: vercelUrl || undefined,
+              target_url: vercelUrl || undefined,
+              log_url: vercelUrl || undefined,
+              description: 'Preview deployment has completed on Vercel'
+            });
+
+            core.info(`Created GitHub Preview deployment ${deploymentId} -> ${vercelUrl}`);

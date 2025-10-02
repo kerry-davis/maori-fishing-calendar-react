@@ -1,0 +1,37 @@
+name: Cleanup extra GitHub environments
+
+on:
+  workflow_dispatch:
+    inputs:
+      keep:
+        description: "Comma-separated list of environments to keep (default: Production,Preview)"
+        required: false
+
+permissions:
+  deployments: write
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete non-canonical environments
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const keepInput = core.getInput('keep') || 'Production,Preview';
+            const keep = new Set(keepInput.split(',').map(s => s.trim()));
+
+            const envs = await github.request('GET /repos/{owner}/{repo}/environments', { owner, repo });
+            for (const env of envs.data.environments) {
+              if (keep.has(env.name)) continue;
+              core.info(`Deleting environment: ${env.name}`);
+              try {
+                await github.request('DELETE /repos/{owner}/{repo}/environments/{environment_name}', {
+                  owner, repo, environment_name: env.name
+                });
+              } catch (e) {
+                core.warning(`Failed to delete ${env.name}: ${e.message}`);
+              }
+            }
