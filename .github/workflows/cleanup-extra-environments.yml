@@ -31,6 +31,7 @@ jobs:
                 await github.request('DELETE /repos/{owner}/{repo}/environments/{environment_name}', {
                   owner, repo, environment_name: env.name
                 });
+                core.info(`Deleted: ${env.name}`);
               } catch (e) {
                 core.warning(`Failed to delete ${env.name}: ${e.message}`);
               }
