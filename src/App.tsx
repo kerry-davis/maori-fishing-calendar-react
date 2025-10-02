@@ -92,6 +92,8 @@ function AppContent() {
   const [editingWeatherId, setEditingWeatherId] = useState<number | null>(null);
   const [tripLogRefreshTrigger, setTripLogRefreshTrigger] = useState(0);
   const [calendarRefreshTrigger, setCalendarRefreshTrigger] = useState(0);
+  // Track explicit user intent to open Settings (prevents accidental openings)
+  const [lastSettingsClickAt, setLastSettingsClickAt] = useState<number | null>(null);
 
   // Ensure modal state is clean on app initialization (especially for PWA)
   useEffect(() => {
@@ -132,7 +134,10 @@ function AppContent() {
     // The monitoring effect above will handle any unwanted modal openings smoothly
 
     // Only log if we're in an auth window
-    const timeSinceLastAuth = Date.now() - (window as any).lastAuthTime || 0;
+    const lastAuthTime: number | undefined = (window as any).lastAuthTime;
+    const timeSinceLastAuth = typeof lastAuthTime === 'number'
+      ? Date.now() - lastAuthTime
+      : Number.POSITIVE_INFINITY;
     if (timeSinceLastAuth < 8000) {
       console.log('🛡️ Modal protection monitoring active for', Math.round((8000 - timeSinceLastAuth) / 1000), 'more seconds');
     }
@@ -144,12 +149,17 @@ function AppContent() {
       console.log('⚙️ Settings modal opening request detected');
 
       // Check if this might be during PWA authentication
-      const timeSinceLastAuth = Date.now() - (window as any).lastAuthTime || 0;
+      const lastAuthTime: number | undefined = (window as any).lastAuthTime;
+      const timeSinceLastAuth = typeof lastAuthTime === 'number'
+        ? Date.now() - lastAuthTime
+        : Number.POSITIVE_INFINITY;
       const isRecentAuth = timeSinceLastAuth < 8000; // Within 8 seconds
+      const userInitiated = typeof lastSettingsClickAt === 'number' && (Date.now() - lastSettingsClickAt) < 2000;
 
-      if (isRecentAuth) {
+      if (isRecentAuth && !userInitiated) {
         console.log('🚫 Settings modal blocked during authentication window');
         console.log('⏰ Time since auth:', Math.round(timeSinceLastAuth / 1000), 'seconds');
+        console.log('ℹ️ Block reason: not user-initiated');
 
         // Don't force close - just log and return to none state smoothly
         setTimeout(() => {
@@ -158,7 +168,7 @@ function AppContent() {
         }, 100);
       }
     }
-  }, [currentModal]);
+  }, [currentModal, lastSettingsClickAt]);
 
   // Modal handlers
   const handleSearchClick = useCallback(() => {
@@ -171,6 +181,7 @@ function AppContent() {
 
   const handleSettingsClick = useCallback(() => {
     console.log('⚙️ Settings button clicked - opening Settings modal');
+    setLastSettingsClickAt(Date.now());
     setCurrentModal("settings");
   }, []);
 
@@ -292,7 +303,10 @@ function AppContent() {
         console.log('🔍 Checking data migration for user:', user.email);
 
         // Check if this is during PWA authentication (within 8 seconds)
-        const timeSinceLastAuth = Date.now() - (window as any).lastAuthTime || 0;
+        const _lastAuthTime: number | undefined = (window as any).lastAuthTime;
+        const timeSinceLastAuth = typeof _lastAuthTime === 'number'
+          ? Date.now() - _lastAuthTime
+          : Number.POSITIVE_INFINITY;
         const isDuringAuth = timeSinceLastAuth < 8000;
 
         if (isDuringAuth) {
