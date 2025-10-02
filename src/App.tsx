@@ -17,7 +17,6 @@ import {
   SettingsModal,
   SearchModal,
   GalleryModal,
-  DataMigrationModal,
   LunarModal,
   TripLogModal,
   TripFormModal,
@@ -44,7 +43,6 @@ type ModalState =
   | "settings"
   | "search"
   | "gallery"
-  | "dataMigration"
   | "weatherLog"
   | "fishCatch";
 
@@ -108,8 +106,8 @@ function AppContent() {
       window.history.replaceState(null, '', window.location.pathname);
     }
 
-    // Force modal to none if it's in an unexpected state (but allow dataMigration)
-    if (currentModal !== "none" && currentModal !== "dataMigration") {
+  // Force modal to none if it's in an unexpected state
+  if (currentModal !== "none") {
       console.log('⚠️ Unexpected modal state on init, resetting to none');
       setCurrentModal("none");
     }
@@ -185,7 +183,7 @@ function AppContent() {
     setCurrentModal("settings");
   }, []);
 
-  // Legacy migration handled by unified import in Settings; manual open kept via DataMigration modal entries if used elsewhere.
+  // Legacy migration is handled via Settings workflows; migration modal removed.
 
   const handleTackleBoxClick = useCallback(() => {
     setCurrentModal("tackleBox");
@@ -251,12 +249,7 @@ function AppContent() {
     setTripLogRefreshTrigger(prev => prev + 1); // Trigger refresh
   }, []);
 
-  const handleMigrationComplete = useCallback(() => {
-    console.log('App.tsx: Migration completed - refreshing calendar');
-    // Trigger calendar refresh to show any imported trip indicators
-    setCalendarRefreshTrigger(prev => prev + 1);
-    console.log('App.tsx: Calendar refresh triggered after migration');
-  }, []);
+  // Migration complete handler removed along with migration modal.
 
   const handleTripUpdated = useCallback(() => {
     // Navigate back to the trip log modal after trip is updated
@@ -296,75 +289,7 @@ function AppContent() {
     }
   }, [currentModal, user]);
 
-  // Check for data migration when user logs in (with modal protection)
-  useEffect(() => {
-    const checkDataMigration = async () => {
-      if (user && isReady) {
-        console.log('🔍 Checking data migration for user:', user.email);
-
-        // Check if this is during PWA authentication (within 8 seconds)
-        const _lastAuthTime: number | undefined = (window as any).lastAuthTime;
-        const timeSinceLastAuth = typeof _lastAuthTime === 'number'
-          ? Date.now() - _lastAuthTime
-          : Number.POSITIVE_INFINITY;
-        const isDuringAuth = timeSinceLastAuth < 8000;
-
-        if (isDuringAuth) {
-          console.log('⏰ Migration check during auth window - deferring to avoid modal conflicts');
-          console.log('⏳ Will retry migration check in 10 seconds');
-          setTimeout(() => checkDataMigration(), 10000);
-          return;
-        }
-
-        try {
-          // Use the Firebase data service for migration checks
-          const firebaseDb = (await import('./services/firebaseDataService')).firebaseDataService;
-
-          // Check if guest has imported data that needs migration
-          const guestHasImportedData = localStorage.getItem('guestHasImportedData') === 'true';
-
-          if (guestHasImportedData) {
-            console.log('Guest has imported data - attempting automatic migration to Firebase...');
-            try {
-              // Attempt to migrate local data to Firebase
-              await firebaseDb.mergeLocalDataForUser();
-              console.log('Guest data successfully migrated to Firebase');
-
-              // Clear the guest flag
-              localStorage.removeItem('guestHasImportedData');
-
-              // Mark migration as complete
-              localStorage.setItem(`migrationComplete_${user.uid}`, 'true');
-
-              console.log('Migration completed automatically for newly logged in user');
-            } catch (migrationError) {
-              console.error('Automatic migration failed:', migrationError);
-              // Still show the migration modal if automatic migration fails
-            }
-          }
-
-          const [hasLocalData, hasCompletedMigration] = await Promise.all([
-            firebaseDb.hasLocalData(),
-            firebaseDb.hasCompletedMigration()
-          ]);
-
-          console.log('Migration check results:', { hasLocalData, hasCompletedMigration });
-
-          if (hasLocalData && !hasCompletedMigration) {
-            console.log('📋 Showing data migration modal');
-            // Show migration modal
-            setCurrentModal("dataMigration");
-          } else {
-            console.log('✅ No migration needed');
-          }
-        } catch (error) {
-          console.error('❌ Error checking data migration:', error);
-        }
-      }
-    };
-
-    checkDataMigration();
-  }, [user, isReady]);
+  // Data migration modal and check removed per requirements.
 
   // Show loading state while database is initializing
   if (!isReady && !error) {
@@ -478,11 +403,7 @@ function AppContent() {
           onClose={handleCloseModal}
         />
 
-        <DataMigrationModal
-           isOpen={currentModal === "dataMigration"}
-           onClose={handleCloseModal}
-           onMigrationComplete={handleMigrationComplete}
-         />
+        {/* DataMigrationModal removed */}
 
         <LunarModal
           isOpen={currentModal === "lunar"}
