@@ -8,6 +8,12 @@ on:
       sha:
         description: "Commit SHA to mirror (optional; defaults to current)"
         required: false
+      env_exact:
+        description: "Exact Vercel environment name to mirror (e.g., 'Production – maori-fishing-calendar-react')"
+        required: false
+      env_contains:
+        description: "Substring that the Vercel environment name should contain (e.g., 'maori-fishing-calendar-react')"
+        required: false
 
 permissions:
   contents: read
@@ -23,12 +29,29 @@ jobs:
           script: |
             const { owner, repo } = context.repo;
             const sha = core.getInput('sha') || context.sha;
+            const envExact = core.getInput('env_exact');
+            const envContains = core.getInput('env_contains');
 
             // Poll for the Vercel-created deployment for this commit
             const maxAttempts = 30; // ~5 minutes at 10s intervals
             const delayMs = 10000;
 
             async function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+            function rankCandidates(list) {
+              // Heuristics to prefer the intended Production environment
+              const repoName = repo; // e.g., maori-fishing-calendar-react
+              const byScore = list.map(d => {
+                const name = (d.environment || '').toLowerCase();
+                let score = 0;
+                if (name.startsWith('production')) score += 10;
+                if (name.includes(repoName.toLowerCase())) score += 5;
+                if (name.includes('staging')) score -= 3;
+                return { d, score, created_at: new Date(d.created_at).getTime() };
+              });
+              byScore.sort((a,b)=> (b.score - a.score) || (b.created_at - a.created_at));
+              return byScore.map(x=>x.d);
+            }
 
             async function findVercelDeployment() {
               for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -38,10 +61,21 @@ jobs:
                   per_page: 100,
                 });
 
-                const candidates = data.filter(d => d.ref === sha && d.creator && d.creator.login === 'vercel[bot]');
+                let candidates = data.filter(d => d.ref === sha && d.creator && d.creator.login === 'vercel[bot]');
                 if (candidates.length) {
-                  candidates.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
-                  return candidates[0];
+                  // If an exact environment name is provided, use it
+                  if (envExact) {
+                    const exact = candidates.find(c => c.environment === envExact);
+                    if (exact) return exact;
+                  }
+                  // If a substring is provided, prefer matches
+                  if (envContains) {
+                    const subset = candidates.filter(c => (c.environment || '').includes(envContains));
+                    if (subset.length) candidates = subset;
+                  }
+                  // Rank with heuristics (prefer Production, repo name, avoid staging), then newest
+                  const ranked = rankCandidates(candidates);
+                  return ranked[0];
                 }
                 core.info(`Attempt ${attempt}/${maxAttempts}: No Vercel deployment for ${sha} yet. Waiting ${delayMs/1000}s...`);
                 await sleep(delayMs);
