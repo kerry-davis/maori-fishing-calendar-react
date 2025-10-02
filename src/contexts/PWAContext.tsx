@@ -74,13 +74,37 @@ export const PWAProvider: React.FC<PWAProviderProps> = ({ children }) => {
     };
   }, []);
 
-  // Check display mode
+  // Check display mode with enhanced detection
   useEffect(() => {
-    const mediaQuery = window.matchMedia('(display-mode: standalone)');
-    setIsPWA(mediaQuery.matches);
+    const checkPWAMode = () => {
+      const mediaQuery = window.matchMedia('(display-mode: standalone)');
+      const isStandalone = mediaQuery.matches;
 
+      // Enhanced PWA detection for iOS and other platforms
+      const isIOSPWA = (window.navigator as any).standalone === true;
+      const isAndroidPWA = window.matchMedia('(display-mode: standalone)').matches && /Android/i.test(navigator.userAgent);
+
+      const isPWA = isStandalone || isIOSPWA || isAndroidPWA;
+
+      console.log('PWA detection:', {
+        isStandalone,
+        isIOSPWA,
+        isAndroidPWA,
+        isPWA,
+        userAgent: navigator.userAgent
+      });
+
+      setIsPWA(isPWA);
+    };
+
+    // Check immediately
+    checkPWAMode();
+
+    // Listen for display mode changes
+    const mediaQuery = window.matchMedia('(display-mode: standalone)');
     const handleChange = (e: MediaQueryListEvent) => {
-      setIsPWA(e.matches);
+      console.log('Display mode changed:', e.matches);
+      checkPWAMode();
     };
 
     mediaQuery.addEventListener('change', handleChange);
