@@ -4,6 +4,10 @@ on:
   push:
     branches: [ "main" ]
   workflow_dispatch:
+    inputs:
+      sha:
+        description: "Commit SHA to mirror (optional; defaults to current)"
+        required: false
 
 permissions:
   contents: read
@@ -13,77 +17,61 @@ jobs:
   promote:
     runs-on: ubuntu-latest
     steps:
-      - name: Find latest Vercel deployment for this commit
-        id: find
+      - name: Mirror Vercel deployment to GitHub Production
         uses: actions/github-script@v7
         with:
           script: |
-            const sha = context.sha;
             const { owner, repo } = context.repo;
+            const sha = core.getInput('sha') || context.sha;
 
-            // Fetch deployments for this repo
-            const deployments = await github.request(
-              'GET /repos/{owner}/{repo}/deployments',
-              { owner, repo, per_page: 100 }
-            );
+            // Poll for the Vercel-created deployment for this commit
+            const maxAttempts = 30; // ~5 minutes at 10s intervals
+            const delayMs = 10000;
 
-            // Keep those created by vercel[bot] for this commit
-            const candidates = deployments.data.filter(d =>
-              d.ref === sha && d.creator && d.creator.login === 'vercel[bot]'
-            );
+            async function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
 
-            if (!candidates.length) {
-              core.setFailed('No Vercel deployment found for this commit. Ensure Vercel posts deployments to GitHub.');
-              return;
+            async function findVercelDeployment() {
+              for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                const { data } = await github.request('GET /repos/{owner}/{repo}/deployments', {
+                  owner,
+                  repo,
+                  per_page: 100,
+                });
+
+                const candidates = data.filter(d => d.ref === sha && d.creator && d.creator.login === 'vercel[bot]');
+                if (candidates.length) {
+                  candidates.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+                  return candidates[0];
+                }
+                core.info(`Attempt ${attempt}/${maxAttempts}: No Vercel deployment for ${sha} yet. Waiting ${delayMs/1000}s...`);
+                await sleep(delayMs);
+              }
+              return null;
             }
 
-            // Most recent
-            candidates.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-            const vercelDeployment = candidates[0];
+            const vercelDeployment = await findVercelDeployment();
+            if (!vercelDeployment) {
+              core.notice('No Vercel deployment found for this commit after waiting. Skipping mirror.');
+              return; // exit gracefully; do not fail the job
+            }
 
-            // Fetch statuses to get the environment URL
+            // Get the deployment URL from statuses
             const statuses = await github.request(
               'GET /repos/{owner}/{repo}/deployments/{deployment_id}/statuses',
               { owner, repo, deployment_id: vercelDeployment.id }
             );
-
             const success = statuses.data.find(s => s.state === 'success') || statuses.data[0];
-            const vercelUrl = (success && (success.environment_url || success.target_url)) || '';
+            const vercelUrl = (success && (success.environment_url || success.target_url || success.log_url)) || '';
 
-            core.info(`Using Vercel deployment ${vercelDeployment.id} (${vercelDeployment.environment}) -> ${vercelUrl}`);
-            core.setOutput('vercel_url', vercelUrl);
-            core.setOutput('vercel_env', vercelDeployment.environment);
+            core.info(`Vercel deployment ${vercelDeployment.id} (${vercelDeployment.environment}) -> ${vercelUrl}`);
 
-      - name: Create GitHub Production deployment
-        id: create_deployment
-        if: steps.find.outputs.vercel_url != null
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { owner, repo } = context.repo;
-            const vercelUrl = core.getInput('vercel_url', { required: false }) || core.getState('vercel_url') || process.env.VERCEL_URL || '';
-            // Work around github-script input scoping: read from previous step outputs via env
-          env:
-            VERCEL_URL: ${{ steps.find.outputs.vercel_url }}
-        continue-on-error: false
-
-      - name: Post deployment and status (Production)
-        if: steps.find.outputs.vercel_url != ''
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { owner, repo } = context.repo;
-            const sha = context.sha;
-            const vercelUrl = '${{ steps.find.outputs.vercel_url }}';
-            const vercelEnv = '${{ steps.find.outputs.vercel_env }}';
-
-            // Create a canonical Production deployment for this commit
+            // Create canonical GitHub Production deployment
             const createResp = await github.request('POST /repos/{owner}/{repo}/deployments', {
               owner,
               repo,
               ref: sha,
               environment: 'Production',
-              description: `Vercel: ${vercelEnv}`,
+              description: `Vercel: ${vercelDeployment.environment}`,
               auto_merge: false,
               required_contexts: [],
               production_environment: true,
@@ -92,16 +80,15 @@ jobs:
 
             const deploymentId = createResp.data.id;
 
-            // Mark it successful and attach the Vercel URL
             await github.request('POST /repos/{owner}/{repo}/deployments/{deployment_id}/statuses', {
               owner,
               repo,
               deployment_id: deploymentId,
               state: 'success',
               environment: 'Production',
-              environment_url: vercelUrl,
-              target_url: vercelUrl,
-              log_url: vercelUrl,
+              environment_url: vercelUrl || undefined,
+              target_url: vercelUrl || undefined,
+              log_url: vercelUrl || undefined,
               description: 'Deployment has completed on Vercel'
             });
 
