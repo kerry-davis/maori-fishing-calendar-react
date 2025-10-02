@@ -203,6 +203,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     try {
       setError(null);
+      // Mark auth start for PWA modal protection logic
+      if (typeof window !== 'undefined') {
+        (window as any).lastAuthTime = Date.now();
+      }
       await signInWithEmailAndPassword(auth, email, password);
       setSuccessMessage('Successfully signed in!');
     } catch (err) {
@@ -218,6 +222,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     try {
       setError(null);
+      // Mark auth start for PWA modal protection logic
+      if (typeof window !== 'undefined') {
+        (window as any).lastAuthTime = Date.now();
+      }
       await createUserWithEmailAndPassword(auth, email, password);
       setSuccessMessage('Account created successfully!');
     } catch (err) {
