@@ -330,6 +330,11 @@ body {
             .btn {
                 @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
                 box-shadow: var(--shadow-sm);
+                /* Neutralize UA default button theming (Chrome dark mode) */
+                -webkit-appearance: none;
+                appearance: none;
+                /* Firefox: ensure button text/appearance isn't auto-colored */
+                -moz-appearance: none;
             }
             .btn-primary {
                 background-color: var(--button-primary);
@@ -348,8 +353,10 @@ body {
         background-color: var(--button-secondary-hover);
     }
     .btn-ghost {
-        background-color: transparent;
-        color: var(--primary-text);
+        /* Transparent background, but explicitly enforce text color so Chrome dark-mode UA styling doesn't invert */
+        background-color: transparent !important;
+        color: var(--primary-text) !important;
+        -webkit-text-fill-color: var(--primary-text) !important; /* Fixes occasional invisible text in Chrome dark mode */
         @apply hover:bg-gray-100 dark:hover:bg-white/10;
     }
     .btn-warning {
