@@ -93,12 +93,15 @@ const ContextualConfirmation: React.FC<ContextualConfirmationProps> = ({
             </p>
             <div className="flex space-x-2">
               <button
+                type="button"
                 onClick={onCancel}
-                className="btn btn-ghost px-3 py-1.5 text-xs"
+                className="btn btn-secondary px-3 py-1.5 text-xs"
+                style={{ background: 'var(--button-secondary)', color: 'white' }}
               >
                 {cancelText}
               </button>
               <button
+                type="button"
                 onClick={onConfirm}
                 className={`${styles.confirmButton} px-3 py-1.5 text-xs`}
               >
