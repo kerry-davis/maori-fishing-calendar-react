@@ -1,5 +1,6 @@
 import type { Trip, WeatherLog, FishCaught } from "../types";
 import { firestore, auth, storage } from "../services/firebase";
+import { encryptionService, ENCRYPTION_COLLECTION_FIELD_MAP, isPossiblyEncrypted } from './encryptionService';
 import { databaseService } from "./databaseService";
 import {
   collection,
@@ -258,7 +259,8 @@ export class FirebaseDataService {
     console.log('Auth currentUser UID:', auth.currentUser?.uid);
 
     const tripId = Date.now();
-    const tripWithUser = { ...sanitizedTripData, id: tripId, userId: this.userId };
+      let tripWithUser: any = { ...sanitizedTripData, id: tripId, userId: this.userId };
+  try { tripWithUser = await encryptionService.encryptFields('trips', tripWithUser); } catch (e) { console.warn('[encryption] trip encrypt failed', e); }
     console.log('Trip data to save:', tripWithUser);
 
     if (this.isOnline) {
@@ -311,7 +313,8 @@ export class FirebaseDataService {
     const localId = trip.id;
     const cleanTrip: any = {};
     Object.entries(trip).forEach(([k, v]) => { if (v !== undefined) (cleanTrip as any)[k] = v; });
-  const tripWithUser: any = { ...cleanTrip, userId: this.userId };
+  let tripWithUser: any = { ...cleanTrip, userId: this.userId };
+  try { tripWithUser = await encryptionService.encryptFields('trips', tripWithUser); } catch (e) { console.warn('[encryption] trip encrypt failed', e); }
   const contentHash = this.computeTripContentHash(trip);
   tripWithUser.contentHash = contentHash;
 
@@ -395,8 +398,8 @@ export class FirebaseDataService {
            const docSnap = await getDoc(docRef);
 
            if (docSnap.exists()) {
-             const data = docSnap.data();
-             return this.convertFromFirestore(data, id, docSnap.id);
+            const data = docSnap.data();
+            return this.convertFromFirestore(data, id, docSnap.id);
            }
          }
        } catch (error) {
@@ -531,7 +534,8 @@ export class FirebaseDataService {
        return databaseService.updateTrip(trip);
      }
 
-     const tripWithUser = { ...trip, userId: this.userId };
+  let tripWithUser: any = { ...trip, userId: this.userId };
+  try { tripWithUser = await encryptionService.encryptFields('trips', tripWithUser); } catch (e) { console.warn('[encryption] trip encrypt failed', e); }
 
      if (this.isOnline) {
        try {
@@ -566,7 +570,8 @@ export class FirebaseDataService {
        throw new Error("Cannot update trip with Firebase ID in guest mode.");
      }
 
-     const tripWithUser = { ...trip, userId: this.userId };
+  let tripWithUser: any = { ...trip, userId: this.userId };
+  try { tripWithUser = await encryptionService.encryptFields('trips', tripWithUser); } catch (e) { console.warn('[encryption] trip encrypt failed', e); }
 
      if (this.isOnline) {
        try {
@@ -732,7 +737,8 @@ await batch.commit();
 
     // Generate a local ID that we will store in the document itself
     const localId = `${weatherData.tripId}-${Date.now()}`;
-    const weatherWithIds = { ...weatherData, id: localId, userId: this.userId };
+  let weatherWithIds: any = { ...weatherData, id: localId, userId: this.userId };
+  try { weatherWithIds = await encryptionService.encryptFields('weatherLogs', weatherWithIds); } catch (e) { console.warn('[encryption] weather encrypt failed', e); }
 
     console.log('[Weather Create] Creating weather log with data:', weatherWithIds);
 
@@ -784,7 +790,8 @@ await batch.commit();
     const localId = weather.id;
     const cleanWeather: any = {};
     Object.entries(weather).forEach(([k, v]) => { if (v !== undefined) (cleanWeather as any)[k] = v; });
-  const weatherWithUser: any = { ...cleanWeather, userId: this.userId };
+  let weatherWithUser: any = { ...cleanWeather, userId: this.userId };
+  try { weatherWithUser = await encryptionService.encryptFields('weatherLogs', weatherWithUser); } catch (e) { console.warn('[encryption] weather encrypt failed', e); }
   const contentHash = this.computeWeatherContentHash(weather);
   weatherWithUser.contentHash = contentHash;
 
@@ -1059,7 +1066,8 @@ await batch.commit();
     };
 
     const localId = `${fishData.tripId}-${Date.now()}`;
-    const fishWithIds: any = { ...sanitizedFishData, id: localId, userId: this.userId };
+  let fishWithIds: any = { ...sanitizedFishData, id: localId, userId: this.userId };
+  try { fishWithIds = await encryptionService.encryptFields('fishCaught', fishWithIds); } catch (e) { console.warn('[encryption] fish encrypt failed', e); }
 
     // If an inline photo is provided and we're online, move it to Storage
     if (this.isOnline && sanitizedFishData.photo && typeof sanitizedFishData.photo === 'string') {
@@ -1129,7 +1137,8 @@ await batch.commit();
   const localId = fish.id;
   const cleanFish: any = {};
     Object.entries(fish).forEach(([k, v]) => { if (v !== undefined) (cleanFish as any)[k] = v; });
-  const fishWithUser: any = { ...cleanFish, userId: this.userId };
+  let fishWithUser: any = { ...cleanFish, userId: this.userId };
+  try { fishWithUser = await encryptionService.encryptFields('fishCaught', fishWithUser); } catch (e) { console.warn('[encryption] fish encrypt failed', e); }
 
   // If we have an inline photo and we're online, move it to Storage
   if (this.isOnline && typeof fishWithUser.photo === 'string' && this.userId) {
@@ -2000,22 +2009,29 @@ await batch.commit();
 
   // OFFLINE QUEUE MANAGEMENT
 
-  private queueOperation(operation: string, collection: string, data: any): number {
-    const queuedOperation = {
+  private async queueOperationAsync(operation: string, collection: string, data: any): Promise<number> {
+    const enqueue = (payload: any) => ({
       id: Date.now(),
       operation,
       collection,
-      data,
+      data: payload,
       timestamp: new Date().toISOString()
-    };
-
+    });
+    let finalData = data;
+    if (!data?._encrypted && encryptionService.isReady()) {
+      try { finalData = await encryptionService.encryptFields(collection, data); } catch (e) { console.warn('[encryption] queue encrypt failed', e); }
+    }
+    const queuedOperation = enqueue(finalData);
     this.syncQueue.push(queuedOperation);
     this.saveSyncQueue();
-
     console.log('Operation queued for sync:', queuedOperation);
-
-    // Return a temporary local ID
     return queuedOperation.id;
+  }
+
+  private queueOperation(operation: string, collection: string, data: any): number {
+    // Fire and forget; returns a synthetic id for compatibility
+    this.queueOperationAsync(operation, collection, data);
+    return Date.now();
   }
 
 
@@ -2075,16 +2091,116 @@ await batch.commit();
     return Math.abs(hash);
   }
 
-  private convertFromFirestore(data: any, localId: number | string, firebaseDocId?: string): any {
+  private convertFromFirestore(data: any, localId: number | string, firebaseDocId?: string, collectionHint?: string): any {
     const { userId, createdAt, updatedAt, ...cleanData } = data;
-    return {
+    const baseObj = {
       ...cleanData,
       id: localId,
       firebaseDocId: firebaseDocId, // Include the Firestore document ID for deletion
-      createdAt: createdAt?.toDate?.()?.toISOString() || createdAt,
-      updatedAt: updatedAt?.toDate?.()?.toISOString() || updatedAt
+      createdAt: (createdAt as any)?.toDate?.()?.toISOString?.() || createdAt,
+      updatedAt: (updatedAt as any)?.toDate?.()?.toISOString?.() || updatedAt
     };
+    if (collectionHint) {
+      return encryptionService.decryptObject(collectionHint, baseObj);
+    }
+    return baseObj;
   }
+
+  // ================= ENCRYPTION MIGRATION (deterministic key) =================
+  private encryptionMigrationRunning = false;
+  private getEncStateKey(collection: string): string { return `encMigrationState_${this.userId}_${collection}`; }
+  private getEncAbortKey(): string { return `encMigrationAbort_${this.userId}`; }
+  private loadEncState(key: string): any { try { const raw = localStorage.getItem(key); if (raw) return JSON.parse(raw); } catch {} return { processed: 0, updated: 0, done: false, cursor: null }; }
+  private saveEncState(key: string, state: any): void { try { localStorage.setItem(key, JSON.stringify(state)); } catch {} }
+  private documentNeedsEncryption(data: any, cfg: { fields: string[]; arrayFields?: string[] }): boolean {
+    for (const f of cfg.fields) {
+      if (typeof data[f] === 'string' && data[f] && !isPossiblyEncrypted(data[f])) return true;
+    }
+    if (cfg.arrayFields) {
+      for (const af of cfg.arrayFields) {
+        const val = data[af];
+        if (Array.isArray(val) && val.some(v => typeof v === 'string' && !isPossiblyEncrypted(v))) return true;
+      }
+    }
+    return false;
+  }
+  async startBackgroundEncryptionMigration(progressCb?: (p: { collection: string; processed: number; updated: number; done: boolean; remaining?: number }) => void): Promise<void> {
+    if (this.encryptionMigrationRunning) return;
+    if (!this.userId || this.isGuest) return;
+    if (!encryptionService.isReady()) return;
+    if (!this.isOnline) return;
+    this.encryptionMigrationRunning = true;
+    try {
+      for (const collection of Object.keys(ENCRYPTION_COLLECTION_FIELD_MAP)) {
+        const stateKey = this.getEncStateKey(collection);
+        const state = this.loadEncState(stateKey);
+        if (state.done) { progressCb?.({ collection, processed: state.processed, updated: state.updated, done: true }); continue; }
+        let cont = true;
+        while (cont) {
+          if (!this.isOnline) { cont = false; break; }
+          if (localStorage.getItem(this.getEncAbortKey()) === '1') { console.warn('[enc-migration] abort flag'); cont = false; break; }
+          const batchRes = await this.processEncryptionMigrationBatch(collection, state);
+            state.processed += batchRes.scanned;
+            state.updated += batchRes.updated;
+            state.cursor = batchRes.nextCursor ?? null;
+            state.done = batchRes.done;
+            this.saveEncState(stateKey, state);
+            progressCb?.({ collection, processed: state.processed, updated: state.updated, done: state.done, remaining: batchRes.remaining });
+            cont = !batchRes.done;
+            if (cont) await new Promise(r => setTimeout(r, 200));
+        }
+      }
+    } catch (e) { console.error('[enc-migration] error', e); } finally { this.encryptionMigrationRunning = false; }
+  }
+  private async processEncryptionMigrationBatch(collectionName: string, state: any): Promise<{ scanned: number; updated: number; done: boolean; nextCursor?: any; remaining?: number }> {
+    const cfg = ENCRYPTION_COLLECTION_FIELD_MAP[collectionName];
+    if (!cfg) return { scanned: 0, updated: 0, done: true };
+    let baseQuery: any;
+    try {
+      if (state.cursor) {
+        baseQuery = query(collection(firestore, collectionName), where('userId','==',this.userId), orderBy('createdAt','asc'), where('createdAt','>', state.cursor));
+      } else {
+        baseQuery = query(collection(firestore, collectionName), where('userId','==',this.userId), orderBy('createdAt','asc'));
+      }
+    } catch {
+      baseQuery = query(collection(firestore, collectionName), where('userId','==',this.userId));
+    }
+    const snapshot = await getDocs(baseQuery);
+    if (snapshot.empty) return { scanned: 0, updated: 0, done: true };
+    let scanned = 0; let updated = 0;
+    const batch = writeBatch(firestore);
+    const WRITE_LIMIT = 350;
+    for (const d of snapshot.docs) {
+      if (updated >= WRITE_LIMIT) break;
+      scanned++;
+      const data = d.data();
+      if (this.documentNeedsEncryption(data, cfg)) {
+        try {
+          const encrypted = await encryptionService.encryptFields(collectionName, data);
+          batch.update(d.ref, encrypted);
+          updated++;
+        } catch (e) { console.warn('[enc-migration] encrypt failed doc '+d.id, e); }
+      }
+    }
+    if (updated > 0) { try { await batch.commit(); } catch (e) { console.error('[enc-migration] commit failed', e); updated = 0; } }
+    const lastDoc = snapshot.docs[snapshot.docs.length - 1];
+    const lastData: any = lastDoc?.data?.();
+    const nextCursor = lastData?.createdAt || null;
+    const done = snapshot.size === 0 || (!nextCursor);
+    return { scanned, updated, done, nextCursor };
+  }
+  getEncryptionMigrationStatus(): { running: boolean; collections: Record<string, { processed: number; updated: number; done: boolean }>; allDone: boolean } {
+    const collections: Record<string, { processed: number; updated: number; done: boolean }> = {};
+    let allDone = true;
+    for (const c of Object.keys(ENCRYPTION_COLLECTION_FIELD_MAP)) {
+      const state = this.loadEncState(this.getEncStateKey(c));
+      collections[c] = { processed: state.processed || 0, updated: state.updated || 0, done: !!state.done };
+      if (!state.done) allDone = false;
+    }
+    return { running: this.encryptionMigrationRunning, collections, allDone };
+  }
+  abortEncryptionMigration(): void { try { localStorage.setItem(this.getEncAbortKey(), '1'); } catch {} }
+  resetEncryptionMigrationState(): void { for (const c of Object.keys(ENCRYPTION_COLLECTION_FIELD_MAP)) { try { localStorage.removeItem(this.getEncStateKey(c)); } catch {} } try { localStorage.removeItem(this.getEncAbortKey()); } catch {} }
 
 
   // TACKLE BOX METHODS
@@ -2156,10 +2272,7 @@ await batch.commit();
 
     try {
       const itemRef = doc(firestore, 'tackleItems', id);
-      await updateDoc(itemRef, {
-        ...updates,
-        updatedAt: serverTimestamp()
-      });
+      await updateDoc(itemRef, { ...updates, updatedAt: serverTimestamp() });
     } catch (error) {
       console.error('Error updating tackle item:', error);
       throw error;

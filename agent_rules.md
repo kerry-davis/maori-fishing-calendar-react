@@ -74,3 +74,17 @@ Top-level principles that guide AI coding work
 ## Enforcement
 - **Level:** Strict
 - **Applicable Contexts:** all_coding_tasks, debugging, development, deployment
+
+## State & living docs
+
+Maintain:
+
+- `README.md` — stable overview.
+- `HANDOFF.md` — current status for continuity.
+
+Refresh triggers: contradictions, omissions, flaky tests, or version uncertainty.
+
+Refresh includes:
+
+- `README.md`: purpose, architecture, stack with versions, run instructions, changelog-lite.
+- `HANDOFF.md`: current status, next steps, test results, artifacts, environment details.
