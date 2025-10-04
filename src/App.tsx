@@ -30,6 +30,7 @@ import {
   OfflineIndicator,
 } from "./components/PWA";
 import { SuccessToast } from "./components/Auth";
+import { EncryptionMigrationStatus } from './components/Encryption/EncryptionMigrationStatus';
 
 // Modal state type for routing different modal views
 type ModalState =
@@ -377,6 +378,9 @@ function AppContent() {
 
       <Footer />
 
+  {/* Background encryption migration status */}
+  <EncryptionMigrationStatus />
+
         {/* Modal components - Basic integration for UAT */}
         <TackleBoxModal
           isOpen={currentModal === "tackleBox"}
@@ -460,6 +464,7 @@ function AppContent() {
 
         {/* Authentication Success Toast */}
         <SuccessToast />
+        {/* End of overlay components */}
     </div>
   );
 }
