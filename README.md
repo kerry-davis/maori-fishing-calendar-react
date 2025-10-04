@@ -62,3 +62,25 @@ This application is based on the traditional Māori lunar calendar system for fi
 ## License
 
 This project respects and acknowledges Māori cultural knowledge. Please use responsibly and with respect for the cultural origins of this information.
+
+## Friendly Firebase Error Messages
+
+Authentication and Firestore errors are mapped to user-friendly messages (no raw Firebase codes like `Firebase: Error (auth/email-already-in-use).`).
+
+Utility: `src/utils/firebaseErrorMessages.ts`
+
+Usage example:
+```ts
+import { mapFirebaseError } from '../utils/firebaseErrorMessages';
+
+try {
+  // await firebase auth / firestore op
+} catch (e) {
+  const message = mapFirebaseError(e, 'login');
+  setError(message);
+}
+```
+
+Contexts supported: `login`, `register`, `google`, `generic`.
+
+Unrecognized errors gracefully fall back to a contextual generic message and network-offline scenarios add an offline hint in the UI.
