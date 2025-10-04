@@ -49,7 +49,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onMobil
         onMobileMenuClose();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      const friendly = err instanceof Error ? err.message : 'An unexpected error occurred.';
+      // Provide offline-specific guidance
+      if (!navigator.onLine) {
+        setError('You appear to be offline. Connect to the internet and try again.');
+      } else {
+        setError(friendly);
+      }
     } finally {
       setLoading(false);
     }
@@ -73,7 +79,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onMobil
       }
     } catch (err) {
       console.error('Google sign-in error:', err);
-      setError(err instanceof Error ? err.message : 'Google sign-in failed');
+      const friendly = err instanceof Error ? err.message : 'Google sign-in failed';
+      if (!navigator.onLine) {
+        setError('You appear to be offline. Connect to the internet and try again.');
+      } else {
+        setError(friendly);
+      }
     } finally {
       setLoading(false);
     }

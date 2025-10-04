@@ -13,6 +13,7 @@ import {
 import { auth } from '../services/firebase';
 import { firebaseDataService } from '../services/firebaseDataService';
 import { usePWA } from './PWAContext';
+import { mapFirebaseError } from '../utils/firebaseErrorMessages';
 
 interface AuthContextType {
   user: User | null;
@@ -203,16 +204,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     try {
       setError(null);
-      // Mark auth start for PWA modal protection logic
       if (typeof window !== 'undefined') {
         (window as any).lastAuthTime = Date.now();
       }
       await signInWithEmailAndPassword(auth, email, password);
       setSuccessMessage('Successfully signed in!');
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Login failed';
-      setError(errorMessage);
-      throw new Error(errorMessage);
+      const friendly = mapFirebaseError(err, 'login');
+      setError(friendly);
+      throw new Error(friendly);
     }
   };
 
@@ -222,16 +222,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     try {
       setError(null);
-      // Mark auth start for PWA modal protection logic
       if (typeof window !== 'undefined') {
         (window as any).lastAuthTime = Date.now();
       }
       await createUserWithEmailAndPassword(auth, email, password);
       setSuccessMessage('Account created successfully!');
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Registration failed';
-      setError(errorMessage);
-      throw new Error(errorMessage);
+      const friendly = mapFirebaseError(err, 'register');
+      setError(friendly);
+      throw new Error(friendly);
     }
   };
 
@@ -357,9 +356,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     } catch (err) {
       console.error('signInWithGoogle error:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Google sign-in failed';
-      setError(errorMessage);
-      throw new Error(errorMessage);
+      const friendly = mapFirebaseError(err, 'google');
+      setError(friendly);
+      throw new Error(friendly);
     }
   };
 
@@ -406,26 +405,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setSuccessMessage('Signed out successfully');
     } catch (err) {
       console.error('Firebase logout error:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Logout failed';
-      setError(errorMessage);
-
-      // If Firebase logout fails, still clear local state as fallback
+      const friendly = mapFirebaseError(err, 'generic');
+      setError(friendly);
       console.log('Clearing local user state as fallback');
       setUser(null);
-
-      // Also try to clear sync queue even if Firebase logout failed
       try {
         firebaseDataService.clearSyncQueue();
         console.log('Sync queue cleared during fallback logout');
-        // Dispatch custom event to notify sync status hook
         window.dispatchEvent(new CustomEvent('syncQueueCleared'));
       } catch (syncError) {
         console.warn('Failed to clear sync queue during fallback logout:', syncError);
       }
-
       setSuccessMessage('Signed out locally');
-
-      throw new Error(errorMessage);
+      throw new Error(friendly);
     }
   };
 
