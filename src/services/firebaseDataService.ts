@@ -399,7 +399,7 @@ export class FirebaseDataService {
 
            if (docSnap.exists()) {
             const data = docSnap.data();
-            return this.convertFromFirestore(data, id, docSnap.id);
+            return await this.convertFromFirestore(data, id, docSnap.id, 'trips');
            }
          }
        } catch (error) {
@@ -429,7 +429,7 @@ export class FirebaseDataService {
          if (docSnap.exists()) {
            const data = docSnap.data();
            const localId = this.generateLocalId(firebaseId);
-           return this.convertFromFirestore(data, localId, firebaseId);
+           return await this.convertFromFirestore(data, localId, firebaseId, 'trips');
          }
        } catch (error) {
          console.warn('Firestore get by Firebase ID failed:', error);
@@ -463,12 +463,15 @@ export class FirebaseDataService {
          console.log('Firestore query returned', querySnapshot.size, 'documents');
          const trips: Trip[] = [];
 
-         querySnapshot.forEach((doc) => {
-           const data = doc.data();
-           const localId = data.id as number;
-           this.storeLocalMapping('trips', localId.toString(), doc.id);
-           trips.push(this.convertFromFirestore(data, localId, doc.id));
-         });
+         // Process all documents concurrently
+        const tripPromises = querySnapshot.docs.map((doc) => {
+          const data = doc.data();
+          const localId = data.id as number;
+          this.storeLocalMapping('trips', localId.toString(), doc.id);
+          return this.convertFromFirestore(data, localId, doc.id, 'trips');
+        });
+
+        trips.push(...(await Promise.all(tripPromises)));
 
          console.log('Returning', trips.length, 'trips from Firestore');
          return trips;
@@ -504,15 +507,16 @@ export class FirebaseDataService {
         );
 
         const querySnapshot = await getDocs(q);
-        const trips: Trip[] = [];
-
-        querySnapshot.forEach((doc) => {
+        
+        // Process all documents concurrently
+        const tripPromises = querySnapshot.docs.map((doc) => {
           const data = doc.data();
           const localId = data.id as number;
           this.storeLocalMapping('trips', localId.toString(), doc.id);
-          trips.push(this.convertFromFirestore(data, localId, doc.id));
+          return this.convertFromFirestore(data, localId, doc.id, 'trips');
         });
 
+        const trips = await Promise.all(tripPromises) as Trip[];
         console.log(`Found ${trips.length} trips in Firebase for user ${this.userId}`);
         return trips;
       } catch (error) {
@@ -866,7 +870,7 @@ await batch.commit();
 
           if (docSnap.exists()) {
             const data = docSnap.data();
-            return this.convertFromFirestore(data, id, firebaseId) as WeatherLog;
+            return await this.convertFromFirestore(data, id, firebaseId, 'weatherLogs') as WeatherLog;
           }
         }
 
@@ -883,7 +887,7 @@ await batch.commit();
           const data = doc.data();
           // Ensure mapping is stored for future lookups
           await this.storeLocalMapping('weatherLogs', id, doc.id);
-          return this.convertFromFirestore(data, id, doc.id) as WeatherLog;
+          return await this.convertFromFirestore(data, id, doc.id, 'weatherLogs') as WeatherLog;
         }
 
       } catch (error) {
@@ -909,15 +913,16 @@ await batch.commit();
         );
 
         const querySnapshot = await getDocs(q);
-        const weatherLogs: WeatherLog[] = [];
-
-        querySnapshot.forEach((doc) => {
+        
+        // Process all documents concurrently
+        const weatherLogPromises = querySnapshot.docs.map((doc) => {
           const data = doc.data();
           const localId = data.id as string; // The ID is stored in the document
           this.storeLocalMapping('weatherLogs', localId, doc.id);
-          weatherLogs.push(this.convertFromFirestore(data, localId, doc.id) as WeatherLog);
+          return this.convertFromFirestore(data, localId, doc.id, 'weatherLogs');
         });
 
+        const weatherLogs = await Promise.all(weatherLogPromises) as WeatherLog[];
         return weatherLogs;
       } catch (error) {
         console.warn('Firestore query failed, falling back to local:', error);
@@ -941,15 +946,16 @@ await batch.commit();
         );
 
         const querySnapshot = await getDocs(q);
-        const weatherLogs: WeatherLog[] = [];
-
-        querySnapshot.forEach((doc) => {
+        
+        // Process all documents concurrently
+        const weatherLogPromises = querySnapshot.docs.map((doc) => {
           const data = doc.data();
           const localId = data.id as string; // The ID is stored in the document
           this.storeLocalMapping('weatherLogs', localId, doc.id);
-          weatherLogs.push(this.convertFromFirestore(data, localId, doc.id) as WeatherLog);
+          return this.convertFromFirestore(data, localId, doc.id, 'weatherLogs');
         });
 
+        const weatherLogs = await Promise.all(weatherLogPromises) as WeatherLog[];
         return weatherLogs;
       } catch (error) {
         console.warn('Firestore query failed, falling back to local:', error);
@@ -966,7 +972,8 @@ await batch.commit();
       return databaseService.updateWeatherLog(weatherLog);
     }
 
-    const weatherWithUser = { ...weatherLog, userId: this.userId };
+    let weatherWithUser = { ...weatherLog, userId: this.userId };
+  try { weatherWithUser = await encryptionService.encryptFields('weatherLogs', weatherWithUser); } catch (e) { console.warn('[encryption] weather encrypt failed', e); }
 
     if (this.isOnline) {
       try {
@@ -1231,7 +1238,7 @@ await batch.commit();
 
           if (docSnap.exists()) {
             const data = docSnap.data();
-            return this.convertFromFirestore(data, id, firebaseId) as FishCaught;
+            return await this.convertFromFirestore(data, id, firebaseId, 'fishCaught') as FishCaught;
           }
         }
 
@@ -1246,7 +1253,7 @@ await batch.commit();
           const doc = fishSnapshot.docs[0];
           const data = doc.data();
           await this.storeLocalMapping('fishCaught', id, doc.id);
-          return this.convertFromFirestore(data, id, doc.id) as FishCaught;
+          return await this.convertFromFirestore(data, id, doc.id, 'fishCaught') as FishCaught;
         }
 
       } catch (error) {
@@ -1272,15 +1279,16 @@ await batch.commit();
         );
 
         const querySnapshot = await getDocs(q);
-        const fishCaught: FishCaught[] = [];
-
-        querySnapshot.forEach((doc) => {
+        
+        // Process all documents concurrently
+        const fishPromises = querySnapshot.docs.map((doc) => {
           const data = doc.data();
           const localId = data.id as string;
           this.storeLocalMapping('fishCaught', localId, doc.id);
-          fishCaught.push(this.convertFromFirestore(data, localId, doc.id) as FishCaught);
+          return this.convertFromFirestore(data, localId, doc.id, 'fishCaught');
         });
 
+        const fishCaught = await Promise.all(fishPromises) as FishCaught[];
         return fishCaught;
       } catch (error) {
         console.warn('Firestore query failed, falling back to local:', error);
@@ -1304,15 +1312,16 @@ await batch.commit();
         );
 
         const querySnapshot = await getDocs(q);
-        const fishCaught: FishCaught[] = [];
-
-        querySnapshot.forEach((doc) => {
+        
+        // Process all documents concurrently
+        const fishPromises = querySnapshot.docs.map((doc) => {
           const data = doc.data();
           const localId = data.id as string;
           this.storeLocalMapping('fishCaught', localId, doc.id);
-          fishCaught.push(this.convertFromFirestore(data, localId, doc.id) as FishCaught);
+          return this.convertFromFirestore(data, localId, doc.id, 'fishCaught');
         });
 
+        const fishCaught = await Promise.all(fishPromises) as FishCaught[];
         return fishCaught;
       } catch (error) {
         console.warn('Firestore query failed, falling back to local:', error);
@@ -1329,7 +1338,8 @@ await batch.commit();
       return databaseService.updateFishCaught(fishCaught);
     }
 
-    const fishWithUser: any = { ...fishCaught, userId: this.userId };
+    let fishWithUser: any = { ...fishCaught, userId: this.userId };
+  try { fishWithUser = await encryptionService.encryptFields('fishCaught', fishWithUser); } catch (e) { console.warn('[encryption] fish encrypt failed', e); }
     // If updating with an inline photo and online, move to Storage
     if (this.isOnline && typeof fishWithUser.photo === 'string' && this.userId) {
       const data = this.dataUrlToBytes(fishWithUser.photo);
@@ -1686,19 +1696,27 @@ await batch.commit();
       // Check if trip already exists in Firestore
       const existingFirebaseId = await getExistingTripFirebaseId(localId);
 
+      // Prepare trip data with encryption for Firestore
+      let tripWithData = { ...tripData, id: localId, userId: this.userId };
+      try {
+        tripWithData = await encryptionService.encryptFields('trips', tripWithData);
+      } catch (e) { 
+        console.warn('[encryption] merge trip encrypt failed', e); 
+      }
+
       if (existingFirebaseId) {
         // Trip already exists, update it
         console.log(`Trip ${localId} already exists in Firestore, updating...`);
         const tripRef = doc(firestore, 'trips', existingFirebaseId);
-        const cleanTrip = cleanForFirebase(tripData);
-        batch.update(tripRef, { ...cleanTrip, id: localId, userId: this.userId, updatedAt: serverTimestamp() });
+        const cleanTrip = cleanForFirebase(tripWithData);
+        batch.update(tripRef, { ...cleanTrip, updatedAt: serverTimestamp() });
         tripIdMap.set(localId, existingFirebaseId);
       } else {
         // Trip doesn't exist, create new one
         console.log(`Trip ${localId} doesn't exist in Firestore, creating...`);
         const newTripRef = doc(collection(firestore, 'trips'));
-        const cleanTrip = cleanForFirebase(tripData);
-        batch.set(newTripRef, { ...cleanTrip, id: localId, userId: this.userId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+        const cleanTrip = cleanForFirebase(tripWithData);
+        batch.set(newTripRef, { ...cleanTrip, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
         tripIdMap.set(localId, newTripRef.id);
       }
     }
@@ -1724,18 +1742,26 @@ await batch.commit();
         // Check if weather log already exists in Firestore
         const existingFirebaseId = await getExistingWeatherLogFirebaseId(localId);
 
+        // Prepare weather log data with encryption for Firestore
+        let logWithData = { ...logData, id: localId, tripId: originalTripId, userId: this.userId };
+        try {
+          logWithData = await encryptionService.encryptFields('weatherLogs', logWithData);
+        } catch (e) { 
+          console.warn('[encryption] merge weather log encrypt failed', e); 
+        }
+
         if (existingFirebaseId) {
           // Weather log already exists, update it
           console.log(`Weather log ${localId} already exists in Firestore, updating...`);
           const logRef = doc(firestore, 'weatherLogs', existingFirebaseId);
-          const cleanLog = cleanForFirebase(logData);
-          batch.update(logRef, { ...cleanLog, id: localId, tripId: originalTripId, userId: this.userId, updatedAt: serverTimestamp() });
+          const cleanLog = cleanForFirebase(logWithData);
+          batch.update(logRef, { ...cleanLog, updatedAt: serverTimestamp() });
         } else {
           // Weather log doesn't exist, create new one
           console.log(`Weather log ${localId} doesn't exist in Firestore, creating...`);
           const newLogRef = doc(collection(firestore, 'weatherLogs'));
-          const cleanLog = cleanForFirebase(logData);
-          batch.set(newLogRef, { ...cleanLog, id: localId, tripId: originalTripId, userId: this.userId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+          const cleanLog = cleanForFirebase(logWithData);
+          batch.set(newLogRef, { ...cleanLog, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
         }
       }
     }
@@ -1758,18 +1784,26 @@ await batch.commit();
         // Check if fish caught already exists in Firestore
         const existingFirebaseId = await getExistingFishCaughtFirebaseId(localId);
 
+        // Prepare fish data with encryption for Firestore
+        let fishWithData = { ...fishData, id: localId, tripId: originalTripId, userId: this.userId };
+        try {
+          fishWithData = await encryptionService.encryptFields('fishCaught', fishWithData);
+        } catch (e) { 
+          console.warn('[encryption] merge fish encrypt failed', e); 
+        }
+
         if (existingFirebaseId) {
           // Fish caught already exists, update it
           console.log(`Fish caught ${localId} already exists in Firestore, updating...`);
           const fishRef = doc(firestore, 'fishCaught', existingFirebaseId);
-          const cleanFish = cleanForFirebase(fishData);
-          batch.update(fishRef, { ...cleanFish, id: localId, tripId: originalTripId, userId: this.userId, updatedAt: serverTimestamp() });
+          const cleanFish = cleanForFirebase(fishWithData);
+          batch.update(fishRef, { ...cleanFish, updatedAt: serverTimestamp() });
         } else {
           // Fish caught doesn't exist, create new one
           console.log(`Fish caught ${localId} doesn't exist in Firestore, creating...`);
           const newFishRef = doc(collection(firestore, 'fishCaught'));
-          const cleanFish = cleanForFirebase(fishData);
-          batch.set(newFishRef, { ...cleanFish, id: localId, tripId: originalTripId, userId: this.userId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+          const cleanFish = cleanForFirebase(fishWithData);
+          batch.set(newFishRef, { ...cleanFish, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
         }
       }
     }
@@ -2091,7 +2125,7 @@ await batch.commit();
     return Math.abs(hash);
   }
 
-  private convertFromFirestore(data: any, localId: number | string, firebaseDocId?: string, collectionHint?: string): any {
+  private async convertFromFirestore(data: any, localId: number | string, firebaseDocId?: string, collectionHint?: string): Promise<any> {
     const { userId, createdAt, updatedAt, ...cleanData } = data;
     const baseObj = {
       ...cleanData,
@@ -2101,7 +2135,7 @@ await batch.commit();
       updatedAt: (updatedAt as any)?.toDate?.()?.toISOString?.() || updatedAt
     };
     if (collectionHint) {
-      return encryptionService.decryptObject(collectionHint, baseObj);
+      return await encryptionService.decryptObject(collectionHint, baseObj);
     }
     return baseObj;
   }
@@ -2247,12 +2281,18 @@ await batch.commit();
     };
 
     try {
-      const itemData = {
+      let itemData = {
         ...sanitizedItem,
         userId: this.userId,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       };
+
+      try {
+        itemData = await encryptionService.encryptFields('tackleItems', itemData);
+      } catch (e) { 
+        console.warn('[encryption] tackle create encrypt failed', e); 
+      }
 
       const docRef = await addDoc(collection(firestore, 'tackleItems'), itemData);
       return docRef.id;
@@ -2271,8 +2311,14 @@ await batch.commit();
     }
 
     try {
+      let encryptedUpdates = { ...updates };
+      try {
+        encryptedUpdates = await encryptionService.encryptFields('tackleItems', encryptedUpdates);
+      } catch (e) { 
+        console.warn('[encryption] tackle update encrypt failed', e); 
+      }
       const itemRef = doc(firestore, 'tackleItems', id);
-      await updateDoc(itemRef, { ...updates, updatedAt: serverTimestamp() });
+      await updateDoc(itemRef, { ...encryptedUpdates, updatedAt: serverTimestamp() });
     } catch (error) {
       console.error('Error updating tackle item:', error);
       throw error;
