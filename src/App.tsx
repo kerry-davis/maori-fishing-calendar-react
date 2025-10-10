@@ -31,6 +31,7 @@ import {
 } from "./components/PWA";
 import { SuccessToast } from "./components/Auth";
 import { EncryptionMigrationStatus } from './components/Encryption/EncryptionMigrationStatus';
+import { MigrationVerification } from './components/Debug/MigrationVerification';
 
 // Modal state type for routing different modal views
 type ModalState =
@@ -464,6 +465,16 @@ function AppContent() {
 
         {/* Authentication Success Toast */}
         <SuccessToast />
+
+        {/* Development Debug Components */}
+        {/* Uncomment for migration verification debugging */}
+        {/* <MigrationVerification /> */}
+        {/* End Development Debug Components */}
+
+        {/* PWA Components */}
+        <OfflineIndicator />
+        <PWAInstallPrompt />
+        <PWAUpdateNotification />
         {/* End of overlay components */}
     </div>
   );

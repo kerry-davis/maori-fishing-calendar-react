@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import type { User } from 'firebase/auth';
 import {
   signInWithEmailAndPassword,
@@ -21,6 +21,7 @@ interface AuthContextType {
   loading: boolean;
   successMessage: string | null;
   error: string | null;
+  encryptionReady: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
@@ -46,7 +47,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [encryptionReady, setEncryptionReady] = useState(false);
   const { isPWA } = usePWA();
+  const migrationStartedRef = useRef(false);
 
   useEffect(() => {
     if (!auth) {
@@ -99,6 +102,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               try {
                 await encryptionService.setDeterministicKey(newUser.uid, newUser.email);
                 console.log('Background: Encryption key initialized for user');
+                setEncryptionReady(true);
+                
+                // Start background encryption migration immediately after key is ready
+                if (encryptionService.isReady() && !migrationStartedRef.current) {
+                  console.log('Background: Starting background encryption migration...');
+                  migrationStartedRef.current = true;
+                  try {
+                    await firebaseDataService.startBackgroundEncryptionMigration();
+                    console.log('Background: Encryption migration started successfully');
+                  } catch (migrationError) {
+                    console.error('Background: Failed to start encryption migration:', migrationError);
+                    // Don't block login flow, migration is non-critical
+                  }
+                }
               } catch (encryptionError) {
                 console.error('Background: Failed to initialize encryption key:', encryptionError);
                 // Don't block login flow, but surface the error
@@ -142,6 +159,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.log('User logging out, switching to guest mode...');
         // Clear encryption key when logging out
         encryptionService.clear();
+        setEncryptionReady(false);
+        // Reset migration flag
+        migrationStartedRef.current = false;
         // Don't clear local data - keep it visible for better UX
         setTimeout(async () => {
           try {
@@ -213,7 +233,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     return unsubscribe;
-  }, [user]);
+  }, [user, migrationStartedRef]);
 
   const login = async (email: string, password: string) => {
     if (!auth) {
@@ -444,6 +464,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Clear encryption key
     encryptionService.clear();
+    setEncryptionReady(false);
     
     // Clear sync queue
     try {
@@ -553,6 +574,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loading,
     successMessage,
     error,
+    encryptionReady,
     login,
     register,
     signInWithGoogle,
