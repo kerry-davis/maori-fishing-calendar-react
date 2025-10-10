@@ -2158,6 +2158,49 @@ await batch.commit();
     }
     return false;
   }
+  /**
+   * Check if error is a Firebase index error
+   */
+  private isFirebaseIndexError(error: Error): boolean {
+    const indexErrorMessages = [
+      'requires an index',
+      'missing index',
+      'index not found',
+      'The query requires an index',
+      'FAILED_PRECONDITION'
+    ];
+    
+    return indexErrorMessages.some(msg => 
+      error.message.toLowerCase().includes(msg.toLowerCase()) ||
+      error.stack?.toLowerCase().includes(msg.toLowerCase()) ||
+      error.name === 'FirebaseError'
+    );
+  }
+
+  /**
+   * Extract collection name from Firebase index error
+   */
+  private extractCollectionFromError(error: Error): string | null {
+    const message = error.message;
+    
+    // Look for collection patterns in error messages
+    const collectionPatterns = [
+      /collection\s+"([^"]+)"/i,
+      /from\s+(\w+)/i,
+      /on\s+(\w+)\s+collection/i
+    ];
+    
+    for (const pattern of collectionPatterns) {
+      const match = message.match(pattern);
+      if (match && match[1]) {
+        return match[1];
+      }
+    }
+    
+    // Default to trips if we can't extract (most common case)
+    return 'trips';
+  }
+
   async startBackgroundEncryptionMigration(progressCb?: (p: { collection: string; processed: number; updated: number; done: boolean; remaining?: number }) => void): Promise<void> {
     if (this.encryptionMigrationRunning) return;
     if (!this.userId || this.isGuest) return;
@@ -2184,7 +2227,74 @@ await batch.commit();
             if (cont) await new Promise(r => setTimeout(r, 200));
         }
       }
-    } catch (e) { console.error('[enc-migration] error', e); } finally { this.encryptionMigrationRunning = false; }
+    } catch (e) { 
+      console.error('[enc-migration] error', e); 
+      
+      // Handle Firebase index errors specifically
+      if (e instanceof Error && this.isFirebaseIndexError(e)) {
+        console.error('[enc-migration] Firebase index error detected - failing fast');
+        
+        // Mark the affected collection as done to prevent indefinite hanging
+        const affectedCollection = this.extractCollectionFromError(e) || 'trips';
+        try {
+          const stateKey = this.getEncStateKey(affectedCollection);
+          const currentState = this.loadEncState(stateKey);
+          currentState.done = true;
+          this.saveEncState(stateKey, currentState);
+          
+          console.warn(`[enc-migration] Marked collection '${affectedCollection}' as done due to index error`);
+          
+          // Dispatch index error event for UI to show proper message
+          window.dispatchEvent(new CustomEvent('encryptionIndexError', {
+            detail: { 
+              collection: affectedCollection,
+              error: e.message,
+              userId: this.userId,
+              consoleUrl: 'https://console.firebase.google.com/'
+            }
+          }));
+        } catch (stateError) {
+          console.error('[enc-migration] Failed to mark collection as done after index error:', stateError);
+        }
+      }
+      
+      // Log migration failure telemetry
+      console.error('[enc-migration] Migration failed:', {
+        error: e instanceof Error ? e.message : 'Unknown error',
+        userId: this.userId,
+        isGuest: this.isGuest,
+        isOnline: this.isOnline,
+        encryptionReady: encryptionService.isReady(),
+        isIndexError: e instanceof Error && this.isFirebaseIndexError(e)
+      });
+    } finally { 
+      this.encryptionMigrationRunning = false;
+      
+      // Check if migration completed successfully and log success
+      if (this.encryptionMigrationRunning === false) {
+        try {
+          const finalStatus = this.getEncryptionMigrationStatus();
+          if (finalStatus.allDone) {
+            console.log('[enc-migration] Migration completed successfully:', {
+              userId: this.userId,
+              collections: finalStatus.collections,
+              totalProcessed: Object.values(finalStatus.collections).reduce((sum, col) => sum + col.processed, 0),
+              totalUpdated: Object.values(finalStatus.collections).reduce((sum, col) => sum + col.updated, 0)
+            });
+            
+            // Dispatch migration completion event for UI to listen to
+            window.dispatchEvent(new CustomEvent('encryptionMigrationCompleted', {
+              detail: { 
+                userId: this.userId,
+                status: finalStatus
+              }
+            }));
+          }
+        } catch (statusError) {
+          console.warn('[enc-migration] Failed to get final migration status:', statusError);
+        }
+      }
+    }
   }
   private async processEncryptionMigrationBatch(collectionName: string, state: any): Promise<{ scanned: number; updated: number; done: boolean; nextCursor?: any; remaining?: number }> {
     const cfg = ENCRYPTION_COLLECTION_FIELD_MAP[collectionName];
