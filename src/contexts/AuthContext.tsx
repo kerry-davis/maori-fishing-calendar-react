@@ -12,6 +12,7 @@ import {
 } from 'firebase/auth';
 import { auth } from '../services/firebase';
 import { firebaseDataService } from '../services/firebaseDataService';
+import { encryptionService } from '../services/encryptionService';
 import { usePWA } from './PWAContext';
 import { mapFirebaseError } from '../utils/firebaseErrorMessages';
 
@@ -93,6 +94,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.log('Background: Switching to user context...');
             await firebaseDataService.switchToUser(newUser.uid);
 
+            // Initialize encryption key for the user
+            if (newUser.email) {
+              try {
+                await encryptionService.setDeterministicKey(newUser.uid, newUser.email);
+                console.log('Background: Encryption key initialized for user');
+              } catch (encryptionError) {
+                console.error('Background: Failed to initialize encryption key:', encryptionError);
+                // Don't block login flow, but surface the error
+                if (encryptionError instanceof Error && encryptionError.message.includes('VITE_KEY_PEPPER')) {
+                  console.warn('VITE_KEY_PEPPER environment variable is missing or empty');
+                }
+              }
+            }
+
             // For Chrome PWA, minimize background operations for faster UI response
             const isChromePWA = navigator.userAgent.includes('Chrome') &&
                                !navigator.userAgent.includes('OPR/') &&
@@ -125,6 +140,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else if (!newUser && previousUser) {
         // User is logging out
         console.log('User logging out, switching to guest mode...');
+        // Clear encryption key when logging out
+        encryptionService.clear();
         // Don't clear local data - keep it visible for better UX
         setTimeout(async () => {
           try {
@@ -425,6 +442,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const forceLogout = () => {
     console.log('Force logout called - clearing all user state');
 
+    // Clear encryption key
+    encryptionService.clear();
+    
     // Clear sync queue
     try {
       firebaseDataService.clearSyncQueue();
