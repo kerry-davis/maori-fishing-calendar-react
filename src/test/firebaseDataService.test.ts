@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { FirebaseDataService } from '../services/firebaseDataService';
-import type { Trip, WeatherLog, FishCaught } from '../types';
+import type { Trip, WeatherLog, FishCaught, ImportProgress } from '../types';
 
 // Mock Firebase modules
 vi.mock('../services/firebase', () => ({
@@ -9,8 +9,54 @@ vi.mock('../services/firebase', () => ({
     currentUser: {
       uid: 'test-user-id'
     }
-  }
+  },
+  storage: {}
 }));
+
+const { storageRefMock, listAllMock, deleteObjectMock } = vi.hoisted(() => ({
+  storageRefMock: vi.fn(),
+  listAllMock: vi.fn(),
+  deleteObjectMock: vi.fn()
+}));
+
+vi.mock('firebase/storage', () => ({
+  ref: storageRefMock,
+  uploadBytes: vi.fn(),
+  getDownloadURL: vi.fn(),
+  getMetadata: vi.fn(),
+  listAll: listAllMock,
+  deleteObject: deleteObjectMock
+}));
+
+const makeSnapshot = (name: string, count: number) => {
+  const docs = Array.from({ length: count }, (_, index) => ({ ref: { path: `${name}/doc${index + 1}` } }));
+  return {
+    empty: count === 0,
+    size: count,
+    docs,
+    forEach: (cb: (doc: any) => void) => docs.forEach(cb)
+  };
+};
+
+const createLocalStorageMock = () => {
+  const store = new Map<string, string>();
+  return {
+    get length() {
+      return store.size;
+    },
+    clear: vi.fn(() => {
+      store.clear();
+    }),
+    getItem: vi.fn((key: string) => (store.has(key) ? store.get(key)! : null)),
+    key: vi.fn((index: number) => Array.from(store.keys())[index] ?? null),
+    removeItem: vi.fn((key: string) => {
+      store.delete(key);
+    }),
+    setItem: vi.fn((key: string, value: string) => {
+      store.set(key, value);
+    })
+  } as unknown as Storage;
+};
 
 vi.mock('firebase/firestore', () => {
   const originalModule = vi.importActual('firebase/firestore');
@@ -63,8 +109,15 @@ describe('FirebaseDataService', () => {
   let service: FirebaseDataService;
 
   beforeEach(() => {
-    service = new FirebaseDataService();
     vi.clearAllMocks();
+    storageRefMock.mockImplementation((_, path: string) => ({ fullPath: path }));
+    listAllMock.mockImplementation(async () => ({ items: [], prefixes: [] }));
+    deleteObjectMock.mockResolvedValue(undefined);
+    Object.defineProperty(window, 'localStorage', {
+      value: createLocalStorageMock(),
+      configurable: true
+    });
+    service = new FirebaseDataService();
   });
 
   describe('initialization', () => {
@@ -103,6 +156,213 @@ describe('FirebaseDataService', () => {
     });
   });
 
+  describe('clearFirestoreUserData', () => {
+    beforeEach(async () => {
+      await service.initialize('test-user-id');
+    });
+
+    it('cleans Firestore collections and related storage assets', async () => {
+      const firestore = await import('firebase/firestore');
+      const { collection, query, where, getDocs, writeBatch } = firestore as any;
+
+      collection.mockImplementation((_: unknown, name: string) => ({ collection: name }));
+      query.mockImplementation((ref: any) => ref);
+      where.mockImplementation(() => ({}));
+
+      getDocs.mockImplementation(async (ref: any) => {
+        switch (ref.collection) {
+          case 'trips':
+            return makeSnapshot('trips', 2);
+          case 'weatherLogs':
+            return makeSnapshot('weatherLogs', 1);
+          case 'fishCaught':
+            return makeSnapshot('fishCaught', 1);
+          default:
+            return makeSnapshot(ref.collection ?? 'unknown', 0);
+        }
+      });
+
+      const batchDeletePaths: string[] = [];
+      const commitSpy = vi.fn(() => Promise.resolve());
+
+      writeBatch.mockImplementation(() => ({
+        delete: vi.fn((ref: { path: string }) => {
+          batchDeletePaths.push(ref.path);
+        }),
+        commit: commitSpy,
+        set: vi.fn(),
+        update: vi.fn()
+      }));
+
+      listAllMock.mockImplementation(async (ref: { fullPath: string }) => {
+        if (ref.fullPath === 'users/test-user-id/catches') {
+          return {
+            prefixes: [],
+            items: [{ fullPath: 'users/test-user-id/catches/catch1.jpg' }]
+          };
+        }
+        if (ref.fullPath === 'users/test-user-id/images') {
+          return {
+            prefixes: [],
+            items: [{ fullPath: 'users/test-user-id/images/hash1' }]
+          };
+        }
+        return { prefixes: [], items: [] };
+      });
+
+      const { databaseService } = await import('../services/databaseService');
+
+      await expect(service.clearFirestoreUserData()).resolves.toBeUndefined();
+
+      expect(batchDeletePaths).toEqual([
+        'trips/doc1',
+        'trips/doc2',
+        'weatherLogs/doc1',
+        'fishCaught/doc1'
+      ]);
+      expect(commitSpy).toHaveBeenCalledTimes(3);
+      expect(listAllMock).toHaveBeenCalledWith(expect.objectContaining({ fullPath: 'users/test-user-id/catches' }));
+      expect(listAllMock).toHaveBeenCalledWith(expect.objectContaining({ fullPath: 'users/test-user-id/images' }));
+      expect(deleteObjectMock).toHaveBeenCalledTimes(2);
+      expect(deleteObjectMock).toHaveBeenCalledWith(expect.objectContaining({ fullPath: 'users/test-user-id/catches/catch1.jpg' }));
+      expect(deleteObjectMock).toHaveBeenCalledWith(expect.objectContaining({ fullPath: 'users/test-user-id/images/hash1' }));
+      expect(databaseService.clearAllData).toHaveBeenCalled();
+    });
+
+    it('skips storage cleanup when storage is unavailable', async () => {
+      const firestore = await import('firebase/firestore');
+      const { collection, query, where, getDocs, writeBatch } = firestore as any;
+
+      collection.mockImplementation((_: unknown, name: string) => ({ collection: name }));
+      query.mockImplementation((ref: any) => ref);
+      where.mockImplementation(() => ({}));
+      getDocs.mockImplementation(async (ref: any) => {
+        switch (ref.collection) {
+          case 'trips':
+          case 'weatherLogs':
+          case 'fishCaught':
+            return makeSnapshot(ref.collection, 0);
+          default:
+            return makeSnapshot('unknown', 0);
+        }
+      });
+
+      writeBatch.mockImplementation(() => ({
+        delete: vi.fn(),
+        commit: vi.fn(() => Promise.resolve()),
+        set: vi.fn(),
+        update: vi.fn()
+      }));
+
+      listAllMock.mockClear();
+      deleteObjectMock.mockClear();
+
+      (service as any).storageInstance = undefined;
+      (service as any).hasLoggedStorageUnavailable = false;
+
+      await expect(service.clearFirestoreUserData()).resolves.toBeUndefined();
+
+      expect(listAllMock).not.toHaveBeenCalled();
+      expect(deleteObjectMock).not.toHaveBeenCalled();
+      const { databaseService } = await import('../services/databaseService');
+      expect(databaseService.clearAllData).toHaveBeenCalled();
+    });
+
+    it('retains inline photo data when storage uploads are skipped', async () => {
+      const { databaseService } = await import('../services/databaseService');
+      const firestore = await import('firebase/firestore');
+
+      (service as any).storageInstance = undefined;
+      (service as any).hasLoggedStorageUnavailable = false;
+
+      const fishData: Omit<FishCaught, 'id'> = {
+        tripId: 1,
+        species: 'Salmon',
+        length: '30in',
+        weight: '10lb',
+        time: '10:00',
+        gear: ['rod'],
+        details: 'Fresh catch',
+        photo: 'data:image/png;base64,AAAA'
+      };
+
+      vi.spyOn(databaseService, 'createFishCaught');
+      const queuedSpy = vi.spyOn(service as any, 'queueOperation');
+      vi.spyOn(firestore, 'collection').mockImplementation(() => ({}));
+      vi.spyOn(firestore, 'serverTimestamp').mockImplementation(() => ({}));
+
+      let capturedPayload: any = null;
+      vi.spyOn(firestore, 'addDoc').mockImplementation(async (_ref: any, payload: any) => {
+        capturedPayload = payload;
+        return { id: 'firebase-doc-id' };
+      });
+
+      await service.createFishCaught(fishData);
+
+      const { addDoc } = firestore as any;
+      expect(addDoc).toHaveBeenCalledTimes(1);
+      expect(queuedSpy).not.toHaveBeenCalled();
+      expect(databaseService.createFishCaught).not.toHaveBeenCalled();
+      expect(capturedPayload.photo).toMatch(/^data:image\/png;base64/);
+      expect(capturedPayload.photoHash).toBeDefined();
+    });
+
+    it('reports progress milestones during data wipe', async () => {
+      const firestore = await import('firebase/firestore');
+      const { collection, query, where, getDocs, writeBatch } = firestore as any;
+
+      collection.mockImplementation((_: unknown, name: string) => ({ collection: name }));
+      query.mockImplementation((ref: any) => ref);
+      where.mockImplementation(() => ({}));
+
+      getDocs.mockImplementation(async (ref: any) => {
+        switch (ref.collection) {
+          case 'trips':
+            return makeSnapshot('trips', 2);
+          case 'weatherLogs':
+            return makeSnapshot('weatherLogs', 1);
+          case 'fishCaught':
+            return makeSnapshot('fishCaught', 0);
+          default:
+            return makeSnapshot('unknown', 0);
+        }
+      });
+
+      writeBatch.mockImplementation(() => ({
+        delete: vi.fn(),
+        commit: vi.fn(() => Promise.resolve()),
+        set: vi.fn(),
+        update: vi.fn()
+      }));
+
+      listAllMock.mockImplementation(async (ref: { fullPath: string }) => {
+        if (ref.fullPath === 'users/test-user-id/catches') {
+          return { prefixes: [], items: [{ fullPath: 'users/test-user-id/catches/photo1' }] };
+        }
+        if (ref.fullPath === 'users/test-user-id/images') {
+          return { prefixes: [], items: [] };
+        }
+        return { prefixes: [], items: [] };
+      });
+
+      deleteObjectMock.mockImplementation(async () => undefined);
+
+      const progressEvents: ImportProgress[] = [];
+
+      await service.clearFirestoreUserData((progress) => {
+        progressEvents.push(progress);
+      });
+
+      expect(progressEvents.length).toBeGreaterThan(0);
+      expect(progressEvents[0].phase).toBe('preparing');
+      expect(progressEvents.some((event) => event.phase === 'storage-inventory')).toBe(true);
+      expect(progressEvents.some((event) => event.phase === 'delete-trips')).toBe(true);
+      const finalEvent = progressEvents[progressEvents.length - 1];
+      expect(finalEvent.phase).toBe('complete');
+      expect(finalEvent.percent).toBe(100);
+    });
+  });
+
   describe('ID mapping functionality', () => {
     beforeEach(async () => {
       await service.initialize('test-user-id');
@@ -112,41 +372,21 @@ describe('FirebaseDataService', () => {
       const mockLocalId = '123';
       const mockFirebaseId = 'firebase-doc-id';
 
-      // Mock localStorage
-      const originalGetItem = Storage.prototype.getItem;
-      const originalSetItem = Storage.prototype.setItem;
-
-      Storage.prototype.getItem = vi.fn((key: string) => {
-        if (key === `idMapping_test-user-id_trips_${mockLocalId}`) {
-          return mockFirebaseId;
-        }
-        return null;
-      });
-
-      Storage.prototype.setItem = vi.fn();
-
       // Test storing mapping
       await service['storeLocalMapping']('trips', mockLocalId, mockFirebaseId);
+
+      expect(window.localStorage.getItem(`idMapping_test-user-id_trips_${mockLocalId}`)).toBe(mockFirebaseId);
 
       // Test retrieving mapping
       const retrievedId = await service['getFirebaseId']('trips', mockLocalId);
       expect(retrievedId).toBe(mockFirebaseId);
-
-      // Restore original methods
-      Storage.prototype.getItem = originalGetItem;
-      Storage.prototype.setItem = originalSetItem;
     });
 
     it('should handle missing ID mappings gracefully', async () => {
       const mockLocalId = 'nonexistent-id';
 
-      const originalGetItem = Storage.prototype.getItem;
-      Storage.prototype.getItem = vi.fn(() => null);
-
       const retrievedId = await service['getFirebaseId']('trips', mockLocalId);
       expect(retrievedId).toBeNull();
-
-      Storage.prototype.getItem = originalGetItem;
     });
   });
 
@@ -245,20 +485,12 @@ describe('FirebaseDataService', () => {
       }));
 
       // Mock existing ID mapping
-      const originalGetItem = Storage.prototype.getItem;
-      Storage.prototype.getItem = vi.fn((key: string) => {
-        if (key === 'idMapping_test-user-id_trips_1') {
-          return 'existing-firebase-id';
-        }
-        return null;
-      });
+      window.localStorage.setItem('idMapping_test-user-id_trips_1', 'existing-firebase-id');
 
       await service.mergeLocalDataForUser();
 
       // Verify that update was called instead of create
       expect(mockBatchUpdate).toHaveBeenCalled();
-
-      Storage.prototype.getItem = originalGetItem;
     });
 
     it('should create new records when no existing mapping found', async () => {
@@ -302,16 +534,10 @@ describe('FirebaseDataService', () => {
         delete: vi.fn(),
       }));
 
-      // Mock no existing ID mappings
-      const originalGetItem = Storage.prototype.getItem;
-      Storage.prototype.getItem = vi.fn(() => null);
-
       await service.mergeLocalDataForUser();
 
       // Verify that new records were created
       expect(mockSet).toHaveBeenCalledTimes(3); // 1 trip + 1 weather + 1 fish
-
-      Storage.prototype.getItem = originalGetItem;
     });
 
     it('should handle stale ID mappings correctly', async () => {
@@ -360,29 +586,13 @@ describe('FirebaseDataService', () => {
       }));
 
       // Mock stale ID mapping
-      const originalGetItem = Storage.prototype.getItem;
-      const originalRemoveItem = Storage.prototype.removeItem;
-      const originalSetItem = Storage.prototype.setItem;
-
-      Storage.prototype.getItem = vi.fn((key: string) => {
-        if (key === 'idMapping_test-user-id_trips_1') {
-          return 'stale-firebase-id';
-        }
-        return null;
-      });
-
-      Storage.prototype.removeItem = vi.fn();
-      Storage.prototype.setItem = vi.fn();
+      window.localStorage.setItem('idMapping_test-user-id_trips_1', 'stale-firebase-id');
 
       await service.mergeLocalDataForUser();
 
       // Verify that stale mapping was removed and fallback was used
-      expect(Storage.prototype.removeItem).toHaveBeenCalledWith('idMapping_test-user-id_trips_1');
-      expect(Storage.prototype.setItem).toHaveBeenCalledWith('idMapping_test-user-id_trips_1', 'fallback-firebase-id');
-
-      Storage.prototype.getItem = originalGetItem;
-      Storage.prototype.removeItem = originalRemoveItem;
-      Storage.prototype.setItem = originalSetItem;
+      expect(window.localStorage.removeItem).toHaveBeenCalledWith('idMapping_test-user-id_trips_1');
+      expect(window.localStorage.setItem).toHaveBeenCalledWith('idMapping_test-user-id_trips_1', 'fallback-firebase-id');
     });
 
     it('should skip orphaned records during merge', async () => {
