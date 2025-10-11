@@ -1,7 +1,4 @@
 @import "tailwindcss";
-/* Tailwind v4 content sources */
-@source "../index.html";
-@source "./**/*.{js,ts,jsx,tsx}";
 
 /* CSS Variables for Theme System */
 :root {
@@ -121,25 +118,35 @@ body {
     }
     h1 {
         color: var(--primary-text) !important;
-        @apply font-semibold tracking-tight;
+        font-weight: 600;
+        letter-spacing: -0.025em;
     }
     h2 {
         color: var(--primary-text) !important;
-        @apply font-semibold tracking-tight;
+        font-weight: 600;
+        letter-spacing: -0.025em;
     }
 }
 
 /* Custom styles from the original application */
 @layer components {
     .form-label {
-        @apply block mb-2 font-medium;
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 500;
         color: var(--primary-text) !important;
     }
 }
 
 @layer components {
     .calendar-day {
-        @apply min-h-[80px] cursor-pointer flex flex-col items-center justify-around p-1;
+        min-height: 80px;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: space-around;
+        padding: 0.25rem;
         transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
         background-color: var(--card-background) !important;
         border: 1px solid var(--card-border) !important;
@@ -147,33 +154,49 @@ body {
     }
 
     .calendar-day:hover {
-        @apply -translate-y-0.5;
+        transform: translateY(-0.125rem);
         box-shadow: var(--shadow-lg) !important;
     }
 
     .calendar-day-empty {
-        @apply min-h-[80px] rounded-lg;
+        min-height: 80px;
+        border-radius: 0.5rem;
         background-color: var(--secondary-background) !important;
         border: 1px solid var(--border-color) !important;
     }
 
     .day-number {
-        @apply text-lg font-semibold;
+        font-size: 1.125rem;
+        line-height: 1.75rem;
+        font-weight: 600;
         color: var(--primary-text) !important;
     }
 
     .quality-indicator {
-        @apply w-3 h-3 rounded-full mt-1;
+        width: 0.75rem;
+        height: 0.75rem;
+        border-radius: 9999px;
+        margin-top: 0.25rem;
     }
 }
 
 @layer components {
     .log-indicator {
-        @apply absolute bottom-0.5 right-1 text-sm text-yellow-500 dark:text-yellow-400;
+        position: absolute;
+        bottom: 0.125rem;
+        right: 0.25rem;
+        font-size: 0.875rem;
+        line-height: 1.25rem;
+        color: #eab308;
+    }
+
+    body.dark-theme .log-indicator,
+    html.dark .log-indicator {
+        color: #facc15;
     }
 
     .log-indicator i {
-        @apply inline-block;
+        display: inline-block;
         animation: fish-pulse 2s ease-in-out infinite;
     }
 }
@@ -196,33 +219,47 @@ body {
     }
 
     .quality-text {
-        @apply text-xs font-bold opacity-0 transition-opacity duration-200 mt-0.5;
+        font-size: 0.75rem;
+        line-height: 1rem;
+        font-weight: 700;
+        opacity: 0;
+        transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        margin-top: 0.125rem;
     }
 
     .calendar-day:hover .quality-text {
-        @apply opacity-100;
+        opacity: 1;
     }
 }
 @layer components {
     .modal-open {
-        @apply overflow-hidden;
+        overflow: hidden;
     }
 
     .modal {
-        @apply flex items-center justify-center opacity-0 invisible transition-all duration-300;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        visibility: hidden;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         background-color: rgba(0, 0, 0, 0.5);
     }
 
     .modal.is-visible {
-        @apply opacity-100 visible;
+        opacity: 1;
+        visibility: visible;
     }
 
     .modal > div {
-        @apply opacity-0 scale-95 transition-all duration-200;
+        opacity: 0;
+        transform: scale(0.95);
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
     .modal.is-visible > div {
-        @apply opacity-100 scale-100;
+        opacity: 1;
+        transform: scale(1);
     }
 
     /* Mobile modal fixes */
@@ -264,27 +301,80 @@ body {
 }
 @layer components {
     .modal-close-button {
-        @apply z-50;
+        z-index: 50;
     }
 
     .moon-phase-info {
-        @apply text-sm text-gray-500 mt-2;
+        font-size: 0.875rem;
+        line-height: 1.25rem;
+        color: #6b7280;
+        margin-top: 0.5rem;
     }
 
     .bite-time-item {
-        @apply flex items-center mb-2;
+        display: flex;
+        align-items: center;
+        margin-bottom: 0.5rem;
     }
 
     .nav-button {
-        @apply transition-all duration-200;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
     .nav-button:hover:not(:disabled) {
-        @apply scale-105;
+        transform: scale(1.05);
     }
 
     .nav-button:disabled {
-        @apply opacity-50 cursor-not-allowed;
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .google-signin-button {
+        background-color: #ffffff !important;
+        border: 1px solid #dadce0 !important;
+        color: #3c4043 !important;
+        font-weight: 500 !important;
+        transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease !important;
+        box-shadow: 0 1px 3px rgba(60, 64, 67, 0.15), 0 1px 2px rgba(60, 64, 67, 0.3) !important;
+    }
+
+    .google-signin-button svg {
+        transition: transform 0.2s ease !important;
+    }
+
+    .google-signin-button:hover:not(:disabled) {
+        background-color: #f7f8f8 !important;
+        border-color: #c4c6c9 !important;
+        box-shadow: 0 4px 6px rgba(60, 64, 67, 0.15), 0 2px 3px rgba(60, 64, 67, 0.2) !important;
+    }
+
+    body.dark-theme .google-signin-button:hover:not(:disabled),
+    html.dark body .google-signin-button:hover:not(:disabled) {
+        background-color: #e8eaed !important;
+        border-color: #9aa0a6 !important;
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.45), 0 2px 4px rgba(0, 0, 0, 0.4) !important;
+    }
+
+    .google-signin-button:active:not(:disabled) {
+        background-color: #e8eaed !important;
+        border-color: #c4c6c9 !important;
+        box-shadow: 0 2px 4px rgba(60, 64, 67, 0.2) inset !important;
+    }
+
+    .google-signin-button:focus-visible {
+        background-color: #ffffff !important;
+        border-color: #4285f4 !important;
+        box-shadow: 0 0 0 1px #4285f4, 0 0 0 4px rgba(66, 133, 244, 0.35) !important;
+        outline: none !important;
+    }
+
+    .google-signin-button:disabled {
+        color: rgba(60, 64, 67, 0.6) !important;
+        background-color: #f5f5f5 !important;
+        border-color: #dadce0 !important;
+        box-shadow: none !important;
+        cursor: not-allowed !important;
     }
 }
 
@@ -318,132 +408,247 @@ body {
 
 /* Design System: Container, Card, Buttons */
 @layer components {
-    .container-pro { @apply mx-auto max-w-7xl px-4 sm:px-6 lg:px-8; }
-        .card {
-            background-color: var(--card-background);
-            border: 1px solid var(--card-border);
-            box-shadow: var(--shadow-sm);
-            @apply backdrop-blur rounded-2xl;
-        }
-    .card-padding { @apply p-6 sm:p-8; }
+    .container-pro {
+        margin-left: auto;
+        margin-right: auto;
+        max-width: 80rem;
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
 
-            .btn {
-                @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
-                box-shadow: var(--shadow-sm);
-                /* Neutralize UA default button theming (Chrome dark mode) */
-                -webkit-appearance: none;
-                appearance: none;
-                /* Firefox: ensure button text/appearance isn't auto-colored */
-                -moz-appearance: none;
-            }
-            .btn-primary {
-                background-color: var(--button-primary);
-                color: white;
-                @apply hover:shadow;
-            }
-            .btn-primary:hover {
-                background-color: var(--button-primary-hover);
-            }
+    @media (min-width: 640px) {
+        .container-pro {
+            padding-left: 1.5rem;
+            padding-right: 1.5rem;
+        }
+    }
+
+    @media (min-width: 1024px) {
+        .container-pro {
+            padding-left: 2rem;
+            padding-right: 2rem;
+        }
+    }
+
+    .card {
+        background-color: var(--card-background);
+        border: 1px solid var(--card-border);
+        box-shadow: var(--shadow-sm);
+        backdrop-filter: blur(8px);
+        border-radius: 1rem;
+    }
+
+    .card-padding {
+        padding: 1.5rem;
+    }
+
+    @media (min-width: 640px) {
+        .card-padding {
+            padding: 2rem;
+        }
+    }
+
+    .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        border-radius: 0.75rem;
+        padding: 0.5rem 1rem;
+        font-size: 0.875rem;
+        line-height: 1.25rem;
+        font-weight: 500;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: var(--shadow-sm);
+        -webkit-appearance: none;
+        appearance: none;
+        -moz-appearance: none;
+        outline: none;
+    }
+
+    .btn:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 2px;
+    }
+
+    .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .btn-primary {
+        background-color: var(--button-primary);
+        color: #ffffff;
+    }
+
+    .btn-primary:hover {
+        background-color: var(--button-primary-hover);
+        box-shadow: var(--shadow-md);
+    }
+
     .btn-secondary {
         background-color: var(--button-secondary);
-        color: white;
-        @apply focus-visible:ring-gray-900;
+        color: #ffffff;
     }
+
     .btn-secondary:hover {
         background-color: var(--button-secondary-hover);
     }
+
+    .btn-secondary:focus-visible {
+        outline: 2px solid #111827;
+        outline-offset: 2px;
+    }
+
     .btn-ghost {
-        /* Transparent background, but explicitly enforce text color so Chrome dark-mode UA styling doesn't invert */
         background-color: transparent !important;
         color: var(--primary-text) !important;
-        -webkit-text-fill-color: var(--primary-text) !important; /* Fixes occasional invisible text in Chrome dark mode */
-        @apply hover:bg-gray-100 dark:hover:bg-white/10;
+        -webkit-text-fill-color: var(--primary-text) !important;
     }
+
+    .btn-ghost:hover {
+        background-color: #f3f4f6 !important;
+    }
+
+    body.dark-theme .btn-ghost:hover,
+    html.dark .btn-ghost:hover {
+        background-color: rgba(255, 255, 255, 0.1) !important;
+    }
+
     .btn-warning {
         background-color: #f59e0b;
-        color: white;
-        @apply hover:bg-amber-400 active:bg-amber-600;
+        color: #ffffff;
     }
+
+    .btn-warning:hover {
+        background-color: #fbbf24;
+    }
+
+    .btn-warning:active {
+        background-color: #d97706;
+    }
+
     .btn-danger {
         background-color: #ef4444;
-        color: white;
-        @apply hover:bg-red-500 active:bg-red-700;
+        color: #ffffff;
     }
-            .icon-btn {
-                background-color: var(--card-background);
-                border: 1px solid var(--card-border);
-                color: var(--primary-text);
-                box-shadow: var(--shadow-sm);
-                @apply hover:shadow hover:-translate-y-0.5 transition-all rounded-lg w-7 h-7 sm:w-8 sm:h-8 md:w-9 md:h-9 lg:w-10 lg:h-10 inline-flex items-center justify-center;
-            }
 
-            /* Mobile menu icon buttons with labels */
-            .mobile-menu .icon-btn {
-                @apply rounded-sm min-h-[24px] flex-col justify-center;
-                border-radius: 2px;
-            }
+    .btn-danger:hover {
+        background-color: #f87171;
+    }
 
-            /* Mobile menu icon buttons with labels */
-            .mobile-menu .icon-btn {
-                @apply rounded-sm min-h-[24px] flex-col justify-center;
-                border-radius: 2px;
-            }
+    .btn-danger:active {
+        background-color: #b91c1c;
+    }
 
-            /* Mobile menu container */
-            .mobile-menu {
-                @apply shadow-lg;
-            }
-            .icon-btn:hover {
-                color: var(--accent-color);
-                transform: translateY(-0.5px);
-            }
+    .icon-btn {
+        background-color: var(--card-background);
+        border: 1px solid var(--card-border);
+        color: var(--primary-text);
+        box-shadow: var(--shadow-sm);
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        border-radius: 0.5rem;
+        width: 1.75rem;
+        height: 1.75rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
 
+    @media (min-width: 640px) {
+        .icon-btn {
+            width: 2rem;
+            height: 2rem;
+        }
+    }
+
+    @media (min-width: 768px) {
+        .icon-btn {
+            width: 2.25rem;
+            height: 2.25rem;
+        }
+    }
+
+    @media (min-width: 1024px) {
+        .icon-btn {
+            width: 2.5rem;
+            height: 2.5rem;
+        }
+    }
+
+    .icon-btn:hover {
+        color: var(--accent-color);
+        transform: translateY(-0.125rem);
+        box-shadow: var(--shadow-md);
+    }
+
+    .mobile-menu .icon-btn {
+        border-radius: 0.125rem;
+        min-height: 24px;
+        flex-direction: column;
+        justify-content: center;
+    }
+
+    .mobile-menu {
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+    }
 }
 
 /* Focus visible improvements */
 @layer utilities {
-    .focus-ring { @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2; }
+    .focus-ring:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 2px;
+    }
 }
 
 /* Responsive Refinements */
 @layer components {
     @media (max-width: 768px) {
         .responsive-title {
-            @apply text-3xl;
+            font-size: 1.875rem;
+            line-height: 2.25rem;
         }
 
         .responsive-month {
-            @apply text-xl;
+            font-size: 1.25rem;
+            line-height: 1.75rem;
         }
 
         .modal > div {
-            @apply max-h-[95vh];
+            max-height: 95vh;
         }
     }
 
     @media (max-width: 480px) {
         .responsive-container {
-            @apply px-3;
+            padding-left: 0.75rem;
+            padding-right: 0.75rem;
         }
 
         .responsive-nav-button {
-            @apply px-3 py-2 text-sm;
+            padding: 0.5rem 0.75rem;
+            font-size: 0.875rem;
+            line-height: 1.25rem;
         }
 
         .calendar-day {
-            @apply min-h-[65px];
+            min-height: 65px;
         }
 
         .responsive-title {
-            @apply text-2xl;
+            font-size: 1.5rem;
+            line-height: 2rem;
         }
 
         .day-number {
-            @apply text-base;
+            font-size: 1rem;
+            line-height: 1.5rem;
         }
 
         .modal > div {
-            @apply m-2 max-w-full;
+            margin: 0.5rem;
+            max-width: 100%;
         }
     }
 }
@@ -469,11 +674,11 @@ body {
     }
 
     .best-performing-insights p {
-        @apply mb-2;
+        margin-bottom: 0.5rem;
     }
 
     .modal-content-covered {
-        @apply pointer-events-none;
+        pointer-events: none;
         transition: none !important;
         transform: scale(1) !important;
         opacity: 1 !important;
@@ -487,11 +692,11 @@ body {
 /* Tackle Box specific styles */
 @layer components {
     .tacklebox-form {
-        @apply hidden;
+        display: none;
     }
 
     .tacklebox-form.active {
-        @apply block;
+        display: block;
     }
 
     .data-filters-section {

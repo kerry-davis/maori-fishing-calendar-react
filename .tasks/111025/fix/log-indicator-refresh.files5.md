@@ -1,0 +1,1 @@
+- src/components/Calendar/Calendar.tsx — removed unused auth context fields in calendar hook
