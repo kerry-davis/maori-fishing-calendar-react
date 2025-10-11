@@ -1,0 +1,5 @@
+planner:
+please create .tasks/[filename].md with a set of tasks to be done in a seq. order to address this. the first item should be the project path eg. /home/pulsta/vscode/repo/maori-fishing-calendar-react, the last item is to create file .tasks/[filename].[files].md with a list in short form the files changed
+
+worker:
+a new set of task have been provided @.tasks/[filename].md please implement

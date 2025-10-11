@@ -298,6 +298,8 @@ export interface DatabaseContextType {
   db: IDBDatabase | null;
   isReady: boolean;
   error: string | null;
+  dataReady: boolean; // Indicates when user-specific data is loaded and ready
+  dataReadyTimestamp: number | null; // Timestamp when data became ready
 }
 
 export interface User {
