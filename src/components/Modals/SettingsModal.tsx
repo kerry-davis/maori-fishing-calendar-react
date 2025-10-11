@@ -7,6 +7,7 @@ import ConfirmationDialog from '../UI/ConfirmationDialog';
 import { useAuth } from '../../contexts/AuthContext';
 import { firebaseDataService } from '../../services/firebaseDataService';
 import { databaseService } from '../../services/databaseService';
+import type { ImportProgress } from '../../types';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -26,8 +27,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [isDeletingAll, setIsDeletingAll] = useState(false);
   const [showImportConfirm, setShowImportConfirm] = useState(false);
   const [pendingImportFile, setPendingImportFile] = useState<File | null>(null);
-  const [importProgress, setImportProgress] = useState<import('../../types').ImportProgress | null>(null);
+  const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
   const [importStats, setImportStats] = useState<ImportResult | ZipImportResult | null>(null);
+  const [deleteProgress, setDeleteProgress] = useState<ImportProgress | null>(null);
 
   // Trigger file chooser for import
   const handleImportClick = () => {
@@ -136,20 +138,41 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
   const handleDeleteAllData = async () => {
     setIsDeletingAll(true);
+    clearErrors();
+    setDeleteProgress({
+      phase: 'preparing',
+      current: 0,
+      total: 1,
+      percent: 0,
+      message: 'Preparing data wipe…'
+    });
+
     try {
       if (user) {
-        // Logged-in: use destructive Firestore wipe
-        await firebaseDataService.clearFirestoreUserData();
+        await firebaseDataService.clearFirestoreUserData((progress) => {
+          setDeleteProgress(progress);
+        });
       } else {
-        // Guest: clear local IndexedDB only
+        setDeleteProgress({
+          phase: 'preparing',
+          current: 0,
+          total: 2,
+          percent: 0,
+          message: 'Preparing local data wipe…'
+        });
         await databaseService.clearAllData();
+        setDeleteProgress({
+          phase: 'complete',
+          current: 2,
+          total: 2,
+          percent: 100,
+          message: 'Local data cleared'
+        });
       }
 
-      // Clear tackle box localStorage items too
       localStorage.removeItem('tacklebox');
       localStorage.removeItem('gearTypes');
 
-      // Close dialog and notify success
       setShowDeleteAllConfirm(false);
       setImportSuccess('All data has been deleted. The page will reload.');
       setTimeout(() => window.location.reload(), 1500);
@@ -158,6 +181,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       setImportError(e instanceof Error ? e.message : 'Failed to delete all data');
     } finally {
       setIsDeletingAll(false);
+      setDeleteProgress(null);
     }
   };
 
@@ -351,10 +375,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         confirmText={isDeletingAll ? 'Deleting…' : 'Delete Everything'}
         cancelText="Cancel"
         onConfirm={handleDeleteAllData}
-        onCancel={() => !isDeletingAll && setShowDeleteAllConfirm(false)}
+        onCancel={() => {
+          if (!isDeletingAll) {
+            setShowDeleteAllConfirm(false);
+            setDeleteProgress(null);
+          }
+        }}
         variant="danger"
         overlayStyle="blur"
-      />
+        confirmDisabled={isDeletingAll}
+        cancelDisabled={isDeletingAll}
+      >
+        {(isDeletingAll || deleteProgress) && (
+          <div className="mt-3">
+            <ProgressBar progress={deleteProgress} />
+          </div>
+        )}
+      </ConfirmationDialog>
 
       <ConfirmationDialog
         isOpen={showImportConfirm}
