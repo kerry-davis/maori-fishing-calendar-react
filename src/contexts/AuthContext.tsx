@@ -144,6 +144,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             // Initialize encryption key for the user
             if (newUser.email) {
               try {
+                // Ensure per-user salt is synced across devices before deriving key
+                const { ensureUserSalt } = await import('../services/userSaltService');
+                await ensureUserSalt(newUser.uid);
                 await encryptionService.setDeterministicKey(newUser.uid, newUser.email);
                 console.log('Background: Encryption key initialized for user');
                 setEncryptionReady(true);
