@@ -6,7 +6,7 @@ import { useDatabaseService } from "../../contexts/DatabaseContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { useFirebaseTackleBox } from "../../hooks/useFirebaseTackleBox";
 import { storage } from "../../services/firebase";
-import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import { ref, deleteObject } from "firebase/storage";
 import type { FishCaught } from "../../types";
 
 export interface FishCatchModalProps {
@@ -253,8 +253,8 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
     }
 
     // Create preview URL for selected file immediately
-  const previewUrl = URL.createObjectURL(file);
-  setPhotoPreview(previewUrl);
+    const previewUrl = URL.createObjectURL(file);
+    setPhotoPreview(previewUrl);
     setUploadError(null);
     setError(null);
 
@@ -272,10 +272,18 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
           }
         };
         reader.onerror = () => {
+          // Clean up the preview URL on error
+          if (previewUrl.startsWith('blob:')) {
+            URL.revokeObjectURL(previewUrl);
+          }
           setUploadError('Failed to process photo. Please try again.');
         };
         reader.readAsDataURL(file);
       } catch (e) {
+        // Clean up the preview URL on error
+        if (previewUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(previewUrl);
+        }
         setUploadError('Failed to process photo. Please try again.');
       }
       return;
@@ -307,11 +315,19 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
         }
       };
       reader.onerror = () => {
+        // Clean up the preview URL on error
+        if (previewUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(previewUrl);
+        }
         setUploadError('Failed to process photo. Please try again.');
       };
       reader.readAsDataURL(file);
     } catch (err) {
       console.error('Photo processing failed:', err);
+      // Clean up the preview URL on error
+      if (previewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(previewUrl);
+      }
       setUploadError('Failed to process photo. Please try again.');
     } finally {
       setIsUploadingPhoto(false);
@@ -726,6 +742,8 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                         const fileInput = document.getElementById('photo-upload') as HTMLInputElement;
                         if (fileInput) {
                           fileInput.value = '';
+                          // Force re-render to ensure file input is cleared across all browsers
+                          fileInput.replaceWith(fileInput.cloneNode(true));
                         }
                       }}
                       className="absolute top-2 right-2 btn btn-danger px-2 py-1 text-xs"
