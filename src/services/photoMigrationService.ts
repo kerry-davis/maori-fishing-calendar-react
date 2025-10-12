@@ -58,7 +58,6 @@ class PhotoMigrationService {
   private isRunning = false;
   private progress: MigrationProgress = this.getDefaultProgress();
   private currentBatch: MigrationBatch | null = null;
-  private batches: MigrationBatch[] = [];
   private readonly BATCH_SIZE = 5;
   private readonly MAX_PROCESSING_TIME = 30000; // 30 seconds
   private readonly STORAGE_KEY = 'photoMigrationProgress';
@@ -79,23 +78,6 @@ class PhotoMigrationService {
     };
   }
 
-  /**
-   * Load progress from localStorage
-   */
-  private loadProgress(): void {
-    try {
-      const saved = localStorage.getItem(this.STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        this.progress = {
-          ...parsed,
-          startTime: new Date(parsed.startTime)
-        };
-      }
-    } catch (error) {
-      console.warn('[Photo Migration] Failed to load progress:', error);
-    }
-  }
 
   /**
    * Save progress to localStorage
@@ -163,7 +145,6 @@ class PhotoMigrationService {
       batches.push(batch);
     }
 
-    this.batches = batches;
     this.progress.totalBatches = batches.length;
     this.saveProgress();
 
@@ -573,7 +554,6 @@ class PhotoMigrationService {
   clearProgress(): void {
     localStorage.removeItem(this.STORAGE_KEY);
     this.progress = this.getDefaultProgress();
-    this.batches = [];
     this.currentBatch = null;
     this.isRunning = false;
   }
