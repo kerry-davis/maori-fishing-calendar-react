@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { getFishPhotoPreview } from '../../utils/photoPreviewUtils';
 import { Button } from "../UI";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "./Modal";
 import { useDatabaseService } from "../../contexts/DatabaseContext";
@@ -31,6 +32,9 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
   refreshTrigger,
   onTripDeleted,
 }) => {
+    // Track blob URLs for cleanup
+    const objectUrlsRef = React.useRef<string[]>([]);
+    const [photoPreviews, setPhotoPreviews] = useState<Record<string, string>>({});
   const [trips, setTrips] = useState<Trip[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,13 +83,17 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [isOpen, selectedDate]);
+  }, [isOpen, selectedDate, db]);
 
   // Load all fish catches for the selected date
   const loadFishCatches = useCallback(async () => {
     if (!isOpen || !selectedDate) return;
 
     try {
+      // Revoke previously created blob URLs before generating new previews
+      objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      objectUrlsRef.current = [];
+
       // Get all fish catches - the Firebase service will handle filtering by user
       const allFishCatches = await db.getAllFishCaught();
 
@@ -100,11 +108,28 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
 
       setFishCatches(relevantFishCatches);
 
+      // Generate photo previews (including decryption)
+      const previews: Record<string, string> = {};
+      for (const fish of relevantFishCatches) {
+        const preview = await getFishPhotoPreview(fish);
+        previews[fish.id] = preview;
+        // Track blob URLs for cleanup
+        if (preview.startsWith('blob:')) objectUrlsRef.current.push(preview);
+      }
+      setPhotoPreviews(previews);
+
     } catch (err) {
       console.error("Error loading fish catches:", err);
       // Don't set error state for fish catches as it's not critical
     }
   }, [isOpen, selectedDate, db]);
+  // Cleanup blob URLs on unmount
+  useEffect(() => {
+    return () => {
+      objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      objectUrlsRef.current = [];
+    };
+  }, []);
 
   // Load all weather logs for the selected date
   const loadWeatherLogs = useCallback(async () => {
@@ -431,6 +456,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
                 onDeleteFish={handleDeleteFish}
                 weatherLogs={weatherLogs.filter(log => log.tripId === trip.id)}
                 fishCatches={fishCatches.filter(fish => fish.tripId === trip.id)}
+                photoPreviews={photoPreviews}
               />
             ))}
           </div>
@@ -511,6 +537,7 @@ interface TripCardProps {
   onDeleteFish: (fishId: string) => void;
   weatherLogs: WeatherLog[];
   fishCatches: FishCaught[];
+  photoPreviews: Record<string, string>;
 }
 
 const TripCard: React.FC<TripCardProps> = ({
@@ -524,7 +551,8 @@ const TripCard: React.FC<TripCardProps> = ({
   onEditFish,
   onDeleteFish,
   weatherLogs,
-  fishCatches
+  fishCatches,
+  photoPreviews
 }) => {
   const formatHours = (hours: number): string => {
     if (hours === 1) return "1 hour";
@@ -721,14 +749,14 @@ const TripCard: React.FC<TripCardProps> = ({
                   <div key={fish.id} className="p-3 rounded" style={{ backgroundColor: 'var(--card-background)', border: '1px solid var(--border-color)' }}>
                     <div className="flex items-start justify-between">
                       <div className="flex items-start gap-3 flex-1">
-                        {(fish.photoUrl || fish.photo) && (
-                          <img
-                            src={fish.photoUrl || fish.photo}
-                            alt={`${fish.species} photo`}
-                            className="w-8 h-8 object-cover rounded border flex-shrink-0"
-                            style={{ borderColor: 'var(--border-color)' }}
-                          />
-                        )}
+                          {photoPreviews[fish.id] && (
+                            <img
+                              src={photoPreviews[fish.id]}
+                              alt={`${fish.species} photo`}
+                              className="w-8 h-8 object-cover rounded border flex-shrink-0"
+                              style={{ borderColor: 'var(--border-color)' }}
+                            />
+                          )}
                         <div className="flex-1 min-w-0">
                           <div className="font-medium" style={{ color: 'var(--primary-text)' }}>
                             {fish.species}

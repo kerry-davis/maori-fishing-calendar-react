@@ -1,5 +1,13 @@
-planner:
-please create .tasks/[filename].md with a set of tasks to be done in a seq. order to address this. the first item should be the project path eg. /home/pulsta/vscode/repo/maori-fishing-calendar-react, the last item is to create file .tasks/[filename].[files].md with a list in short form the files changed
+1. planner
+phase 4: 
+please create .tasks/[branch name][phase][increment number].md with a set of tasks to be done in a seq. order to address this. 
+the first item should be the project path eg. /home/pulsta/vscode/repo/maori-fishing-calendar-react
+the second item should be .tasks/long_running_tooling.md
+the last item is to create file .tasks/[branch name][phase].[files][increment number].md with a list in short form the files changed 
 
-worker:
-a new set of task have been provided @.tasks/[filename].md please implement
+2. worker
+a new set of tasks have been provided @.tasks/[branch name].md please implement. 
+do not stop until complete.
+
+3. planner
+tasks complete. please review the code that was completed in these files @.tasks/[filename].[files].md and provide feedback. 

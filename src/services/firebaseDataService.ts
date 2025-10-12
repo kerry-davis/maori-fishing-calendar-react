@@ -1,6 +1,7 @@
 import type { Trip, WeatherLog, FishCaught, ImportProgress } from "../types";
 import { firestore, storage } from "../services/firebase";
 import { encryptionService, ENCRYPTION_COLLECTION_FIELD_MAP, isPossiblyEncrypted } from './encryptionService';
+import { photoEncryptionService } from './photoEncryptionService';
 import { databaseService } from "./databaseService";
 import { validateUserContext, validateFirebaseOperation } from "../utils/userStateCleared";
 import {
@@ -18,7 +19,7 @@ import {
   writeBatch
 } from "firebase/firestore";
 import type { DocumentReference } from "firebase/firestore";
-import { ref as storageRef, uploadBytes, getDownloadURL, getMetadata, listAll, deleteObject } from "firebase/storage";
+import { ref as storageRef, uploadBytes, getDownloadURL, getMetadata, listAll, deleteObject, getBlob } from "firebase/storage";
 import type { StorageReference } from "firebase/storage";
 
 /**
@@ -113,12 +114,11 @@ export class FirebaseDataService {
     bytes: Uint8Array,
     mime: string
   ): Promise<
-    | { photoHash: string; photoPath: string; photoMime: string; photoUrl: string }
+    | { photoHash: string; photoPath: string; photoMime: string; photoUrl: string; encryptedMetadata?: string }
     | { inlinePhoto: string; photoHash: string }
   >
   {
     const hash = await this.sha256Hex(bytes);
-    const path = `users/${userId}/images/${hash}`;
     const storageService = this.storageInstance;
 
     if (!storageService) {
@@ -133,6 +133,47 @@ export class FirebaseDataService {
       return { inlinePhoto: dataUrl, photoHash: hash };
     }
 
+    // Check if photo encryption is enabled and ready
+    const shouldEncrypt = photoEncryptionService.isReady();
+
+    if (shouldEncrypt) {
+      try {
+        // Encrypt the photo data
+        const encryptionResult = await photoEncryptionService.encryptPhoto(bytes, mime, userId);
+
+        // Upload encrypted photo to Firebase Storage
+        const ref = storageRef(storageService, encryptionResult.storagePath);
+        await uploadBytes(ref, encryptionResult.encryptedData, {
+          contentType: 'application/octet-stream', // Store as binary, not image
+          customMetadata: {
+            encrypted: 'true',
+            originalMime: mime,
+            version: '1'
+          }
+        });
+
+        let url = '';
+        try {
+          url = await getDownloadURL(ref);
+        } catch (e) {
+          // ignore; URL can be fetched later on demand
+        }
+
+        return {
+          photoHash: hash,
+          photoPath: encryptionResult.storagePath,
+          photoMime: mime,
+          photoUrl: url,
+          encryptedMetadata: photoEncryptionService.serializeMetadata(encryptionResult.metadata)
+        };
+      } catch (encryptionError) {
+        console.warn('[Photo Encryption] Encryption failed, falling back to unencrypted storage:', encryptionError);
+        // Fall through to unencrypted storage
+      }
+    }
+
+    // Fallback to unencrypted storage (legacy behavior)
+    const path = `users/${userId}/images/${hash}`;
     const ref = storageRef(storageService, path);
     try {
       // Try to get metadata to determine existence
@@ -186,6 +227,46 @@ export class FirebaseDataService {
     }
 
     return collected;
+  }
+
+  /**
+   * Get decrypted photo data for display
+   */
+  async getDecryptedPhoto(photoPath: string, encryptedMetadata?: string): Promise<{ data: ArrayBuffer; mimeType: string } | null> {
+    if (!photoPath) return null;
+
+    const storageService = this.storageInstance;
+    if (!storageService) {
+      console.warn('[Photo] Storage unavailable for photo decryption');
+      return null;
+    }
+
+    try {
+      const ref = storageRef(storageService, photoPath);
+      const metadata = await getMetadata(ref);
+
+      // Check if this is an encrypted photo
+      if (metadata.customMetadata?.encrypted === 'true' && encryptedMetadata) {
+        // Download encrypted data
+        const encryptedBlob = await getBlob(ref);
+        const encryptedArrayBuffer = await encryptedBlob.arrayBuffer();
+
+        // Decrypt using metadata
+        const photoMetadata = photoEncryptionService.deserializeMetadata(encryptedMetadata);
+
+        return await photoEncryptionService.decryptPhoto(encryptedArrayBuffer, photoMetadata);
+      } else {
+        // Legacy unencrypted photo - return as blob data
+        const blob = await getBlob(ref);
+        return {
+          data: await blob.arrayBuffer(),
+          mimeType: metadata.contentType || 'image/jpeg'
+        };
+      }
+    } catch (error) {
+      console.error('[Photo] Failed to retrieve photo:', error);
+      return null;
+    }
   }
 
   // Fast FNV-1a 32-bit hash for strings -> hex
@@ -1176,6 +1257,10 @@ await batch.commit();
             fishWithIds.photoPath = refInfo.photoPath;
             fishWithIds.photoMime = refInfo.photoMime;
             if (refInfo.photoUrl) fishWithIds.photoUrl = refInfo.photoUrl;
+            // Persist encrypted metadata if available (for encrypted photos)
+            if ('encryptedMetadata' in refInfo && refInfo.encryptedMetadata) {
+              fishWithIds.encryptedMetadata = refInfo.encryptedMetadata;
+            }
             delete fishWithIds.photo;
           }
         } catch (e) {
@@ -1252,6 +1337,10 @@ await batch.commit();
           fishWithUser.photoPath = refInfo.photoPath;
           fishWithUser.photoMime = refInfo.photoMime;
           if (refInfo.photoUrl) fishWithUser.photoUrl = refInfo.photoUrl;
+          // Persist encrypted metadata if available (for encrypted photos)
+          if ('encryptedMetadata' in refInfo && refInfo.encryptedMetadata) {
+            fishWithUser.encryptedMetadata = refInfo.encryptedMetadata;
+          }
           delete fishWithUser.photo;
         }
       } catch (e) {
@@ -1450,6 +1539,10 @@ await batch.commit();
             fishWithUser.photoPath = refInfo.photoPath;
             fishWithUser.photoMime = refInfo.photoMime;
             if (refInfo.photoUrl) fishWithUser.photoUrl = refInfo.photoUrl;
+            // Persist encrypted metadata if available (for encrypted photos)
+            if ('encryptedMetadata' in refInfo && refInfo.encryptedMetadata) {
+              fishWithUser.encryptedMetadata = refInfo.encryptedMetadata;
+            }
             delete fishWithUser.photo;
           }
         } catch (e) {
@@ -1889,8 +1982,13 @@ await batch.commit();
         let fishWithData = { ...fishData, id: localId, tripId: originalTripId, userId: this.userId };
         try {
           fishWithData = await encryptionService.encryptFields('fishCaught', fishWithData);
-        } catch (e) { 
-          console.warn('[encryption] merge fish encrypt failed', e); 
+        } catch (e) {
+          console.warn('[encryption] merge fish encrypt failed', e);
+        }
+
+        // Preserve encryptedMetadata if present in local data
+        if (fish.encryptedMetadata) {
+          fishWithData.encryptedMetadata = fish.encryptedMetadata;
         }
 
         if (existingFirebaseId) {
@@ -2197,6 +2295,7 @@ await batch.commit();
 
       for (const fishCaught of firebaseFishCaught) {
         // Use updateFishCaught which uses put() internally - preserves original ID
+        // This ensures encryptedMetadata is preserved in local cache
         await databaseService.updateFishCaught(fishCaught);
       }
 
@@ -2250,6 +2349,10 @@ await batch.commit();
     let finalData = data;
     if (!data?._encrypted && encryptionService.isReady()) {
       try { finalData = await encryptionService.encryptFields(collection, data); } catch (e) { console.warn('[encryption] queue encrypt failed', e); }
+    }
+    // Preserve encryptedMetadata in sync queue if present
+    if (data.encryptedMetadata && !finalData.encryptedMetadata) {
+      finalData.encryptedMetadata = data.encryptedMetadata;
     }
     const queuedOperation = enqueue(finalData);
     this.syncQueue.push(queuedOperation);

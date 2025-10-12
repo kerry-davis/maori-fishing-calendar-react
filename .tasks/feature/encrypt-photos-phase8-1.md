@@ -1,0 +1,9 @@
+- /home/pulsta/vscode/repo/maori-fishing-calendar-react
+- .tasks/long_running_tooling.md
+- Review current TripLogModal photo handling and capture failing scenarios
+- Design updates to share encrypted photo preview logic used by FishCatch/Gallery modals
+- Implement TripLogModal updates, ensuring blob URL lifecycle cleanup mirrors other modals
+- Add any shared helpers or service adjustments needed for encrypted photo previews
+- Update automated tests or add new coverage for TripLogModal photo display when encrypted
+- Run linting and test suites noted in .tasks/long_running_tooling.md
+- Create .tasks/feature/encrypt-photos-phase8.files1.md summarizing modified files
