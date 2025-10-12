@@ -241,9 +241,10 @@ export interface FishCaught {
   photo?: string;
   // New Storage-backed photo reference fields
   photoHash?: string;     // sha256 hex of bytes
-  photoPath?: string;     // storage path: users/{uid}/images/{hash}
+  photoPath?: string;     // storage path: users/{uid}/images/{hash} or users/{uid}/enc_photos/{id}_{timestamp}_{hash}.enc
   photoMime?: string;     // e.g., image/jpeg
   photoUrl?: string;      // optional cached download URL
+  encryptedMetadata?: string; // base64-encoded encryption metadata for encrypted photos
 }
 
 export interface TackleItem {
