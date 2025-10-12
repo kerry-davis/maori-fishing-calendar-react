@@ -62,6 +62,23 @@ See `SECURITY.md` for full threat model.
 * Background migration auto-runs post-auth; progress pill displayed via `EncryptionMigrationStatus`.
 * Treat as obfuscation, not high-assurance E2EE (email entropy is low).
 
+### 5.1 Pepper & Per-User Salt Sync (Important)
+To ensure the same encryption key across devices and deployments:
+- Pepper (build-time): `VITE_KEY_PEPPER` must be identical across environments (Prod, Preview, Local) if you want consistent decrypts. If not set, the app defaults to `default-pepper`.
+- Per-user salt (runtime): Stored in localStorage as `enc_salt_<uid>` and mirrored in Firestore at `userSettings/<uid>.encSaltB64`.
+
+Flow on login:
+1) App reads `userSettings/<uid>.encSaltB64` (or `encSalt`) and writes it to localStorage if missing/different
+2) If none exists anywhere, it generates a salt and persists to both localStorage and Firestore
+3) Key is derived as `PBKDF2(email | VITE_KEY_PEPPER, encSaltB64, 60000, SHA-256)`
+
+Verify:
+- After login, check Firestore doc `userSettings/<uid>` contains `encSaltB64`
+- Ensure `VITE_KEY_PEPPER` is set in Vercel → Project → Settings → Environment Variables (ideally for Production and Preview) with the exact same value
+
+Caution:
+- Changing `VITE_KEY_PEPPER` without migration will make existing ciphertext unreadable. Plan rotations with dual-decrypt or re-encryption scripts.
+
 ---
 ## 6. Quick Start
 ```bash
@@ -132,6 +149,51 @@ High-level:
 3. Deploy `dist/` to static hosting (Firebase Hosting / Netlify / Vercel).
 4. Verify PWA install & service worker update path.
 
+### 9.1 Firebase Storage CORS (for encrypted photos)
+If you use Firebase Storage for photo binary data, configure CORS to allow your app origins. Example `cors.json` used in this repo:
+
+```
+[
+  {
+    "origin": [
+      "http://localhost:5173",
+      "https://maori-fishing-calendar-react.web.app",
+      "https://maori-fishing-calendar-react.firebaseapp.com",
+      "https://maori-fishing-calendar-react.vercel.app"
+    ],
+    "method": ["GET", "HEAD", "OPTIONS", "POST", "PUT", "DELETE"],
+    "responseHeader": ["*"],
+    "maxAgeSeconds": 3600
+  }
+]
+```
+
+Apply and verify (replace bucket if yours differs):
+- Determine bucket: `gsutil ls -p <project-id>` → expect `gs://<project-id>.firebasestorage.app/`
+- Set CORS: `gsutil cors set cors.json gs://maori-fishing-calendar-react.firebasestorage.app`
+- Get CORS: `gsutil cors get gs://maori-fishing-calendar-react.firebasestorage.app`
+
+Notes:
+- Origins must not include trailing slashes; match scheme/host/port exactly
+- Add Vercel Preview URLs explicitly if you need previews to access Storage (wildcards aren’t supported)
+- Browsers cache preflight per `maxAgeSeconds`; hard refresh or wait up to that duration to see changes
+
+Vercel Preview guidance:
+- Preview deploys live at unique URLs like `https://<commit>-<project>-<hash>.vercel.app`
+- Because Google Cloud Storage CORS doesn’t support wildcard subdomains in `origin`, you must add each preview origin you need to `cors.json` and re-apply CORS.
+- Fast workflow options:
+  1) Keep previews read-only for Storage (don’t fetch from Storage in previews), or
+  2) Manually add specific preview origins you want to test, e.g.:
+     - `https://maori-fishing-calendar-react-git-feature-branchname-user.vercel.app`
+     - `https://maori-fishing-calendar-react-git-pr-123-user.vercel.app`
+  3) Use Firebase Hosting preview channels instead (stable subdomains easier to list).
+
+After editing `cors.json`, re-run:
+```
+gsutil cors set cors.json gs://maori-fishing-calendar-react.firebasestorage.app
+gsutil cors get gs://maori-fishing-calendar-react.firebasestorage.app
+```
+
 ---
 ## 10. Data & Migration Notes
 * Guest mode uses local storage + IndexedDB; on auth merge occurs then local cleared (except visible continuity). 
@@ -166,6 +228,8 @@ Contexts: `login`, `register`, `google`, `generic`. Fallback includes offline hi
 | Migration pill never appears | User has no plaintext docs OR key not ready | Confirm `encryptionService.isReady()` & existing plaintext |
 | Offline queue stuck | Network offline or permission issue | Inspect `syncQueue_<userId>` and console logs |
 | PWA not updating | SW cached | Hard refresh / check `vite-plugin-pwa` manifest changes |
+| Photo decrypt fails (OperationError) | Different salt or pepper per device | Ensure `userSettings/<uid>.encSaltB64` exists and `VITE_KEY_PEPPER` matches across envs |
+| Storage blocked by CORS | Missing origin in bucket CORS | Add your origin to `cors.json`, re-apply with `gsutil cors set`, and retry after cache window |
 
 ---
 ## 14. Changelog (Lite)
@@ -201,4 +265,4 @@ Follow `agent_rules.md`:
 * Keep `README.md` + a future `HANDOFF.md` current for continuity
 
 ---
-_Last updated: 2025-10-05_
+_Last updated: 2025-10-13_
