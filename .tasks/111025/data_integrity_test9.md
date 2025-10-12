@@ -1,0 +1,6 @@
+1. /home/pulsta/vscode/repo/maori-fishing-calendar-react
+2. Audit `src/test/authContextModalIntegration.test.ts` for every reference to `mockAuth` or `mockedAuth`, refactor the Firebase mock setup to capture the `auth` object returned by `require('../services/firebase')`, and ensure that same instance is reused across all assertions and test suites.
+3. Review the React import within `src/test/authContextModalIntegration.test.ts`, adjust it to match the actual usage pattern in the file, and remove or replace any incorrect destructured import so the tests compile without React import warnings.
+4. Inspect the Firebase listener effect in `src/hooks/useModalWithCleanup.ts`, expanding the dependency array to include `onAuthStateChange` and the internal handler functions so that re-renders pick up updated callbacks without stale closures.
+5. Execute the relevant Vitest suites covering the modal cleanup hook and auth-context integration to verify the refactor introduced no regressions, capturing failures for follow-up if any arise.
+6. After completing the above work, create `.tasks/data_integrity_test9.files.md` listing only the modified file paths, one per line, with no extra commentary or explanation.

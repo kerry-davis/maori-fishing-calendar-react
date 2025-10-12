@@ -1,0 +1,7 @@
+1. /home/pulsta/vscode/repo/maori-fishing-calendar-react – Confirm you are operating from the repository root and verify required environment variables, Firebase credentials, and local configuration files are available before making any changes.
+2. Review the current authentication flow by inspecting `src/contexts/AuthContext.tsx`, associated hooks, and Firebase service interactions to understand how the signed-in user is persisted and exposed to the UI.
+3. Audit the components responsible for rendering user-facing UI, especially `src/App.tsx` and related navigation or header components, to locate where the signed-in user information should be surfaced.
+4. Design the approach for displaying the signed-in user, identifying necessary props, context consumers, and UI elements, and outline any additional state management or formatting requirements.
+5. Implement the code changes to fetch and display the active user in the identified UI components, ensuring consistency with existing coding patterns, accessibility considerations, and localization if present.
+6. Execute the relevant unit, integration, and end-to-end tests (e.g., Vitest and Cypress suites) to validate the new signed-in user display, and resolve any regressions or linting issues uncovered during testing.
+7. Create `.tasks/display-signed-in-user_1.files.md` with a concise list (without added commentary) of every file modified or created during this task sequence to maintain accurate change tracking.
