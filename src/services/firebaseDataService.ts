@@ -1,7 +1,9 @@
-import type { Trip, WeatherLog, FishCaught } from "../types";
-import { firestore, auth, storage } from "../services/firebase";
+import type { Trip, WeatherLog, FishCaught, ImportProgress } from "../types";
+import { firestore, storage } from "../services/firebase";
 import { encryptionService, ENCRYPTION_COLLECTION_FIELD_MAP, isPossiblyEncrypted } from './encryptionService';
+import { photoEncryptionService } from './photoEncryptionService';
 import { databaseService } from "./databaseService";
+import { validateUserContext, validateFirebaseOperation } from "../utils/userStateCleared";
 import {
   collection,
   doc,
@@ -16,7 +18,9 @@ import {
   serverTimestamp,
   writeBatch
 } from "firebase/firestore";
-import { ref as storageRef, uploadBytes, getDownloadURL, getMetadata } from "firebase/storage";
+import type { DocumentReference } from "firebase/firestore";
+import { ref as storageRef, uploadBytes, getDownloadURL, getMetadata, listAll, deleteObject, getBlob } from "firebase/storage";
+import type { StorageReference } from "firebase/storage";
 
 /**
  * Firebase Data Service - Cloud-first with offline fallback
@@ -28,6 +32,8 @@ export class FirebaseDataService {
   private isOnline = navigator.onLine;
   private syncQueue: any[] = [];
   private isInitialized = false;
+  private storageInstance = storage;
+  private hasLoggedStorageUnavailable = false;
 
   constructor() {
     // Monitor online/offline status
@@ -103,11 +109,72 @@ export class FirebaseDataService {
   }
 
   // Ensure photo is present in Storage; returns reference fields
-  private async ensurePhotoInStorage(userId: string, bytes: Uint8Array, mime: string): Promise<{ photoHash: string; photoPath: string; photoMime: string; photoUrl: string }>
+  private async ensurePhotoInStorage(
+    userId: string,
+    bytes: Uint8Array,
+    mime: string
+  ): Promise<
+    | { photoHash: string; photoPath: string; photoMime: string; photoUrl: string; encryptedMetadata?: string }
+    | { inlinePhoto: string; photoHash: string }
+  >
   {
     const hash = await this.sha256Hex(bytes);
+    const storageService = this.storageInstance;
+
+    if (!storageService) {
+      if (!this.hasLoggedStorageUnavailable) {
+        console.warn('[Storage] Firebase storage unavailable; skipping photo upload operations');
+        this.hasLoggedStorageUnavailable = true;
+      }
+      const base64 = typeof Buffer !== 'undefined'
+        ? Buffer.from(bytes).toString('base64')
+        : btoa(String.fromCharCode(...bytes));
+      const dataUrl = `data:${mime};base64,${base64}`;
+      return { inlinePhoto: dataUrl, photoHash: hash };
+    }
+
+    // Check if photo encryption is enabled and ready
+    const shouldEncrypt = photoEncryptionService.isReady();
+
+    if (shouldEncrypt) {
+      try {
+        // Encrypt the photo data
+        const encryptionResult = await photoEncryptionService.encryptPhoto(bytes, mime, userId);
+
+        // Upload encrypted photo to Firebase Storage
+        const ref = storageRef(storageService, encryptionResult.storagePath);
+        await uploadBytes(ref, encryptionResult.encryptedData, {
+          contentType: 'application/octet-stream', // Store as binary, not image
+          customMetadata: {
+            encrypted: 'true',
+            originalMime: mime,
+            version: '1'
+          }
+        });
+
+        let url = '';
+        try {
+          url = await getDownloadURL(ref);
+        } catch (e) {
+          // ignore; URL can be fetched later on demand
+        }
+
+        return {
+          photoHash: hash,
+          photoPath: encryptionResult.storagePath,
+          photoMime: mime,
+          photoUrl: url,
+          encryptedMetadata: photoEncryptionService.serializeMetadata(encryptionResult.metadata)
+        };
+      } catch (encryptionError) {
+        console.warn('[Photo Encryption] Encryption failed, falling back to unencrypted storage:', encryptionError);
+        // Fall through to unencrypted storage
+      }
+    }
+
+    // Fallback to unencrypted storage (legacy behavior)
     const path = `users/${userId}/images/${hash}`;
-    const ref = storageRef(storage, path);
+    const ref = storageRef(storageService, path);
     try {
       // Try to get metadata to determine existence
       await getMetadata(ref);
@@ -127,6 +194,79 @@ export class FirebaseDataService {
       // ignore; URL can be fetched later on demand
     }
     return { photoHash: hash, photoPath: path, photoMime: mime, photoUrl: url };
+  }
+
+  private async collectStorageObjects(path: string): Promise<StorageReference[]> {
+    const storageService = this.storageInstance;
+    if (!storageService) {
+      if (!this.hasLoggedStorageUnavailable) {
+        console.warn('[Wipe] Firebase storage unavailable; skipping storage cleanup');
+        this.hasLoggedStorageUnavailable = true;
+      }
+      return [];
+    }
+
+    const collected: StorageReference[] = [];
+    const stack: StorageReference[] = [storageRef(storageService, path)];
+
+    while (stack.length) {
+      const current = stack.pop()!;
+      try {
+        const result = await listAll(current);
+        collected.push(...result.items);
+        if (result.prefixes.length) {
+          stack.push(...result.prefixes);
+        }
+      } catch (error: any) {
+        const code = error?.code;
+        if (code === 'storage/object-not-found' || code === 'storage/invalid-root-operation') {
+          continue;
+        }
+        console.warn(`[Storage] Failed to list path ${current.fullPath}:`, error);
+      }
+    }
+
+    return collected;
+  }
+
+  /**
+   * Get decrypted photo data for display
+   */
+  async getDecryptedPhoto(photoPath: string, encryptedMetadata?: string): Promise<{ data: ArrayBuffer; mimeType: string } | null> {
+    if (!photoPath) return null;
+
+    const storageService = this.storageInstance;
+    if (!storageService) {
+      console.warn('[Photo] Storage unavailable for photo decryption');
+      return null;
+    }
+
+    try {
+      const ref = storageRef(storageService, photoPath);
+      const metadata = await getMetadata(ref);
+
+      // Check if this is an encrypted photo
+      if (metadata.customMetadata?.encrypted === 'true' && encryptedMetadata) {
+        // Download encrypted data
+        const encryptedBlob = await getBlob(ref);
+        const encryptedArrayBuffer = await encryptedBlob.arrayBuffer();
+
+        // Decrypt using metadata
+        const photoMetadata = photoEncryptionService.deserializeMetadata(encryptedMetadata);
+
+        return await photoEncryptionService.decryptPhoto(encryptedArrayBuffer, photoMetadata);
+      } else {
+        // Legacy unencrypted photo - return as blob data
+        const blob = await getBlob(ref);
+        return {
+          data: await blob.arrayBuffer(),
+          mimeType: metadata.contentType || 'image/jpeg'
+        };
+      }
+    } catch (error) {
+      console.error('[Photo] Failed to retrieve photo:', error);
+      return null;
+    }
   }
 
   // Fast FNV-1a 32-bit hash for strings -> hex
@@ -234,55 +374,65 @@ export class FirebaseDataService {
   // TRIP OPERATIONS
 
   /**
-   * Create a new trip
+   * Create a new trip with enhanced user context validation
    */
   async createTrip(tripData: Omit<Trip, "id">): Promise<number> {
     if (!this.isReady()) throw new Error('Service not initialized');
 
-    // Data integrity checks
-    this.validateTripData(tripData);
+    // Enhanced validation with operation type
+    return validateUserContext(this.userId, async () => {
+      // Data integrity checks
+      this.validateTripData(tripData);
 
-    // Sanitize string inputs
-    const sanitizedTripData = {
-      ...tripData,
-      water: this.sanitizeString(tripData.water),
-      location: this.sanitizeString(tripData.location),
-      companions: tripData.companions ? this.sanitizeString(tripData.companions) : tripData.companions,
-      notes: tripData.notes ? this.sanitizeString(tripData.notes) : tripData.notes,
-    };
+      // Prepare payload with user context validation
+      const sanitizedTripData = {
+        ...tripData,
+        water: this.sanitizeString(tripData.water),
+        location: this.sanitizeString(tripData.location),
+        companions: tripData.companions ? this.sanitizeString(tripData.companions) : tripData.companions,
+        notes: tripData.notes ? this.sanitizeString(tripData.notes) : tripData.notes,
+      };
 
-    if (this.isGuest) {
-      return databaseService.createTrip(sanitizedTripData);
-    }
-
-    console.log('Creating trip with service userId:', this.userId);
-    console.log('Auth currentUser UID:', auth.currentUser?.uid);
-
-    const tripId = Date.now();
-      let tripWithUser: any = { ...sanitizedTripData, id: tripId, userId: this.userId };
-  try { tripWithUser = await encryptionService.encryptFields('trips', tripWithUser); } catch (e) { console.warn('[encryption] trip encrypt failed', e); }
-    console.log('Trip data to save:', tripWithUser);
-
-    if (this.isOnline) {
-      try {
-        const docRef = await addDoc(collection(firestore, 'trips'), {
-          ...tripWithUser,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
-
-        // Store the Firebase ID mapping
-        await this.storeLocalMapping('trips', tripId.toString(), docRef.id);
-
-        console.log('Trip created in Firestore:', docRef.id);
-        return tripId;
-      } catch (error) {
-        console.warn('Firestore create failed, falling back to local:', error);
-        return this.queueOperation('create', 'trips', tripWithUser);
+      if (this.isGuest) {
+        return databaseService.createTrip(sanitizedTripData);
       }
-    } else {
-      return this.queueOperation('create', 'trips', tripWithUser);
-    }
+
+      const tripId = Date.now();
+      let tripWithUser: any = { ...sanitizedTripData, id: tripId, userId: this.userId };
+      
+      // Enhanced Firebase operation validation
+      return validateFirebaseOperation(this.userId, tripWithUser, async (validatedPayload) => {
+        let operationPayload = validatedPayload;
+        try {
+          operationPayload = await encryptionService.encryptFields('trips', operationPayload);
+        } catch (e) {
+          console.warn('[encryption] trip encrypt failed', e);
+        }
+
+        console.log('Creating trip with enhanced validation for user:', this.userId);
+
+        if (this.isOnline) {
+          try {
+            const docRef = await addDoc(collection(firestore, 'trips'), {
+              ...operationPayload,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            });
+
+            // Store the Firebase ID mapping
+            await this.storeLocalMapping('trips', tripId.toString(), docRef.id);
+
+            console.log('Trip created in Firestore with validation:', docRef.id);
+            return tripId;
+          } catch (error) {
+            console.warn('Firestore create failed, falling back to local:', error);
+            return this.queueOperation('create', 'trips', operationPayload);
+          }
+        }
+
+        return this.queueOperation('create', 'trips', operationPayload);
+      }, 'createTrip');
+    }, undefined, 'createTrip') || Promise.reject(new Error('User context validation failed'));
   }
 
   /**
@@ -399,7 +549,7 @@ export class FirebaseDataService {
 
            if (docSnap.exists()) {
             const data = docSnap.data();
-            return this.convertFromFirestore(data, id, docSnap.id);
+            return await this.convertFromFirestore(data, id, docSnap.id, 'trips');
            }
          }
        } catch (error) {
@@ -429,7 +579,7 @@ export class FirebaseDataService {
          if (docSnap.exists()) {
            const data = docSnap.data();
            const localId = this.generateLocalId(firebaseId);
-           return this.convertFromFirestore(data, localId, firebaseId);
+           return await this.convertFromFirestore(data, localId, firebaseId, 'trips');
          }
        } catch (error) {
          console.warn('Firestore get by Firebase ID failed:', error);
@@ -445,43 +595,49 @@ export class FirebaseDataService {
    async getTripsByDate(date: string): Promise<Trip[]> {
      if (!this.isReady()) throw new Error('Service not initialized');
 
-     if (this.isGuest) {
-       return databaseService.getTripsByDate(date);
-     }
-
-     console.log('getTripsByDate called for date:', date, 'online:', this.isOnline);
-
-     if (this.isOnline) {
-       try {
-         const q = query(
-           collection(firestore, 'trips'),
-           where('userId', '==', this.userId),
-           where('date', '==', date)
-         );
-
-         const querySnapshot = await getDocs(q);
-         console.log('Firestore query returned', querySnapshot.size, 'documents');
-         const trips: Trip[] = [];
-
-         querySnapshot.forEach((doc) => {
-           const data = doc.data();
-           const localId = data.id as number;
-           this.storeLocalMapping('trips', localId.toString(), doc.id);
-           trips.push(this.convertFromFirestore(data, localId, doc.id));
-         });
-
-         console.log('Returning', trips.length, 'trips from Firestore');
-         return trips;
-       } catch (error) {
-         console.warn('Firestore query failed, falling back to local:', error);
+     // UID validation: ensure operation is for current user
+     return validateUserContext(this.userId, async () => {
+       if (this.isGuest) {
+         return databaseService.getTripsByDate(date);
        }
-     }
 
-     // Fallback to local storage
-     console.log('Using local storage fallback');
-     const localTrips = await databaseService.getTripsByDate(date);
-     console.log('Local storage returned', localTrips.length, 'trips');
-     return localTrips;
+       console.log('getTripsByDate called for date:', date, 'online:', this.isOnline);
+
+       if (this.isOnline) {
+         try {
+           const q = query(
+             collection(firestore, 'trips'),
+             where('userId', '==', this.userId),
+             where('date', '==', date)
+           );
+
+           const querySnapshot = await getDocs(q);
+           console.log('Firestore query returned', querySnapshot.size, 'documents');
+           const trips: Trip[] = [];
+
+           // Process all documents concurrently
+          const tripPromises = querySnapshot.docs.map((doc) => {
+            const data = doc.data();
+            const localId = data.id as number;
+            this.storeLocalMapping('trips', localId.toString(), doc.id);
+            return this.convertFromFirestore(data, localId, doc.id, 'trips');
+          });
+
+          trips.push(...(await Promise.all(tripPromises)));
+
+           console.log('Returning', trips.length, 'trips from Firestore');
+           return trips;
+         } catch (error) {
+           console.warn('Firestore query failed, falling back to local:', error);
+         }
+       }
+
+       // Fallback to local storage
+       console.log('Using local storage fallback');
+       const localTrips = await databaseService.getTripsByDate(date);
+       console.log('Local storage returned', localTrips.length, 'trips');
+       return localTrips;
+     }) || Promise.reject(new Error('User context validation failed'));
    }
 
   /**
@@ -504,15 +660,16 @@ export class FirebaseDataService {
         );
 
         const querySnapshot = await getDocs(q);
-        const trips: Trip[] = [];
-
-        querySnapshot.forEach((doc) => {
+        
+        // Process all documents concurrently
+        const tripPromises = querySnapshot.docs.map((doc) => {
           const data = doc.data();
           const localId = data.id as number;
           this.storeLocalMapping('trips', localId.toString(), doc.id);
-          trips.push(this.convertFromFirestore(data, localId, doc.id));
+          return this.convertFromFirestore(data, localId, doc.id, 'trips');
         });
 
+        const trips = await Promise.all(tripPromises) as Trip[];
         console.log(`Found ${trips.length} trips in Firebase for user ${this.userId}`);
         return trips;
       } catch (error) {
@@ -525,38 +682,52 @@ export class FirebaseDataService {
   }
 
   /**
-    * Update a trip
+    * Update a trip with enhanced user context validation
     */
    async updateTrip(trip: Trip): Promise<void> {
      if (!this.isReady()) throw new Error('Service not initialized');
 
-     if (this.isGuest) {
-       return databaseService.updateTrip(trip);
-     }
-
-  let tripWithUser: any = { ...trip, userId: this.userId };
-  try { tripWithUser = await encryptionService.encryptFields('trips', tripWithUser); } catch (e) { console.warn('[encryption] trip encrypt failed', e); }
-
-     if (this.isOnline) {
-       try {
-         const firebaseId = await this.getFirebaseId('trips', trip.id.toString());
-         if (firebaseId) {
-           const docRef = doc(firestore, 'trips', firebaseId);
-           await updateDoc(docRef, {
-             ...tripWithUser,
-             updatedAt: serverTimestamp()
-           });
-           console.log('Trip updated in Firestore:', firebaseId);
-           return;
-         }
-       } catch (error) {
-         console.warn('Firestore update failed, falling back to local:', error);
+     // Enhanced validation with operation type
+     return validateUserContext(this.userId, async () => {
+       if (this.isGuest) {
+         return databaseService.updateTrip(trip);
        }
-     }
 
-     // Fallback to local storage
-     await databaseService.updateTrip(trip);
-     this.queueOperation('update', 'trips', tripWithUser);
+       let tripWithUser: any = { ...trip, userId: this.userId };
+
+      // Enhanced Firebase operation validation
+      return validateFirebaseOperation(this.userId, tripWithUser, async (validatedPayload) => {
+        let operationPayload = validatedPayload;
+        try {
+          operationPayload = await encryptionService.encryptFields('trips', operationPayload);
+        } catch (e) {
+          console.warn('[encryption] trip encrypt failed', e);
+        }
+
+        console.log('Updating trip with enhanced validation for user:', this.userId, 'trip:', trip.id);
+
+        if (this.isOnline) {
+          try {
+            const firebaseId = await this.getFirebaseId('trips', trip.id.toString());
+            if (firebaseId) {
+              const docRef = doc(firestore, 'trips', firebaseId);
+              await updateDoc(docRef, {
+                ...operationPayload,
+                updatedAt: serverTimestamp()
+              });
+              console.log('Trip updated in Firestore with validation:', firebaseId);
+              return;
+            }
+          } catch (error) {
+            console.warn('Firestore update failed, falling back to local:', error);
+          }
+        }
+
+        // Fallback to local storage
+        await databaseService.updateTrip(trip);
+        this.queueOperation('update', 'trips', operationPayload);
+       }, 'updateTrip');
+     }, undefined, 'updateTrip') || Promise.reject(new Error('User context validation failed'));
    }
 
    /**
@@ -866,7 +1037,7 @@ await batch.commit();
 
           if (docSnap.exists()) {
             const data = docSnap.data();
-            return this.convertFromFirestore(data, id, firebaseId) as WeatherLog;
+            return await this.convertFromFirestore(data, id, firebaseId, 'weatherLogs') as WeatherLog;
           }
         }
 
@@ -883,7 +1054,7 @@ await batch.commit();
           const data = doc.data();
           // Ensure mapping is stored for future lookups
           await this.storeLocalMapping('weatherLogs', id, doc.id);
-          return this.convertFromFirestore(data, id, doc.id) as WeatherLog;
+          return await this.convertFromFirestore(data, id, doc.id, 'weatherLogs') as WeatherLog;
         }
 
       } catch (error) {
@@ -909,15 +1080,16 @@ await batch.commit();
         );
 
         const querySnapshot = await getDocs(q);
-        const weatherLogs: WeatherLog[] = [];
-
-        querySnapshot.forEach((doc) => {
+        
+        // Process all documents concurrently
+        const weatherLogPromises = querySnapshot.docs.map((doc) => {
           const data = doc.data();
           const localId = data.id as string; // The ID is stored in the document
           this.storeLocalMapping('weatherLogs', localId, doc.id);
-          weatherLogs.push(this.convertFromFirestore(data, localId, doc.id) as WeatherLog);
+          return this.convertFromFirestore(data, localId, doc.id, 'weatherLogs');
         });
 
+        const weatherLogs = await Promise.all(weatherLogPromises) as WeatherLog[];
         return weatherLogs;
       } catch (error) {
         console.warn('Firestore query failed, falling back to local:', error);
@@ -941,15 +1113,16 @@ await batch.commit();
         );
 
         const querySnapshot = await getDocs(q);
-        const weatherLogs: WeatherLog[] = [];
-
-        querySnapshot.forEach((doc) => {
+        
+        // Process all documents concurrently
+        const weatherLogPromises = querySnapshot.docs.map((doc) => {
           const data = doc.data();
           const localId = data.id as string; // The ID is stored in the document
           this.storeLocalMapping('weatherLogs', localId, doc.id);
-          weatherLogs.push(this.convertFromFirestore(data, localId, doc.id) as WeatherLog);
+          return this.convertFromFirestore(data, localId, doc.id, 'weatherLogs');
         });
 
+        const weatherLogs = await Promise.all(weatherLogPromises) as WeatherLog[];
         return weatherLogs;
       } catch (error) {
         console.warn('Firestore query failed, falling back to local:', error);
@@ -966,7 +1139,8 @@ await batch.commit();
       return databaseService.updateWeatherLog(weatherLog);
     }
 
-    const weatherWithUser = { ...weatherLog, userId: this.userId };
+    let weatherWithUser = { ...weatherLog, userId: this.userId };
+  try { weatherWithUser = await encryptionService.encryptFields('weatherLogs', weatherWithUser); } catch (e) { console.warn('[encryption] weather encrypt failed', e); }
 
     if (this.isOnline) {
       try {
@@ -1075,11 +1249,20 @@ await batch.commit();
       if (data && this.userId) {
         try {
           const refInfo = await this.ensurePhotoInStorage(this.userId, data.bytes, data.mime);
-          fishWithIds.photoHash = refInfo.photoHash;
-          fishWithIds.photoPath = refInfo.photoPath;
-          fishWithIds.photoMime = refInfo.photoMime;
-          if (refInfo.photoUrl) fishWithIds.photoUrl = refInfo.photoUrl;
-          delete fishWithIds.photo; // do not store inline
+          if ('inlinePhoto' in refInfo) {
+            fishWithIds.photo = refInfo.inlinePhoto;
+            fishWithIds.photoHash = refInfo.photoHash;
+          } else {
+            fishWithIds.photoHash = refInfo.photoHash;
+            fishWithIds.photoPath = refInfo.photoPath;
+            fishWithIds.photoMime = refInfo.photoMime;
+            if (refInfo.photoUrl) fishWithIds.photoUrl = refInfo.photoUrl;
+            // Persist encrypted metadata if available (for encrypted photos)
+            if ('encryptedMetadata' in refInfo && refInfo.encryptedMetadata) {
+              fishWithIds.encryptedMetadata = refInfo.encryptedMetadata;
+            }
+            delete fishWithIds.photo;
+          }
         } catch (e) {
           console.warn('Failed to move photo to Storage, keeping inline for now:', e);
         }
@@ -1146,11 +1329,20 @@ await batch.commit();
     if (data) {
       try {
         const refInfo = await this.ensurePhotoInStorage(this.userId, data.bytes, data.mime);
-        fishWithUser.photoHash = refInfo.photoHash;
-        fishWithUser.photoPath = refInfo.photoPath;
-        fishWithUser.photoMime = refInfo.photoMime;
-        if (refInfo.photoUrl) fishWithUser.photoUrl = refInfo.photoUrl;
-        delete fishWithUser.photo;
+        if ('inlinePhoto' in refInfo) {
+          fishWithUser.photo = refInfo.inlinePhoto;
+          fishWithUser.photoHash = refInfo.photoHash;
+        } else {
+          fishWithUser.photoHash = refInfo.photoHash;
+          fishWithUser.photoPath = refInfo.photoPath;
+          fishWithUser.photoMime = refInfo.photoMime;
+          if (refInfo.photoUrl) fishWithUser.photoUrl = refInfo.photoUrl;
+          // Persist encrypted metadata if available (for encrypted photos)
+          if ('encryptedMetadata' in refInfo && refInfo.encryptedMetadata) {
+            fishWithUser.encryptedMetadata = refInfo.encryptedMetadata;
+          }
+          delete fishWithUser.photo;
+        }
       } catch (e) {
         console.warn('Failed to move import photo to Storage, keeping inline for now:', e);
       }
@@ -1231,7 +1423,7 @@ await batch.commit();
 
           if (docSnap.exists()) {
             const data = docSnap.data();
-            return this.convertFromFirestore(data, id, firebaseId) as FishCaught;
+            return await this.convertFromFirestore(data, id, firebaseId, 'fishCaught') as FishCaught;
           }
         }
 
@@ -1246,7 +1438,7 @@ await batch.commit();
           const doc = fishSnapshot.docs[0];
           const data = doc.data();
           await this.storeLocalMapping('fishCaught', id, doc.id);
-          return this.convertFromFirestore(data, id, doc.id) as FishCaught;
+          return await this.convertFromFirestore(data, id, doc.id, 'fishCaught') as FishCaught;
         }
 
       } catch (error) {
@@ -1272,15 +1464,16 @@ await batch.commit();
         );
 
         const querySnapshot = await getDocs(q);
-        const fishCaught: FishCaught[] = [];
-
-        querySnapshot.forEach((doc) => {
+        
+        // Process all documents concurrently
+        const fishPromises = querySnapshot.docs.map((doc) => {
           const data = doc.data();
           const localId = data.id as string;
           this.storeLocalMapping('fishCaught', localId, doc.id);
-          fishCaught.push(this.convertFromFirestore(data, localId, doc.id) as FishCaught);
+          return this.convertFromFirestore(data, localId, doc.id, 'fishCaught');
         });
 
+        const fishCaught = await Promise.all(fishPromises) as FishCaught[];
         return fishCaught;
       } catch (error) {
         console.warn('Firestore query failed, falling back to local:', error);
@@ -1304,15 +1497,16 @@ await batch.commit();
         );
 
         const querySnapshot = await getDocs(q);
-        const fishCaught: FishCaught[] = [];
-
-        querySnapshot.forEach((doc) => {
+        
+        // Process all documents concurrently
+        const fishPromises = querySnapshot.docs.map((doc) => {
           const data = doc.data();
           const localId = data.id as string;
           this.storeLocalMapping('fishCaught', localId, doc.id);
-          fishCaught.push(this.convertFromFirestore(data, localId, doc.id) as FishCaught);
+          return this.convertFromFirestore(data, localId, doc.id, 'fishCaught');
         });
 
+        const fishCaught = await Promise.all(fishPromises) as FishCaught[];
         return fishCaught;
       } catch (error) {
         console.warn('Firestore query failed, falling back to local:', error);
@@ -1329,18 +1523,28 @@ await batch.commit();
       return databaseService.updateFishCaught(fishCaught);
     }
 
-    const fishWithUser: any = { ...fishCaught, userId: this.userId };
+    let fishWithUser: any = { ...fishCaught, userId: this.userId };
+  try { fishWithUser = await encryptionService.encryptFields('fishCaught', fishWithUser); } catch (e) { console.warn('[encryption] fish encrypt failed', e); }
     // If updating with an inline photo and online, move to Storage
     if (this.isOnline && typeof fishWithUser.photo === 'string' && this.userId) {
       const data = this.dataUrlToBytes(fishWithUser.photo);
       if (data) {
         try {
           const refInfo = await this.ensurePhotoInStorage(this.userId, data.bytes, data.mime);
-          fishWithUser.photoHash = refInfo.photoHash;
-          fishWithUser.photoPath = refInfo.photoPath;
-          fishWithUser.photoMime = refInfo.photoMime;
-          if (refInfo.photoUrl) fishWithUser.photoUrl = refInfo.photoUrl;
-          delete fishWithUser.photo;
+          if ('inlinePhoto' in refInfo) {
+            fishWithUser.photo = refInfo.inlinePhoto;
+            fishWithUser.photoHash = refInfo.photoHash;
+          } else {
+            fishWithUser.photoHash = refInfo.photoHash;
+            fishWithUser.photoPath = refInfo.photoPath;
+            fishWithUser.photoMime = refInfo.photoMime;
+            if (refInfo.photoUrl) fishWithUser.photoUrl = refInfo.photoUrl;
+            // Persist encrypted metadata if available (for encrypted photos)
+            if ('encryptedMetadata' in refInfo && refInfo.encryptedMetadata) {
+              fishWithUser.encryptedMetadata = refInfo.encryptedMetadata;
+            }
+            delete fishWithUser.photo;
+          }
         } catch (e) {
           console.warn('Failed to move updated photo to Storage, keeping inline for now:', e);
         }
@@ -1686,19 +1890,27 @@ await batch.commit();
       // Check if trip already exists in Firestore
       const existingFirebaseId = await getExistingTripFirebaseId(localId);
 
+      // Prepare trip data with encryption for Firestore
+      let tripWithData = { ...tripData, id: localId, userId: this.userId };
+      try {
+        tripWithData = await encryptionService.encryptFields('trips', tripWithData);
+      } catch (e) { 
+        console.warn('[encryption] merge trip encrypt failed', e); 
+      }
+
       if (existingFirebaseId) {
         // Trip already exists, update it
         console.log(`Trip ${localId} already exists in Firestore, updating...`);
         const tripRef = doc(firestore, 'trips', existingFirebaseId);
-        const cleanTrip = cleanForFirebase(tripData);
-        batch.update(tripRef, { ...cleanTrip, id: localId, userId: this.userId, updatedAt: serverTimestamp() });
+        const cleanTrip = cleanForFirebase(tripWithData);
+        batch.update(tripRef, { ...cleanTrip, updatedAt: serverTimestamp() });
         tripIdMap.set(localId, existingFirebaseId);
       } else {
         // Trip doesn't exist, create new one
         console.log(`Trip ${localId} doesn't exist in Firestore, creating...`);
         const newTripRef = doc(collection(firestore, 'trips'));
-        const cleanTrip = cleanForFirebase(tripData);
-        batch.set(newTripRef, { ...cleanTrip, id: localId, userId: this.userId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+        const cleanTrip = cleanForFirebase(tripWithData);
+        batch.set(newTripRef, { ...cleanTrip, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
         tripIdMap.set(localId, newTripRef.id);
       }
     }
@@ -1724,18 +1936,26 @@ await batch.commit();
         // Check if weather log already exists in Firestore
         const existingFirebaseId = await getExistingWeatherLogFirebaseId(localId);
 
+        // Prepare weather log data with encryption for Firestore
+        let logWithData = { ...logData, id: localId, tripId: originalTripId, userId: this.userId };
+        try {
+          logWithData = await encryptionService.encryptFields('weatherLogs', logWithData);
+        } catch (e) { 
+          console.warn('[encryption] merge weather log encrypt failed', e); 
+        }
+
         if (existingFirebaseId) {
           // Weather log already exists, update it
           console.log(`Weather log ${localId} already exists in Firestore, updating...`);
           const logRef = doc(firestore, 'weatherLogs', existingFirebaseId);
-          const cleanLog = cleanForFirebase(logData);
-          batch.update(logRef, { ...cleanLog, id: localId, tripId: originalTripId, userId: this.userId, updatedAt: serverTimestamp() });
+          const cleanLog = cleanForFirebase(logWithData);
+          batch.update(logRef, { ...cleanLog, updatedAt: serverTimestamp() });
         } else {
           // Weather log doesn't exist, create new one
           console.log(`Weather log ${localId} doesn't exist in Firestore, creating...`);
           const newLogRef = doc(collection(firestore, 'weatherLogs'));
-          const cleanLog = cleanForFirebase(logData);
-          batch.set(newLogRef, { ...cleanLog, id: localId, tripId: originalTripId, userId: this.userId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+          const cleanLog = cleanForFirebase(logWithData);
+          batch.set(newLogRef, { ...cleanLog, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
         }
       }
     }
@@ -1758,18 +1978,31 @@ await batch.commit();
         // Check if fish caught already exists in Firestore
         const existingFirebaseId = await getExistingFishCaughtFirebaseId(localId);
 
+        // Prepare fish data with encryption for Firestore
+        let fishWithData = { ...fishData, id: localId, tripId: originalTripId, userId: this.userId };
+        try {
+          fishWithData = await encryptionService.encryptFields('fishCaught', fishWithData);
+        } catch (e) {
+          console.warn('[encryption] merge fish encrypt failed', e);
+        }
+
+        // Preserve encryptedMetadata if present in local data
+        if (fish.encryptedMetadata) {
+          fishWithData.encryptedMetadata = fish.encryptedMetadata;
+        }
+
         if (existingFirebaseId) {
           // Fish caught already exists, update it
           console.log(`Fish caught ${localId} already exists in Firestore, updating...`);
           const fishRef = doc(firestore, 'fishCaught', existingFirebaseId);
-          const cleanFish = cleanForFirebase(fishData);
-          batch.update(fishRef, { ...cleanFish, id: localId, tripId: originalTripId, userId: this.userId, updatedAt: serverTimestamp() });
+          const cleanFish = cleanForFirebase(fishWithData);
+          batch.update(fishRef, { ...cleanFish, updatedAt: serverTimestamp() });
         } else {
           // Fish caught doesn't exist, create new one
           console.log(`Fish caught ${localId} doesn't exist in Firestore, creating...`);
           const newFishRef = doc(collection(firestore, 'fishCaught'));
-          const cleanFish = cleanForFirebase(fishData);
-          batch.set(newFishRef, { ...cleanFish, id: localId, tripId: originalTripId, userId: this.userId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+          const cleanFish = cleanForFirebase(fishWithData);
+          batch.set(newFishRef, { ...cleanFish, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
         }
       }
     }
@@ -1849,7 +2082,7 @@ await batch.commit();
    * Also clears local ID mappings and sync queue to avoid stale references.
    * This is intended for explicit "wipe-and-replace" import flows.
    */
-  async clearFirestoreUserData(): Promise<void> {
+  async clearFirestoreUserData(onProgress?: (progress: ImportProgress) => void): Promise<void> {
     if (this.isGuest) {
       throw new Error('Cannot clear Firestore data in guest mode');
     }
@@ -1859,38 +2092,133 @@ await batch.commit();
     if (!this.isOnline) {
       throw new Error('Cannot clear Firestore data while offline');
     }
+    const storageRefsToDelete: StorageReference[] = [];
+    const storagePaths = [
+      `users/${this.userId}/catches`,
+      `users/${this.userId}/images`
+    ];
 
-    const collectionsToWipe = ['trips', 'weatherLogs', 'fishCaught'];
-
-    for (const coll of collectionsToWipe) {
-      // Query all docs for this user
-      const q = query(collection(firestore, coll), where('userId', '==', this.userId));
-      const snapshot = await getDocs(q);
-
-      if (snapshot.empty) continue;
-
-      // Firestore write batches are limited (~500 ops). Commit in chunks.
-      const CHUNK = 400;
-      const docs = snapshot.docs.map(d => d.ref);
-      for (let i = 0; i < docs.length; i += CHUNK) {
-        const batch = writeBatch(firestore);
-        for (const ref of docs.slice(i, i + CHUNK)) {
-          batch.delete(ref);
-        }
-        await batch.commit();
+    const includeStorage = !!this.storageInstance;
+    for (const path of storagePaths) {
+      const refs = await this.collectStorageObjects(path);
+      if (refs.length) {
+        console.log(`[Wipe] Found ${refs.length} storage objects under ${path}`);
+        storageRefsToDelete.push(...refs);
       }
-      console.log(`[Wipe] Cleared ${snapshot.size} documents from ${coll} for user ${this.userId}`);
     }
 
-    // Clear local ID mappings and sync queue for this user
-    this.clearLocalIdMappings();
-    this.syncQueue = [];
-    this.saveSyncQueue();
+    const collectionsToWipe = ['trips', 'weatherLogs', 'fishCaught'];
+    const collectionPlans: Array<{ name: string; refs: DocumentReference[] }> = [];
 
-    // Also clear local IndexedDB to ensure a clean slate
-    await databaseService.clearAllData();
+    for (const coll of collectionsToWipe) {
+      const q = query(collection(firestore, coll), where('userId', '==', this.userId));
+      const snapshot = await getDocs(q);
+      const refs = snapshot.docs.map(d => d.ref);
+      collectionPlans.push({ name: coll, refs });
+    }
 
-    console.log('[Wipe] Completed Firestore user data wipe');
+    let totalUnits = 1; // final cleanup
+    if (includeStorage) {
+      totalUnits += 1; // storage inventory milestone
+      totalUnits += storageRefsToDelete.length > 0 ? storageRefsToDelete.length : 1;
+    }
+    for (const plan of collectionPlans) {
+      totalUnits += Math.max(plan.refs.length, 1);
+    }
+    if (totalUnits <= 0) totalUnits = 1;
+
+    let unitsCompleted = 0;
+    const emitProgress = (phase: string, message: string, increment = 0) => {
+      unitsCompleted += increment;
+      const current = Math.min(unitsCompleted, totalUnits);
+      const percent = totalUnits ? Math.min(100, Math.round((current / totalUnits) * 100)) : 100;
+      onProgress?.({
+        phase,
+        current,
+        total: totalUnits,
+        percent,
+        message
+      });
+    };
+
+    emitProgress('preparing', 'Preparing data wipe…');
+
+    const DELETE_BATCH_SIZE = 10;
+    const CHUNK = 400;
+
+    try {
+      if (includeStorage) {
+        emitProgress('storage-inventory', `Found ${storageRefsToDelete.length} storage object(s) to remove`, 1);
+
+        if (storageRefsToDelete.length === 0) {
+          emitProgress('storage-delete', 'No storage objects to delete', 1);
+        } else {
+          for (let i = 0; i < storageRefsToDelete.length; i += DELETE_BATCH_SIZE) {
+            const chunk = storageRefsToDelete.slice(i, i + DELETE_BATCH_SIZE);
+            await Promise.all(chunk.map(async (ref, index) => {
+              try {
+                await deleteObject(ref);
+                const deletedCount = Math.min(i + index + 1, storageRefsToDelete.length);
+                emitProgress('storage-delete', `Deleted ${deletedCount}/${storageRefsToDelete.length} storage objects`, 1);
+                console.log(`[Wipe] Deleted storage object ${ref.fullPath}`);
+              } catch (error: any) {
+                if (error?.code === 'storage/object-not-found') {
+                  emitProgress('storage-delete', `Storage object already removed (${ref.fullPath})`, 1);
+                  return;
+                }
+                console.warn(`[Wipe] Failed to delete storage object ${ref.fullPath}:`, error);
+                emitProgress('storage-delete', `Failed deleting storage object ${ref.fullPath}`, 1);
+              }
+            }));
+          }
+        }
+      }
+
+      for (const { name, refs } of collectionPlans) {
+        if (refs.length === 0) {
+          emitProgress(`delete-${name}`, `No documents found in ${name}`, 1);
+          console.log(`[Wipe] No documents to delete from ${name} for user ${this.userId}`);
+          continue;
+        }
+
+        for (let i = 0; i < refs.length; i += CHUNK) {
+          const batch = writeBatch(firestore);
+          const slice = refs.slice(i, i + CHUNK);
+          for (const ref of slice) {
+            batch.delete(ref);
+          }
+          await batch.commit();
+
+          slice.forEach((_, idx) => {
+            const deletedCount = Math.min(i + idx + 1, refs.length);
+            emitProgress(`delete-${name}`, `Deleted ${deletedCount}/${refs.length} ${name}`, 1);
+          });
+        }
+
+        console.log(`[Wipe] Cleared ${refs.length} documents from ${name} for user ${this.userId}`);
+      }
+
+      this.clearLocalIdMappings();
+      this.syncQueue = [];
+      this.saveSyncQueue();
+      await databaseService.clearAllData();
+      emitProgress('cleanup', 'Clearing local caches…', 1);
+
+      emitProgress('complete', 'Firestore user data wipe complete');
+      console.log('[Wipe] Completed Firestore user data wipe');
+    } catch (error) {
+      const total = totalUnits || 1;
+      const current = Math.min(unitsCompleted, total);
+      const percent = total ? Math.min(100, Math.round((current / total) * 100)) : 0;
+      onProgress?.({
+        phase: 'error',
+        current,
+        total,
+        percent,
+        message: error instanceof Error ? error.message : 'Failed to wipe Firestore data'
+      });
+      throw error;
+    }
   }
 
   /**
@@ -1967,6 +2295,7 @@ await batch.commit();
 
       for (const fishCaught of firebaseFishCaught) {
         // Use updateFishCaught which uses put() internally - preserves original ID
+        // This ensures encryptedMetadata is preserved in local cache
         await databaseService.updateFishCaught(fishCaught);
       }
 
@@ -2020,6 +2349,10 @@ await batch.commit();
     let finalData = data;
     if (!data?._encrypted && encryptionService.isReady()) {
       try { finalData = await encryptionService.encryptFields(collection, data); } catch (e) { console.warn('[encryption] queue encrypt failed', e); }
+    }
+    // Preserve encryptedMetadata in sync queue if present
+    if (data.encryptedMetadata && !finalData.encryptedMetadata) {
+      finalData.encryptedMetadata = data.encryptedMetadata;
     }
     const queuedOperation = enqueue(finalData);
     this.syncQueue.push(queuedOperation);
@@ -2091,7 +2424,7 @@ await batch.commit();
     return Math.abs(hash);
   }
 
-  private convertFromFirestore(data: any, localId: number | string, firebaseDocId?: string, collectionHint?: string): any {
+  private async convertFromFirestore(data: any, localId: number | string, firebaseDocId?: string, collectionHint?: string): Promise<any> {
     const { userId, createdAt, updatedAt, ...cleanData } = data;
     const baseObj = {
       ...cleanData,
@@ -2101,7 +2434,7 @@ await batch.commit();
       updatedAt: (updatedAt as any)?.toDate?.()?.toISOString?.() || updatedAt
     };
     if (collectionHint) {
-      return encryptionService.decryptObject(collectionHint, baseObj);
+      return await encryptionService.decryptObject(collectionHint, baseObj);
     }
     return baseObj;
   }
@@ -2124,6 +2457,49 @@ await batch.commit();
     }
     return false;
   }
+  /**
+   * Check if error is a Firebase index error
+   */
+  private isFirebaseIndexError(error: Error): boolean {
+    const indexErrorMessages = [
+      'requires an index',
+      'missing index',
+      'index not found',
+      'The query requires an index',
+      'FAILED_PRECONDITION'
+    ];
+    
+    return indexErrorMessages.some(msg => 
+      error.message.toLowerCase().includes(msg.toLowerCase()) ||
+      error.stack?.toLowerCase().includes(msg.toLowerCase()) ||
+      error.name === 'FirebaseError'
+    );
+  }
+
+  /**
+   * Extract collection name from Firebase index error
+   */
+  private extractCollectionFromError(error: Error): string | null {
+    const message = error.message;
+    
+    // Look for collection patterns in error messages
+    const collectionPatterns = [
+      /collection\s+"([^"]+)"/i,
+      /from\s+(\w+)/i,
+      /on\s+(\w+)\s+collection/i
+    ];
+    
+    for (const pattern of collectionPatterns) {
+      const match = message.match(pattern);
+      if (match && match[1]) {
+        return match[1];
+      }
+    }
+    
+    // Default to trips if we can't extract (most common case)
+    return 'trips';
+  }
+
   async startBackgroundEncryptionMigration(progressCb?: (p: { collection: string; processed: number; updated: number; done: boolean; remaining?: number }) => void): Promise<void> {
     if (this.encryptionMigrationRunning) return;
     if (!this.userId || this.isGuest) return;
@@ -2150,7 +2526,74 @@ await batch.commit();
             if (cont) await new Promise(r => setTimeout(r, 200));
         }
       }
-    } catch (e) { console.error('[enc-migration] error', e); } finally { this.encryptionMigrationRunning = false; }
+    } catch (e) { 
+      console.error('[enc-migration] error', e); 
+      
+      // Handle Firebase index errors specifically
+      if (e instanceof Error && this.isFirebaseIndexError(e)) {
+        console.error('[enc-migration] Firebase index error detected - failing fast');
+        
+        // Mark the affected collection as done to prevent indefinite hanging
+        const affectedCollection = this.extractCollectionFromError(e) || 'trips';
+        try {
+          const stateKey = this.getEncStateKey(affectedCollection);
+          const currentState = this.loadEncState(stateKey);
+          currentState.done = true;
+          this.saveEncState(stateKey, currentState);
+          
+          console.warn(`[enc-migration] Marked collection '${affectedCollection}' as done due to index error`);
+          
+          // Dispatch index error event for UI to show proper message
+          window.dispatchEvent(new CustomEvent('encryptionIndexError', {
+            detail: { 
+              collection: affectedCollection,
+              error: e.message,
+              userId: this.userId,
+              consoleUrl: 'https://console.firebase.google.com/'
+            }
+          }));
+        } catch (stateError) {
+          console.error('[enc-migration] Failed to mark collection as done after index error:', stateError);
+        }
+      }
+      
+      // Log migration failure telemetry
+      console.error('[enc-migration] Migration failed:', {
+        error: e instanceof Error ? e.message : 'Unknown error',
+        userId: this.userId,
+        isGuest: this.isGuest,
+        isOnline: this.isOnline,
+        encryptionReady: encryptionService.isReady(),
+        isIndexError: e instanceof Error && this.isFirebaseIndexError(e)
+      });
+    } finally { 
+      this.encryptionMigrationRunning = false;
+      
+      // Check if migration completed successfully and log success
+      if (this.encryptionMigrationRunning === false) {
+        try {
+          const finalStatus = this.getEncryptionMigrationStatus();
+          if (finalStatus.allDone) {
+            console.log('[enc-migration] Migration completed successfully:', {
+              userId: this.userId,
+              collections: finalStatus.collections,
+              totalProcessed: Object.values(finalStatus.collections).reduce((sum, col) => sum + col.processed, 0),
+              totalUpdated: Object.values(finalStatus.collections).reduce((sum, col) => sum + col.updated, 0)
+            });
+            
+            // Dispatch migration completion event for UI to listen to
+            window.dispatchEvent(new CustomEvent('encryptionMigrationCompleted', {
+              detail: { 
+                userId: this.userId,
+                status: finalStatus
+              }
+            }));
+          }
+        } catch (statusError) {
+          console.warn('[enc-migration] Failed to get final migration status:', statusError);
+        }
+      }
+    }
   }
   private async processEncryptionMigrationBatch(collectionName: string, state: any): Promise<{ scanned: number; updated: number; done: boolean; nextCursor?: any; remaining?: number }> {
     const cfg = ENCRYPTION_COLLECTION_FIELD_MAP[collectionName];
@@ -2247,12 +2690,18 @@ await batch.commit();
     };
 
     try {
-      const itemData = {
+      let itemData = {
         ...sanitizedItem,
         userId: this.userId,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       };
+
+      try {
+        itemData = await encryptionService.encryptFields('tackleItems', itemData);
+      } catch (e) { 
+        console.warn('[encryption] tackle create encrypt failed', e); 
+      }
 
       const docRef = await addDoc(collection(firestore, 'tackleItems'), itemData);
       return docRef.id;
@@ -2271,8 +2720,14 @@ await batch.commit();
     }
 
     try {
+      let encryptedUpdates = { ...updates };
+      try {
+        encryptedUpdates = await encryptionService.encryptFields('tackleItems', encryptedUpdates);
+      } catch (e) { 
+        console.warn('[encryption] tackle update encrypt failed', e); 
+      }
       const itemRef = doc(firestore, 'tackleItems', id);
-      await updateDoc(itemRef, { ...updates, updatedAt: serverTimestamp() });
+      await updateDoc(itemRef, { ...encryptedUpdates, updatedAt: serverTimestamp() });
     } catch (error) {
       console.error('Error updating tackle item:', error);
       throw error;

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import type { User } from 'firebase/auth';
 import {
   signInWithEmailAndPassword,
@@ -12,14 +12,18 @@ import {
 } from 'firebase/auth';
 import { auth } from '../services/firebase';
 import { firebaseDataService } from '../services/firebaseDataService';
+import { encryptionService } from '../services/encryptionService';
 import { usePWA } from './PWAContext';
 import { mapFirebaseError } from '../utils/firebaseErrorMessages';
+import { clearUserState } from '../utils/userStateCleared';
+import { secureLogoutWithCleanup } from '../utils/clearUserContext';
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   successMessage: string | null;
   error: string | null;
+  encryptionReady: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
@@ -28,6 +32,8 @@ interface AuthContextType {
   clearSuccessMessage: () => void;
   clearSyncQueue: () => boolean;
   isFirebaseConfigured: boolean;
+  userDataReady: boolean; // New flag to indicate when user-specific data is ready
+  authStateChanged: boolean; // New flag for immediate auth state change notifications
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -45,7 +51,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [encryptionReady, setEncryptionReady] = useState(false);
+  const [userDataReady, setUserDataReady] = useState(false);
+  const [authStateChanged, setAuthStateChanged] = useState(false);
   const { isPWA } = usePWA();
+  const migrationStartedRef = useRef(false);
+  const previousUserRef = useRef<User | null>(null);
 
   useEffect(() => {
     if (!auth) {
@@ -58,6 +69,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Update user state IMMEDIATELY for responsive UI
       console.log('Auth state changed - user:', newUser?.uid || 'null', 'email:', newUser?.email || 'none');
+
+      // Check if auth state actually changed (including the first time user becomes available)
+      const authStateActuallyChanged = previousUserRef.current?.uid !== newUser?.uid;
+      
+      if (authStateActuallyChanged) {
+        console.log('🔄 Auth state actually changed, triggering immediate notifications');
+        setAuthStateChanged(true);
+        try {
+          if (newUser?.uid) {
+            localStorage.setItem('lastActiveUser', newUser.uid);
+          } else {
+            localStorage.setItem('lastActiveUser', 'guest');
+          }
+        } catch (storageError) {
+          console.warn('Failed to update lastActiveUser key:', storageError);
+        }
+        
+        // Emit immediate auth state change event for instant UI updates
+        window.dispatchEvent(new CustomEvent('authStateChanged', {
+          detail: {
+            fromUser: previousUserRef.current?.uid || null,
+            toUser: newUser?.uid || null,
+            isLogin: newUser && !previousUserRef.current,
+            isLogout: !newUser && previousUserRef.current,
+            timestamp: Date.now(),
+            user: newUser,
+            previousUser: previousUserRef.current
+          }
+        }));
+        
+        // Reset auth state change flag after a short delay to allow components to respond
+        setTimeout(() => setAuthStateChanged(false), 100);
+      }
+
+      // Update previous user reference
+      previousUserRef.current = newUser;
 
       // Clear any unintended modal state that might be preserved during PWA redirect
       if (newUser && !previousUser) {
@@ -86,12 +133,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (newUser && !previousUser) {
         // User is logging in - handle data operations in background
         console.log('User logging in, handling data operations in background...');
+        setUserDataReady(false); // Reset userDataReady for new login
 
         // Use setTimeout to avoid blocking the UI update
         setTimeout(async () => {
           try {
             console.log('Background: Switching to user context...');
             await firebaseDataService.switchToUser(newUser.uid);
+
+            // Initialize encryption key for the user
+            if (newUser.email) {
+              try {
+                await encryptionService.setDeterministicKey(newUser.uid, newUser.email);
+                console.log('Background: Encryption key initialized for user');
+                setEncryptionReady(true);
+                
+                // Start background encryption migration immediately after key is ready
+                if (encryptionService.isReady() && !migrationStartedRef.current) {
+                  console.log('Background: Starting background encryption migration...');
+                  migrationStartedRef.current = true;
+                  try {
+                    await firebaseDataService.startBackgroundEncryptionMigration();
+                    console.log('Background: Encryption migration started successfully');
+                  } catch (migrationError) {
+                    console.error('Background: Failed to start encryption migration:', migrationError);
+                    // Don't block login flow, migration is non-critical
+                  }
+                }
+              } catch (encryptionError) {
+                console.error('Background: Failed to initialize encryption key:', encryptionError);
+                // Don't block login flow, but surface the error
+                if (encryptionError instanceof Error && encryptionError.message.includes('VITE_KEY_PEPPER')) {
+                  console.warn('VITE_KEY_PEPPER environment variable is missing or empty');
+                }
+              }
+            }
 
             // For Chrome PWA, minimize background operations for faster UI response
             const isChromePWA = navigator.userAgent.includes('Chrome') &&
@@ -116,22 +192,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
 
             console.log('Background: Login data operations completed');
+            
+            // Set userDataReady to true and emit calendar refresh signal
+            setUserDataReady(true);
+            console.log('Background: User data ready - emitting calendar refresh signal');
+            window.dispatchEvent(new CustomEvent('userDataReady', { detail: { userId: newUser.uid, timestamp: Date.now(), source: 'AuthContext', isGuest: false } }));
           } catch (error) {
             console.error('Background data operations error:', error);
-            // Don't set error state here as it would overwrite the successful login
+            // Still set userDataReady to allow UI to function, albeit with limited data
+            setUserDataReady(true);
+            window.dispatchEvent(new CustomEvent('userDataReady', { detail: { userId: newUser.uid, error, timestamp: Date.now(), source: 'AuthContext', isGuest: false } }));
           }
         }, 50); // Even smaller delay for faster response
 
       } else if (!newUser && previousUser) {
         // User is logging out
         console.log('User logging out, switching to guest mode...');
+        // Clear encryption key when logging out
+        encryptionService.clear();
+        setEncryptionReady(false);
+        setUserDataReady(false); // Reset userDataReady on logout
+        // Reset migration flag
+        migrationStartedRef.current = false;
         // Don't clear local data - keep it visible for better UX
         setTimeout(async () => {
           try {
             await firebaseDataService.initialize(); // Re-initialize in guest mode.
             console.log('Background: Switched to guest mode - local data remains visible');
+            
+            // Set userDataReady to true for guest mode and emit refresh
+            setUserDataReady(true);
+            try {
+              localStorage.setItem('lastActiveUser', 'guest');
+            } catch (storageError) {
+              console.warn('Failed to update lastActiveUser key on logout:', storageError);
+            }
+            window.dispatchEvent(new CustomEvent('userDataReady', { detail: { userId: null, isGuest: true, timestamp: Date.now(), source: 'AuthContext' } }));
           } catch (error) {
             console.error('Background logout data operations error:', error);
+            // Still set userDataReady to allow UI to function
+            setUserDataReady(true);
+            window.dispatchEvent(new CustomEvent('userDataReady', { detail: { userId: null, isGuest: true, error, timestamp: Date.now(), source: 'AuthContext' } }));
           }
         }, 100);
       }
@@ -196,7 +297,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     return unsubscribe;
-  }, [user]);
+  }, [user, migrationStartedRef]);
 
   const login = async (email: string, password: string) => {
     if (!auth) {
@@ -365,59 +466,53 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     console.log('Logout called, auth available:', !!auth);
 
-    if (!auth) {
-      console.warn('Firebase auth not available, clearing local user state');
-      // If Firebase auth is not available, just clear the local user state
-      setUser(null);
-      setSuccessMessage('Signed out successfully');
-      return;
-    }
-
     try {
       setError(null);
       
-      // Download Firebase data to local storage for guest mode access
-      console.log('Downloading your data for offline access...');
-      setSuccessMessage('Downloading your data for offline access...');
-      
-      try {
-        await firebaseDataService.backupLocalDataBeforeLogout();
-        console.log('Data download completed - your data will be available offline');
-      } catch (backupError) {
-        console.warn('Failed to download data for offline access:', backupError);
-        // Continue with logout even if backup fails
-      }
-
-      console.log('Calling Firebase signOut...');
-      await signOut(auth);
-      console.log('Firebase signOut successful');
-
-      // Clear sync queue after successful logout
-      try {
-        firebaseDataService.clearSyncQueue();
-        console.log('Sync queue cleared during logout');
-        // Dispatch custom event to notify sync status hook
-        window.dispatchEvent(new CustomEvent('syncQueueCleared'));
-      } catch (syncError) {
-        console.warn('Failed to clear sync queue during logout:', syncError);
-      }
-
+      // Use the enhanced comprehensive logout with listener cleanup
+      console.log('Using enhanced secure logout with comprehensive cleanup...');
+      await secureLogoutWithCleanup();
       setSuccessMessage('Signed out successfully');
+      
     } catch (err) {
-      console.error('Firebase logout error:', err);
-      const friendly = mapFirebaseError(err, 'generic');
-      setError(friendly);
-      console.log('Clearing local user state as fallback');
-      setUser(null);
+      console.error('Enhanced logout failed, falling back to basic logout:', err);
+      
+      // Fallback to basic logout if enhanced fails
       try {
-        firebaseDataService.clearSyncQueue();
-        console.log('Sync queue cleared during fallback logout');
-        window.dispatchEvent(new CustomEvent('syncQueueCleared'));
-      } catch (syncError) {
-        console.warn('Failed to clear sync queue during fallback logout:', syncError);
+        setError(null);
+        
+        // Download Firebase data to local storage for guest mode access (maintain existing behavior)
+        console.log('Downloading your data for offline access...');
+        setSuccessMessage('Downloading your data for offline access...');
+        
+        try {
+          await firebaseDataService.backupLocalDataBeforeLogout();
+          console.log('Data download completed - your data will be available offline');
+        } catch (backupError) {
+          console.warn('Failed to download data for offline access:', backupError);
+        }
+
+        // Call basic Firebase signOut
+        if (auth) {
+          console.log('Calling Firebase signOut...');
+          await signOut(auth);
+          console.log('Firebase signOut successful');
+        }
+
+        // Clear basic cleanup
+        await clearUserState();
+        
+        setSuccessMessage('Signed out successfully');
+      } catch (fallbackError) {
+        console.error('Even basic logout failed:', fallbackError);
+        const friendly = mapFirebaseError(fallbackError, 'generic');
+        setError(friendly);
+        
+        // Last resort - just clear local state
+        setUser(null);
+        setError(null);
+        setSuccessMessage('Force logged out locally');
       }
-      setSuccessMessage('Signed out locally');
-      throw new Error(friendly);
     }
   };
 
@@ -425,6 +520,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const forceLogout = () => {
     console.log('Force logout called - clearing all user state');
 
+    // Clear encryption key
+    encryptionService.clear();
+    setEncryptionReady(false);
+    
     // Clear sync queue
     try {
       firebaseDataService.clearSyncQueue();
@@ -434,6 +533,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (syncError) {
       console.warn('Failed to clear sync queue during force logout:', syncError);
     }
+
+    // Use comprehensive state clearing
+    clearUserState().then(() => {
+      console.log('Force logout state cleanup completed');
+    }).catch(err => {
+      console.warn('Force logout state cleanup failed:', err);
+    });
 
     setUser(null);
     setError(null);
@@ -533,6 +639,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loading,
     successMessage,
     error,
+    encryptionReady,
+    userDataReady,
+    authStateChanged,
     login,
     register,
     signInWithGoogle,

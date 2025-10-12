@@ -288,6 +288,8 @@ export class DataExportService {
               if (fish.photo && photoMap.has(fish.photo)) {
                 fish.photo = photoMap.get(fish.photo);
               }
+              // Preserve encryptedMetadata if present
+              // (it should already be in the fish record from export)
             });
           }
 

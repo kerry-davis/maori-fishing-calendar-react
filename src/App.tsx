@@ -464,6 +464,12 @@ function AppContent() {
 
         {/* Authentication Success Toast */}
         <SuccessToast />
+
+        {/* Development Debug Components */}
+        {/* Uncomment for migration verification debugging */}
+        {/* <MigrationVerification /> */}
+        {/* End Development Debug Components */}
+
         {/* End of overlay components */}
     </div>
   );

@@ -1,11 +1,12 @@
 import React, { useState, useCallback, useEffect } from "react";
+import { firebaseDataService } from "../../services/firebaseDataService";
 import { Button } from "../UI";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "./Modal";
 import { useDatabaseService } from "../../contexts/DatabaseContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { useFirebaseTackleBox } from "../../hooks/useFirebaseTackleBox";
 import { storage } from "../../services/firebase";
-import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import { ref, deleteObject } from "firebase/storage";
 import type { FishCaught } from "../../types";
 
 export interface FishCatchModalProps {
@@ -35,6 +36,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
     details: "",
     photo: "",
     photoPath: "",
+    encryptedMetadata: undefined as string | undefined,
   });
   const [validation, setValidation] = useState({
     isValid: true,
@@ -44,6 +46,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [isPhotoLoading, setIsPhotoLoading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set());
@@ -62,7 +65,8 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
           gear: fish.gear,
           details: fish.details,
           photo: fish.photo || "",
-          photoPath: "",
+          photoPath: fish.photoPath || "",
+          encryptedMetadata: fish.encryptedMetadata ?? undefined,
         });
       } else {
         setError('Fish catch not found');
@@ -87,6 +91,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
           details: "",
           photo: "",
           photoPath: "",
+          encryptedMetadata: undefined,
         });
       }
       setError(null);
@@ -104,6 +109,38 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
       }
     };
   }, [photoPreview]);
+
+  // Async decryption for encrypted photos
+  useEffect(() => {
+    let isMounted = true;
+    const tryDecryptPhoto = async () => {
+      if (formData.encryptedMetadata && formData.photoPath) {
+        setIsPhotoLoading(true);
+        try {
+          const result = await firebaseDataService.getDecryptedPhoto(formData.photoPath, formData.encryptedMetadata);
+          if (isMounted && result && result.data) {
+            const blob = new Blob([result.data], { type: result.mimeType });
+            const url = URL.createObjectURL(blob);
+            setPhotoPreview(url);
+          } else if (isMounted) {
+            setPhotoPreview(null);
+            setUploadError('Failed to decrypt photo.');
+          }
+        } catch (err) {
+          if (isMounted) {
+            setPhotoPreview(null);
+            setUploadError('Failed to decrypt photo.');
+          }
+        } finally {
+          if (isMounted) setIsPhotoLoading(false);
+        }
+      } else {
+        setIsPhotoLoading(false);
+      }
+    };
+    tryDecryptPhoto();
+    return () => { isMounted = false; };
+  }, [formData.encryptedMetadata, formData.photoPath]);
 
   const handleInputChange = useCallback((field: string, value: string | string[]) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -160,6 +197,24 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
         photo: formData.photo,
       };
 
+      // If the photo field contains a data URL, we want the server side
+      // `ensurePhotoInStorage` to move it into Storage and set `photoPath` and
+      // `encryptedMetadata`. Ensure we don't accidentally persist stale
+      // `photoPath`/`photoUrl`/`encryptedMetadata` from an earlier edit.
+      if (typeof formData.photo === 'string' && formData.photo.startsWith('data:')) {
+        // Explicitly ensure these fields are not set on the client payload so the
+        // server/data service takes ownership of storing and populating them.
+        (fishData as any).photoPath = '';
+        (fishData as any).photoUrl = '';
+        (fishData as any).encryptedMetadata = undefined;
+      }
+      // If the photo was cleared by the user, ensure storage references are removed
+      if (!formData.photo) {
+        (fishData as any).photoPath = '';
+        (fishData as any).photoUrl = '';
+        (fishData as any).encryptedMetadata = undefined;
+      }
+
       let savedData: FishCaught;
       if (isEditing && fishId) {
         await db.updateFishCaught({ id: fishId, ...fishData });
@@ -198,8 +253,8 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
     }
 
     // Create preview URL for selected file immediately
-  const previewUrl = URL.createObjectURL(file);
-  setPhotoPreview(previewUrl);
+    const previewUrl = URL.createObjectURL(file);
+    setPhotoPreview(previewUrl);
     setUploadError(null);
     setError(null);
 
@@ -217,38 +272,63 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
           }
         };
         reader.onerror = () => {
+          // Clean up the preview URL on error
+          if (previewUrl.startsWith('blob:')) {
+            URL.revokeObjectURL(previewUrl);
+          }
           setUploadError('Failed to process photo. Please try again.');
         };
         reader.readAsDataURL(file);
       } catch (e) {
+        // Clean up the preview URL on error
+        if (previewUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(previewUrl);
+        }
         setUploadError('Failed to process photo. Please try again.');
       }
       return;
     }
 
+    // For authenticated users: read the file as a data URL and let the data service
+    // handle encryption and moving the inline data to storage. This centralizes
+    // encryption behavior under firebaseDataService.ensurePhotoInStorage and keeps
+    // handling consistent across create/update flows.
     setIsUploadingPhoto(true);
-
     try {
-      const catchId = fishId || `temp_${Date.now()}`;
-      const storagePath = `users/${user.uid}/catches/${catchId}/${file.name}`;
-      const storageRef = ref(storage, storagePath);
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
 
-      await uploadBytes(storageRef, file);
-      const downloadURL = await getDownloadURL(storageRef);
+        // Pass the data URL to the form state; firebaseDataService will handle
+        // moving this inline photo to storage and setting photoPath/photoUrl and
+        // encryptedMetadata accordingly when the record is saved.
+        handleInputChange("photo", dataUrl);
 
-      handleInputChange("photo", downloadURL);
-      handleInputChange("photoPath", storagePath);
+        // Clear any existing storage-backed fields when replacing a photo
+        handleInputChange("photoPath", "");
+        // Keep UI preview as the local data URL for instant feedback
+        setPhotoPreview(dataUrl);
 
-      // Swap preview to the uploaded URL so it remains visible
-      setPhotoPreview(downloadURL);
-      // Revoke only the temporary blob preview
+        // Revoke the temporary blob preview URL if created
+        if (previewUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(previewUrl);
+        }
+      };
+      reader.onerror = () => {
+        // Clean up the preview URL on error
+        if (previewUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(previewUrl);
+        }
+        setUploadError('Failed to process photo. Please try again.');
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error('Photo processing failed:', err);
+      // Clean up the preview URL on error
       if (previewUrl.startsWith('blob:')) {
         URL.revokeObjectURL(previewUrl);
       }
-    } catch (err) {
-      console.error('Photo upload failed:', err);
-      setUploadError('Failed to upload photo. Please try again.');
-      // Keep preview visible on error so user can retry
+      setUploadError('Failed to process photo. Please try again.');
     } finally {
       setIsUploadingPhoto(false);
     }
@@ -617,65 +697,65 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                 </div>
               )}
 
-              {/* Photo Preview for newly selected photos */}
-              {photoPreview && (
-                <div className="mt-2">
-                  <div className="text-sm font-medium mb-2" style={{ color: 'var(--secondary-text)' }}>
-                    {isUploadingPhoto ? 'Uploading Photo...' : uploadError ? 'Upload Failed' : 'Selected Photo'}
-                  </div>
-                  <div className="relative inline-block">
+              {/* Photo Preview for newly selected or decrypted photos */}
+              <div className="mt-2">
+                <div className="text-sm font-medium mb-2" style={{ color: 'var(--secondary-text)' }}>
+                  {isPhotoLoading || isUploadingPhoto
+                    ? 'Loading Photo...'
+                    : uploadError
+                    ? 'Upload Failed'
+                    : photoPreview
+                    ? 'Selected Photo'
+                    : 'No Photo'}
+                </div>
+                <div className="relative inline-block">
+                  {isPhotoLoading ? (
+                    <div className="flex items-center justify-center w-32 h-32 bg-gray-100 dark:bg-gray-700 rounded">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                    </div>
+                  ) : photoPreview ? (
                     <img
                       src={photoPreview}
                       alt="Selected catch"
                       className={`w-32 h-32 object-cover rounded ${uploadError ? 'opacity-50' : ''}`}
                       style={{ border: `1px solid ${uploadError ? 'var(--error-border)' : 'var(--border-color)'}` }}
                     />
-                    {uploadError && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 rounded">
-                        <span className="text-white text-xs text-center px-2">
-                          <i className="fas fa-exclamation-triangle block mb-1"></i>
-                          Upload Failed
-                        </span>
-                      </div>
-                    )}
-                    {isUploadingPhoto && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-30 rounded">
-                        <div className="text-white text-xs">
-                          <i className="fas fa-spinner fa-spin block mb-1"></i>
-                          Uploading...
-                        </div>
-                      </div>
-                    )}
-                    {!isUploadingPhoto && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          // Clean up the preview URL to prevent memory leaks
-                          if (photoPreview && photoPreview.startsWith('blob:')) {
-                            URL.revokeObjectURL(photoPreview);
-                          }
-                          setPhotoPreview(null);
-                          setUploadError(null);
-                          // Also clear selected photo from form state so it won't be saved
-                          handleInputChange("photo", "");
-                          handleInputChange("photoPath", "");
-                          // Clear the file input properly
-                          const fileInput = document.getElementById('photo-upload') as HTMLInputElement;
-                          if (fileInput) {
-                            fileInput.value = '';
-                          }
-                        }}
-                        className="absolute top-2 right-2 btn btn-danger px-2 py-1 text-xs"
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </div>
-                  {uploadError && (
-                    <p className="mt-1 text-xs" style={{ color: 'var(--error-text)' }}>{uploadError}</p>
+                  ) : (
+                    <div className="flex items-center justify-center w-32 h-32 bg-gray-100 dark:bg-gray-700 rounded">
+                      <span className="text-gray-400">No photo</span>
+                    </div>
+                  )}
+                  {photoPreview && !isPhotoLoading && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // Clean up the preview URL to prevent memory leaks
+                        if (photoPreview && photoPreview.startsWith('blob:')) {
+                          URL.revokeObjectURL(photoPreview);
+                        }
+                        setPhotoPreview(null);
+                        setUploadError(null);
+                        // Also clear selected photo from form state so it won't be saved
+                        handleInputChange("photo", "");
+                        handleInputChange("photoPath", "");
+                        // Clear the file input properly
+                        const fileInput = document.getElementById('photo-upload') as HTMLInputElement;
+                        if (fileInput) {
+                          fileInput.value = '';
+                          // Force re-render to ensure file input is cleared across all browsers
+                          fileInput.replaceWith(fileInput.cloneNode(true));
+                        }
+                      }}
+                      className="absolute top-2 right-2 btn btn-danger px-2 py-1 text-xs"
+                    >
+                      Remove
+                    </button>
                   )}
                 </div>
-              )}
+                {uploadError && (
+                  <p className="mt-1 text-xs" style={{ color: 'var(--error-text)' }}>{uploadError}</p>
+                )}
+              </div>
               <div className="mt-4">
                 <button
                   type="button"

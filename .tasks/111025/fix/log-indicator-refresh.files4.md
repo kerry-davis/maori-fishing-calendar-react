@@ -1,0 +1,4 @@
+- src/components/Calendar/Calendar.tsx
+- src/App.tsx
+- src/utils/clearUserContext.ts
+- src/test/dataIntegrityRegression.test.ts

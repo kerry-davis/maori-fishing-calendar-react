@@ -15,7 +15,7 @@ interface SearchResult {
 
 interface SearchModalProps extends ModalProps {
   onTripSelect?: (tripId: number) => void;
-  onFishSelect?: (fishId: number, tripId: number) => void;
+  onFishSelect?: (fishId: string, tripId: number) => void;
 }
 
 /**
@@ -199,7 +199,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     } else if (result.type === "fish" && onFishSelect) {
       const fish = fishCaught.find((f) => f.id === result.id.toString());
       if (fish) {
-        onFishSelect(result.id, fish.tripId);
+  onFishSelect(String(result.id), fish.tripId);
       }
     }
     onClose();

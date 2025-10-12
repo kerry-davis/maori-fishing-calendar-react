@@ -1,0 +1,12 @@
+[
+  {
+    "origin": [
+      "http://localhost:5173",
+      "https://maori-fishing-calendar-react.web.app",
+      "https://maori-fishing-calendar-react.firebaseapp.com"
+    ],
+    "method": ["GET", "HEAD", "OPTIONS", "POST", "PUT", "DELETE"],
+    "responseHeader": ["*"],
+    "maxAgeSeconds": 3600
+  }
+]

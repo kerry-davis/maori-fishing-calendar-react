@@ -149,18 +149,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onMobil
             <button
               onClick={handleGoogleSignIn}
               disabled={loading}
-              className="w-full py-2 px-4 rounded-md hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 flex items-center justify-center gap-2"
-              style={{
-                backgroundColor: 'var(--input-background)',
-                border: '1px solid var(--input-border)',
-                color: 'var(--primary-text)'
-              }}
+              className="google-signin-button w-full py-2 px-4 rounded-md flex items-center justify-center gap-3 transition-all"
             >
-              <svg className="w-5 h-5" viewBox="0 0 24 24">
-                <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+              <svg className="w-5 h-5" viewBox="0 0 18 18" aria-hidden="true" focusable="false">
+                <path fill="#4285F4" d="M17.64 9.2045c0-.638-.0573-1.25-.1636-1.836H9v3.472h4.844c-.2085 1.124-.8424 2.077-1.7932 2.716v2.258h2.902c1.6995-1.565 2.6872-3.874 2.6872-6.61z" />
+                <path fill="#34A853" d="M9 18c2.43 0 4.47-.806 5.96-2.185l-2.902-2.258c-.806.54-1.837.857-3.058.857-2.352 0-4.342-1.588-5.055-3.72H.96v2.332C2.445 15.982 5.481 18 9 18z" />
+                <path fill="#FBBC05" d="M3.945 10.694c-.18-.54-.282-1.115-.282-1.694s.102-1.154.282-1.694V4.974H.96C.348 6.195 0 7.563 0 9s.348 2.805.96 4.026l2.985-2.332z" />
+                <path fill="#EA4335" d="M9 3.542c1.32 0 2.51.454 3.442 1.346l2.582-2.582C13.465.912 11.43 0 9 0 5.481 0 2.445 2.018.96 4.974l2.985 2.332C4.658 5.174 6.648 3.542 9 3.542z" />
               </svg>
               Continue with Google
             </button>
