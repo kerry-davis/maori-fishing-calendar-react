@@ -6,7 +6,7 @@ import { useDatabaseService } from "../../contexts/DatabaseContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { useFirebaseTackleBox } from "../../hooks/useFirebaseTackleBox";
 import { storage } from "../../services/firebase";
-import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import { ref, deleteObject } from "firebase/storage";
 import type { FishCaught } from "../../types";
 
 export interface FishCatchModalProps {
