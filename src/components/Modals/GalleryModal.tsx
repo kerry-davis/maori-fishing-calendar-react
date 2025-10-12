@@ -1,15 +1,17 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Modal, ModalHeader, ModalBody } from "./Modal";
 import type {
-  ModalProps,
-  GallerySortOrder,
+   ModalProps,
+   GallerySortOrder,
 } from "../../types";
 import { useDatabaseService } from "../../contexts/DatabaseContext";
+import { firebaseDataService } from "../../services/firebaseDataService";
+import { photoMigrationService } from "../../services/photoMigrationService";
 
 
 interface PhotoItem {
   id: string;
-  fishId: number;
+  fishId: string;
   tripId: number;
   photo: string;
   species: string;
@@ -43,22 +45,33 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
   selectedYear,
   onPhotoSelect,
 }) => {
+  // Remove duplicate declarations from previous patch
   const db = useDatabaseService();
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoItem | null>(null);
   const [sortOrder, setSortOrder] = useState<GallerySortOrder>("desc");
-  const [filterMonth, setFilterMonth] = useState<number | null>(
-    selectedMonth || null,
-  );
-  const [filterYear, setFilterYear] = useState<number | null>(
-    selectedYear || null,
-  );
-
+  const [filterMonth, setFilterMonth] = useState<number | null>(selectedMonth || null);
+  const [filterYear, setFilterYear] = useState<number | null>(selectedYear || null);
+  const [migrationStatus, setMigrationStatus] = useState<{
+    isRunning: boolean;
+    progress: number;
+    failedPhotos: string[];
+  } | null>(null);
   // Touch/swipe handling for mobile
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
+  // Track object URLs for cleanup
+  const objectUrlsRef = React.useRef<string[]>([]);
+
+  // Cleanup object URLs on unmount only
+  useEffect(() => {
+    return () => {
+      objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      objectUrlsRef.current = [];
+    };
+  }, []);
 
   // Load photos when modal opens
   useEffect(() => {
@@ -70,52 +83,92 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
     }
   }, [isOpen]);
 
+  // Monitor photo migration status
+  useEffect(() => {
+    const updateMigrationStatus = () => {
+      const progress = photoMigrationService.getProgress();
+      if (progress.totalPhotos > 0) {
+        setMigrationStatus({
+          isRunning: photoMigrationService.isMigrationRunning(),
+          progress: progress.totalPhotos > 0 ? (progress.processedPhotos / progress.totalPhotos) * 100 : 0,
+          failedPhotos: progress.failedPhotos
+        });
+      } else {
+        setMigrationStatus(null);
+      }
+    };
+
+    // Initial check
+    updateMigrationStatus();
+
+    // Poll for updates every 3 seconds
+    const interval = setInterval(updateMigrationStatus, 3000);
+
+    return () => clearInterval(interval);
+  }, [isOpen]);
+
  const loadPhotos = async () => {
-   setLoading(true);
-   setError(null);
+  setLoading(true);
+  setError(null);
+  try {
+    const [trips, fishCaught] = await Promise.all([
+      db.getAllTrips(),
+      db.getAllFishCaught(),
+    ]);
+    // Create photo items from fish catches that have photos
+    const photoItems: PhotoItem[] = [];
+  // Do not revoke object URLs here; cleanup is handled on unmount only
 
-   try {
-     const [trips, fishCaught] = await Promise.all([
-       db.getAllTrips(),
-       db.getAllFishCaught(),
-     ]);
-
-     // Create photo items from fish catches that have photos
-     const photoItems: PhotoItem[] = [];
-
-     fishCaught.forEach((fish: any) => {
-       // Support both legacy inline photos and new Firebase Storage-backed URLs
-       const rawPhoto: string | undefined = fish.photoUrl || fish.photo;
-       if (rawPhoto) {
-         const trip = trips.find((t: any) => t.id === fish.tripId);
-         if (trip) {
-           const photoItem = {
-             id: `${fish.id}-${fish.tripId}`,
-             fishId: fish.id,
-             tripId: fish.tripId,
-             // Normalize the selected source to a displayable value
-             photo: fixPhotoData(rawPhoto),
-             species: fish.species,
-             length: fish.length,
-             weight: fish.weight,
-             date: trip.date,
-             location: trip.location,
-             water: trip.water,
-             time: fish.time,
-           };
-           photoItems.push(photoItem);
-         }
-       }
-     });
-
-     setPhotos(photoItems);
-
-   } catch (err) {
-     setError("Failed to load photos");
-   } finally {
-     setLoading(false);
-   }
- };
+    for (const fish of fishCaught) {
+      // Detect encrypted photo: must have encryptedMetadata and enc_photos path
+      const isEncrypted = Boolean(fish.encryptedMetadata && typeof fish.photoPath === 'string' && fish.photoPath.includes('enc_photos'));
+      const rawPhoto: string | undefined = fish.photoUrl || fish.photo;
+      let displayPhoto = fixPhotoData(rawPhoto || '');
+      if (isEncrypted && typeof fish.photoPath === 'string') {
+        try {
+          const decryptedData = await firebaseDataService.getDecryptedPhoto(
+            fish.photoPath,
+            fish.encryptedMetadata
+          );
+          if (decryptedData) {
+            const blob = new Blob([decryptedData.data], { type: decryptedData.mimeType });
+            const objectUrl = URL.createObjectURL(blob);
+            objectUrlsRef.current.push(objectUrl);
+            displayPhoto = objectUrl;
+          } else {
+            displayPhoto = createPlaceholderSVG('Encrypted Photo');
+          }
+        } catch (decryptError) {
+          console.warn('Failed to decrypt photo for display:', decryptError);
+          displayPhoto = createPlaceholderSVG('Encrypted Photo');
+        }
+      }
+      // Only add if trip found
+      const trip = trips.find((t: any) => t.id === fish.tripId);
+      if (trip) {
+        const photoItem = {
+          id: `${fish.id}-${fish.tripId}`,
+          fishId: fish.id,
+          tripId: fish.tripId,
+          photo: displayPhoto,
+          species: fish.species,
+          length: fish.length,
+          weight: fish.weight,
+          date: trip.date,
+          location: trip.location,
+          water: trip.water,
+          time: fish.time,
+        };
+        photoItems.push(photoItem);
+      }
+    }
+    setPhotos(photoItems);
+  } catch (err) {
+    setError("Failed to load photos");
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Filter and sort photos
   const filteredAndSortedPhotos = useMemo(() => {
@@ -361,6 +414,38 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
           subtitle={`${filteredAndSortedPhotos.length} photo${filteredAndSortedPhotos.length !== 1 ? "s" : ""}`}
           onClose={onClose}
         />
+
+        {/* Photo Migration Status Banner */}
+        {migrationStatus && migrationStatus.isRunning && (
+          <div className="mx-6 mb-4 p-3 rounded-lg" style={{ backgroundColor: 'var(--secondary-background)', border: '1px solid var(--border-color)' }}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="flex items-center space-x-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+                  <span className="text-sm font-medium" style={{ color: 'var(--primary-text)' }}>
+                    Encrypting Photos
+                  </span>
+                </div>
+                <div className="text-xs" style={{ color: 'var(--secondary-text)' }}>
+                  {Math.round(migrationStatus.progress)}% complete
+                </div>
+              </div>
+              <div className="text-xs" style={{ color: 'var(--secondary-text)' }}>
+                {migrationStatus.failedPhotos.length > 0 && (
+                  <span className="text-red-500">
+                    {migrationStatus.failedPhotos.length} failed
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="mt-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+              <div
+                className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${migrationStatus.progress}%` }}
+              ></div>
+            </div>
+          </div>
+        )}
 
         <ModalBody className="space-y-4">
           {/* Controls */}
