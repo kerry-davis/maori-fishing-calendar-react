@@ -1,6 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useEncryptionMigrationStatus } from '../../hooks/useEncryptionMigrationStatus';
 import { useAuth } from '../../contexts/AuthContext';
+import { photoMigrationService, type MigrationProgress } from '../../services/photoMigrationService';
 
 /**
  * Small unobtrusive status pill for encryption migration.
@@ -10,6 +11,27 @@ import { useAuth } from '../../contexts/AuthContext';
 export const EncryptionMigrationStatus: React.FC = () => {
   const { user } = useAuth();
   const { running, allDone, collections, totalUpdated, totalProcessed, error } = useEncryptionMigrationStatus();
+  const [photoMigrationProgress, setPhotoMigrationProgress] = useState<MigrationProgress | null>(null);
+  const [showPhotoMigration, setShowPhotoMigration] = useState(false);
+
+  // Monitor photo migration progress
+  useEffect(() => {
+    if (!user) return;
+
+    const updatePhotoProgress = () => {
+      const progress = photoMigrationService.getProgress();
+      setPhotoMigrationProgress(progress);
+      setShowPhotoMigration(progress.status !== 'completed' && progress.totalPhotos > 0);
+    };
+
+    // Initial load
+    updatePhotoProgress();
+
+    // Poll for updates every 2 seconds during migration
+    const interval = setInterval(updatePhotoProgress, 2000);
+
+    return () => clearInterval(interval);
+  }, [user]);
 
   // Log when pill appears/disappears
   useEffect(() => {
@@ -18,8 +40,8 @@ export const EncryptionMigrationStatus: React.FC = () => {
       return;
     }
     if (error) {
-      console.log('[enc-migration-pill] Pill visible: showing index error', { 
-        user: user.email, 
+      console.log('[enc-migration-pill] Pill visible: showing index error', {
+        user: user.email,
         error: error.error,
         collection: error.collection,
         running,
@@ -27,22 +49,24 @@ export const EncryptionMigrationStatus: React.FC = () => {
       });
       return;
     }
-    if (allDone) {
-      console.log('[enc-migration-pill] Pill hidden: migration complete');
+    if (allDone && !showPhotoMigration) {
+      console.log('[enc-migration-pill] Pill hidden: all migrations complete');
       return;
     }
-    console.log('[enc-migration-pill] Pill visible: migration in progress', { 
-      user: user.email, 
-      running, 
+    console.log('[enc-migration-pill] Pill visible: migration in progress', {
+      user: user.email,
+      running,
       allDone,
       totalUpdated,
-      totalProcessed 
+      totalProcessed,
+      showPhotoMigration,
+      photoProgress: photoMigrationProgress
     });
-  }, [user, allDone, running, totalUpdated, totalProcessed, error]);
+  }, [user, allDone, running, totalUpdated, totalProcessed, error, showPhotoMigration, photoMigrationProgress]);
 
-  // Don't show if user is guest, migration is complete, or if there's a fatal error (handled separately)
+  // Don't show if user is guest, all migrations are complete, or if there's a fatal error (handled separately)
   if (!user) return null; // guest mode - not encrypting
-  if (allDone) return null; // nothing to show
+  if (allDone && !showPhotoMigration) return null; // nothing to show
 
   const totalCollections = Object.keys(collections).length;
   const doneCollections = Object.values(collections).filter(c => c.done).length;
@@ -50,7 +74,7 @@ export const EncryptionMigrationStatus: React.FC = () => {
   // Show error state instead of regular progress if there's an error
   if (error) {
     return (
-      <div 
+      <div
         data-testid="encryption-migration-pill-error"
         style={{
           position: 'fixed',
@@ -87,9 +111,9 @@ export const EncryptionMigrationStatus: React.FC = () => {
           {error.collection} requires Firestore index
         </span>
         <span style={{ opacity: 0.5 }}>|</span>
-        <a 
-          href={error.consoleUrl} 
-          target="_blank" 
+        <a
+          href={error.consoleUrl}
+          target="_blank"
           rel="noopener noreferrer"
           style={{
             color: '#f3f4f6',
@@ -107,8 +131,16 @@ export const EncryptionMigrationStatus: React.FC = () => {
     );
   }
 
+  // Determine what type of migration is running
+  const hasDataMigration = running || !allDone;
+  const hasPhotoMigration = showPhotoMigration && photoMigrationProgress && photoMigrationProgress.status !== 'completed';
+
+  if (!hasDataMigration && !hasPhotoMigration) {
+    return null; // Nothing to show
+  }
+
   return (
-    <div 
+    <div
       data-testid="encryption-migration-pill"
       style={{
         position: 'fixed',
@@ -125,7 +157,9 @@ export const EncryptionMigrationStatus: React.FC = () => {
         display: 'flex',
         alignItems: 'center',
         gap: '0.55rem',
-        zIndex: 2000
+        zIndex: 2000,
+        maxWidth: '500px',
+        flexWrap: 'wrap'
       }}
     >
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
@@ -133,17 +167,37 @@ export const EncryptionMigrationStatus: React.FC = () => {
           width: 8,
           height: 8,
           borderRadius: '50%',
-          background: running ? '#10b981' : '#64748b',
-          boxShadow: running ? '0 0 4px #10b981' : 'none',
+          background: (running || photoMigrationService.isMigrationRunning()) ? '#10b981' : '#64748b',
+          boxShadow: (running || photoMigrationService.isMigrationRunning()) ? '0 0 4px #10b981' : 'none',
           transition: 'background 0.3s'
         }} />
-        Encrypting data…
+        {hasPhotoMigration ? 'Encrypting photos…' : 'Encrypting data…'}
       </span>
-      <span style={{ opacity: 0.8 }}>docs updated: {totalUpdated}</span>
-      <span style={{ opacity: 0.5 }}>|</span>
-      <span style={{ opacity: 0.8 }}>processed: {totalProcessed}</span>
-      <span style={{ opacity: 0.5 }}>|</span>
-      <span style={{ opacity: 0.8 }}>collections: {doneCollections}/{totalCollections}</span>
+
+      {/* Data migration status */}
+      {hasDataMigration && (
+        <>
+          <span style={{ opacity: 0.8 }}>docs: {totalUpdated}</span>
+          <span style={{ opacity: 0.5 }}>|</span>
+          <span style={{ opacity: 0.8 }}>processed: {totalProcessed}</span>
+          <span style={{ opacity: 0.5 }}>|</span>
+          <span style={{ opacity: 0.8 }}>collections: {doneCollections}/{totalCollections}</span>
+        </>
+      )}
+
+      {/* Photo migration status */}
+      {hasPhotoMigration && photoMigrationProgress && (
+        <>
+          {hasDataMigration && <span style={{ opacity: 0.5 }}>|</span>}
+          <span style={{ opacity: 0.8 }}>photos: {photoMigrationProgress.processedPhotos}/{photoMigrationProgress.totalPhotos}</span>
+          {photoMigrationProgress.failedPhotos.length > 0 && (
+            <>
+              <span style={{ opacity: 0.5 }}>|</span>
+              <span style={{ opacity: 0.8, color: '#ef4444' }}>failed: {photoMigrationProgress.failedPhotos.length}</span>
+            </>
+          )}
+        </>
+      )}
     </div>
   );
 };
