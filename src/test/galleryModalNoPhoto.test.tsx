@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import { GalleryModal } from '../components/Modals/GalleryModal';
 import { render, screen, within } from '@testing-library/react';
 import React from 'react';

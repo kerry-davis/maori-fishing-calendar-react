@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { guestDataRetentionService } from '../services/guestDataRetentionService';
 import { guestConversionTrackingService } from '../services/guestConversionTrackingService';
-import type { Trip, WeatherLog, FishCaught } from '../src/types';
+import type { Trip, WeatherLog, FishCaught } from '../types';
 
 // Mock data for testing
 const mockTrip: Trip = {

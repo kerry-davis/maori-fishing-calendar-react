@@ -49,7 +49,7 @@ describe('guestDataRetentionService', () => {
     localStorage.clear();
   });
 
-  it('should save and retrieve guest data', () => {
+  it('should save and retrieve guest data', async () => {
     const testData = {
       trips: [mockTrip],
       weatherLogs: [mockWeatherLog],
@@ -68,7 +68,7 @@ describe('guestDataRetentionService', () => {
   expect(retrievedData?.trips[0].id).toBe(mockTrip.id);
   });
 
-  it('should handle multiple guest sessions', () => {
+  it('should handle multiple guest sessions', async () => {
     const session1Data = {
       trips: [mockTrip],
       weatherLogs: [],
@@ -92,7 +92,7 @@ describe('guestDataRetentionService', () => {
   expect(allSessions.sessionOrder).toContain('session-2');
   });
 
-  it('should remove a specific guest session', () => {
+  it('should remove a specific guest session', async () => {
     const testData = {
       trips: [mockTrip],
       weatherLogs: [mockWeatherLog],
@@ -113,7 +113,7 @@ describe('guestDataRetentionService', () => {
   expect(allSessions.sessions['session-to-keep']).toBeDefined();
   });
 
-  it('should clear all guest data', () => {
+  it('should clear all guest data', async () => {
     const testData = {
       trips: [mockTrip],
       weatherLogs: [mockWeatherLog],
@@ -132,7 +132,7 @@ describe('guestDataRetentionService', () => {
   expect(Object.keys(allSessions.sessions)).toHaveLength(0);
   });
 
-  it('should detect guest user when data exists', () => {
+  it('should detect guest user when data exists', async () => {
     const testData = {
       trips: [mockTrip],
       weatherLogs: [mockWeatherLog],
@@ -145,12 +145,12 @@ describe('guestDataRetentionService', () => {
   expect(isGuest).toBe(true);
   });
 
-  it('should not detect guest user when no data exists', () => {
+  it('should not detect guest user when no data exists', async () => {
   const isGuest = await guestDataRetentionService.isGuestUser();
   expect(isGuest).toBe(false);
   });
 
-  it('should not return expired data', () => {
+  it('should not return expired data', async () => {
     const testData = {
       trips: [mockTrip],
       weatherLogs: [mockWeatherLog],
@@ -173,7 +173,7 @@ describe('guestDataRetentionService', () => {
   expect(retrievedData).toBeNull();
   });
 
-  it('should limit number of stored sessions', () => {
+  it('should limit number of stored sessions', async () => {
     // Create more sessions than the max limit
     for (let i = 0; i < 15; i++) {
       const testData = {

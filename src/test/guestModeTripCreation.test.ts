@@ -5,22 +5,81 @@ import type { Trip, WeatherLog, FishCaught } from '../types';
 
 // Mock databaseService for test environment
 vi.mock('../services/databaseService', () => {
+  let nextTripId = 1;
+  let nextWeatherId = 1;
+  let nextFishId = 1;
+  let createdTrips: Trip[] = [];
+  let createdWeatherLogs: WeatherLog[] = [];
+  let createdFish: FishCaught[] = [];
+
   const mockDb = {
-    createTrip: vi.fn().mockResolvedValue(1234567890),
-    getAllTrips: vi.fn().mockResolvedValue([]),
-    updateTrip: vi.fn().mockResolvedValue(undefined),
-    deleteTrip: vi.fn().mockResolvedValue(undefined),
-    createWeatherLog: vi.fn().mockResolvedValue('1-1234567890'),
-    getAllWeatherLogs: vi.fn().mockResolvedValue([]),
-    updateWeatherLog: vi.fn().mockResolvedValue(undefined),
-    deleteWeatherLog: vi.fn().mockResolvedValue(undefined),
-    createFishCaught: vi.fn().mockResolvedValue('1-1234567891'),
-    getAllFishCaught: vi.fn().mockResolvedValue([]),
-    updateFishCaught: vi.fn().mockResolvedValue(undefined),
-    deleteFishCaught: vi.fn().mockResolvedValue(undefined),
+    createTrip: vi.fn().mockImplementation(async (trip: Omit<Trip, 'id'>) => {
+      const id = nextTripId++;
+      const record = { ...trip, id } as Trip;
+      createdTrips.push(record);
+      return id;
+    }),
+    getAllTrips: vi.fn().mockImplementation(async () => createdTrips.map(trip => ({ ...trip }))),
+    updateTrip: vi.fn().mockImplementation(async (trip: Trip) => {
+      const index = createdTrips.findIndex(t => t.id === trip.id);
+      if (index >= 0) {
+        createdTrips[index] = { ...createdTrips[index], ...trip };
+      }
+    }),
+    deleteTrip: vi.fn().mockImplementation(async (id: number) => {
+      const index = createdTrips.findIndex(t => t.id === id);
+      if (index >= 0) {
+        createdTrips.splice(index, 1);
+      }
+    }),
+    createWeatherLog: vi.fn().mockImplementation(async (weather: Omit<WeatherLog, 'id'>) => {
+      const id = `weather-${nextWeatherId++}`;
+      const record = { ...weather, id } as WeatherLog;
+      createdWeatherLogs.push(record);
+      return id;
+    }),
+    getAllWeatherLogs: vi.fn().mockImplementation(async () => createdWeatherLogs.map(weather => ({ ...weather }))),
+    updateWeatherLog: vi.fn().mockImplementation(async (weather: WeatherLog) => {
+      const index = createdWeatherLogs.findIndex(w => w.id === weather.id);
+      if (index >= 0) {
+        createdWeatherLogs[index] = { ...createdWeatherLogs[index], ...weather };
+      }
+    }),
+    deleteWeatherLog: vi.fn().mockImplementation(async (id: string) => {
+      const index = createdWeatherLogs.findIndex(w => w.id === id);
+      if (index >= 0) {
+        createdWeatherLogs.splice(index, 1);
+      }
+    }),
+    createFishCaught: vi.fn().mockImplementation(async (fish: Omit<FishCaught, 'id'>) => {
+      const id = `fish-${nextFishId++}`;
+      const record = { ...fish, id } as FishCaught;
+      createdFish.push(record);
+      return id;
+    }),
+    getAllFishCaught: vi.fn().mockImplementation(async () => createdFish.map(f => ({ ...f }))),
+    updateFishCaught: vi.fn().mockImplementation(async (fish: FishCaught) => {
+      const index = createdFish.findIndex(f => f.id === fish.id);
+      if (index >= 0) {
+        createdFish[index] = { ...createdFish[index], ...fish };
+      }
+    }),
+    deleteFishCaught: vi.fn().mockImplementation(async (id: string) => {
+      const index = createdFish.findIndex(f => f.id === id);
+      if (index >= 0) {
+        createdFish.splice(index, 1);
+      }
+    }),
     initialize: vi.fn().mockResolvedValue(undefined),
     isReady: vi.fn().mockReturnValue(true),
-    clearAllData: vi.fn().mockResolvedValue(undefined),
+    clearAllData: vi.fn().mockImplementation(async () => {
+      createdTrips = [];
+      createdWeatherLogs = [];
+      createdFish = [];
+      nextTripId = 1;
+      nextWeatherId = 1;
+      nextFishId = 1;
+    }),
     clearSyncQueue: vi.fn().mockResolvedValue(undefined),
   };
   
@@ -32,88 +91,14 @@ vi.mock('../services/databaseService', () => {
 });
 
 describe('Guest Mode Trip Creation', () => {
-  let createdTrips: Trip[] = [];
-  let createdWeatherLogs: WeatherLog[] = [];
-  let createdFish: FishCaught[] = [];
 
   beforeEach(async () => {
     // Clear any existing data before each test
     await guestDataRetentionService.clearAllGuestData();
-    createdTrips = [];
-    createdWeatherLogs = [];
-    createdFish = [];
-    // Patch the mock to track created trips
-    const { databaseService } = await import('../services/databaseService');
-    let nextTripId = 1;
-    let nextWeatherId = 1;
-    let nextFishId = 1;
-
-    databaseService.createTrip.mockImplementation(async (trip: Omit<Trip, 'id'>) => {
-      const id = nextTripId++;
-      const record = { ...trip, id } as Trip;
-      createdTrips.push(record);
-      return id;
-    });
-    databaseService.updateTrip.mockImplementation(async (trip: Trip) => {
-      const index = createdTrips.findIndex(t => t.id === trip.id);
-      if (index >= 0) {
-        createdTrips[index] = { ...createdTrips[index], ...trip };
-      }
-    });
-    databaseService.deleteTrip.mockImplementation(async (id: number) => {
-      const index = createdTrips.findIndex(t => t.id === id);
-      if (index >= 0) {
-        createdTrips.splice(index, 1);
-      }
-    });
-    databaseService.getAllTrips.mockImplementation(async () => createdTrips.map(trip => ({ ...trip })));
-
-    databaseService.createWeatherLog.mockImplementation(async (weather: Omit<WeatherLog, 'id'>) => {
-      const id = `weather-${nextWeatherId++}`;
-      const record = { ...weather, id } as WeatherLog;
-      createdWeatherLogs.push(record);
-      return id;
-    });
-    databaseService.updateWeatherLog.mockImplementation(async (weather: WeatherLog) => {
-      const index = createdWeatherLogs.findIndex(w => w.id === weather.id);
-      if (index >= 0) {
-        createdWeatherLogs[index] = { ...createdWeatherLogs[index], ...weather };
-      }
-    });
-    databaseService.deleteWeatherLog.mockImplementation(async (id: string) => {
-      const index = createdWeatherLogs.findIndex(w => w.id === id);
-      if (index >= 0) {
-        createdWeatherLogs.splice(index, 1);
-      }
-    });
-    databaseService.getAllWeatherLogs.mockImplementation(async () => createdWeatherLogs.map(weather => ({ ...weather })));
-
-    databaseService.createFishCaught.mockImplementation(async (fish: Omit<FishCaught, 'id'>) => {
-      const id = `fish-${nextFishId++}`;
-      const record = { ...fish, id } as FishCaught;
-      createdFish.push(record);
-      return id;
-    });
-    databaseService.updateFishCaught.mockImplementation(async (fish: FishCaught) => {
-      const index = createdFish.findIndex(f => f.id === fish.id);
-      if (index >= 0) {
-        createdFish[index] = { ...createdFish[index], ...fish };
-      }
-    });
-    databaseService.deleteFishCaught.mockImplementation(async (id: string) => {
-      const index = createdFish.findIndex(f => f.id === id);
-      if (index >= 0) {
-        createdFish.splice(index, 1);
-      }
-    });
-    databaseService.getAllFishCaught.mockImplementation(async () => createdFish.map(f => ({ ...f })));
   });
 
   afterEach(() => {
     localStorage.clear();
-    createdTrips = [];
-    createdWeatherLogs = [];
-    createdFish = [];
   });
 
   it('should allow trip creation in guest mode', async () => {
@@ -151,11 +136,13 @@ describe('Guest Mode Trip Creation', () => {
     const tripId = await firebaseDataService.createTrip(tripData);
     await firebaseDataService.updateTrip({ ...tripData, id: tripId, notes: 'Calm by noon' });
 
-    expect(createdTrips).toHaveLength(1);
-    expect(createdTrips[0].notes).toBe('Calm by noon');
+    const trips = await firebaseDataService.getAllTrips();
+    expect(trips).toHaveLength(1);
+    expect(trips[0].notes).toBe('Calm by noon');
 
     await firebaseDataService.deleteTrip(tripId);
-    expect(createdTrips).toHaveLength(0);
+    const tripsAfterDelete = await firebaseDataService.getAllTrips();
+    expect(tripsAfterDelete).toHaveLength(0);
   });
 
   it('should handle weather logs locally in guest mode', async () => {
@@ -180,7 +167,8 @@ describe('Guest Mode Trip Creation', () => {
       airTemp: '15'
     });
 
-    expect(createdWeatherLogs).toHaveLength(1);
+    const weatherLogs = await firebaseDataService.getAllWeatherLogs();
+    expect(weatherLogs).toHaveLength(1);
 
     await firebaseDataService.updateWeatherLog({
       id: weatherId,
@@ -193,10 +181,12 @@ describe('Guest Mode Trip Creation', () => {
       airTemp: '14'
     });
 
-    expect(createdWeatherLogs[0].sky).toBe('Clear');
+    const updatedWeatherLogs = await firebaseDataService.getAllWeatherLogs();
+    expect(updatedWeatherLogs[0].sky).toBe('Clear');
 
     await firebaseDataService.deleteWeatherLog(weatherId);
-    expect(createdWeatherLogs).toHaveLength(0);
+    const weatherLogsAfterDelete = await firebaseDataService.getAllWeatherLogs();
+    expect(weatherLogsAfterDelete).toHaveLength(0);
   });
 
   it('should handle fish records locally in guest mode', async () => {
@@ -219,10 +209,11 @@ describe('Guest Mode Trip Creation', () => {
       time: '07:45',
       gear: ['jig'],
       details: 'Released',
-      photo: null,
+      photo: undefined,
     });
 
-    expect(createdFish).toHaveLength(1);
+    const fishCaught = await firebaseDataService.getAllFishCaught();
+    expect(fishCaught).toHaveLength(1);
 
     await firebaseDataService.updateFishCaught({
       id: fishId,
@@ -235,9 +226,11 @@ describe('Guest Mode Trip Creation', () => {
       details: 'Released'
     } as FishCaught);
 
-    expect(createdFish[0].length).toBe('82cm');
+    const updatedFish = await firebaseDataService.getAllFishCaught();
+    expect(updatedFish[0].length).toBe('82cm');
 
     await firebaseDataService.deleteFishCaught(fishId);
-    expect(createdFish).toHaveLength(0);
+    const fishAfterDelete = await firebaseDataService.getAllFishCaught();
+    expect(fishAfterDelete).toHaveLength(0);
   });
 });
