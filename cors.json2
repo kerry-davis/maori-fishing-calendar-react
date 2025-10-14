@@ -1,0 +1,10 @@
+        [
+          {
+            "origin": ["http://localhost:5173",
+        "https://maori-fishing-calendar-react.web.app"],
+            "method": ["GET", "HEAD"],
+            "responseHeader": ["Content-Type", "Authorization"],
+            "maxAgeSeconds": 3600
+          }
+        ]
+        EOF
