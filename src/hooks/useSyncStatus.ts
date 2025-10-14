@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { collection, getDocs, query } from 'firebase/firestore';
+import { firestore } from '../services/firebase';
 
 /**
  * Hook to track Firebase sync status and queue information
@@ -33,6 +35,10 @@ export function useSyncStatus() {
     }
 
     try {
+      if (!firestore) {
+        setIsFirebaseReachable(false);
+        return;
+      }
       const queueKey = `syncQueue_${user.uid}`;
       const queueData = localStorage.getItem(queueKey);
 
@@ -64,10 +70,6 @@ export function useSyncStatus() {
 
     try {
       // Simple connectivity test - try to access a Firestore collection
-      const { collection, getDocs, query } = await import('firebase/firestore');
-      const { firestore } = await import('../services/firebase');
-
-      // Test with a simple query that should work even with restrictive rules
       const testQuery = query(collection(firestore, '_test'));
       await getDocs(testQuery);
 
