@@ -1,6 +1,8 @@
 // Shared encrypted photo preview logic for modals
 import type { FishCaught } from '../types';
 import { firebaseDataService } from '../services/firebaseDataService';
+import { storage } from '../services/firebase';
+import { ref as storageRef, getDownloadURL } from 'firebase/storage';
 
 /**
  * Returns a displayable photo URL for a FishCaught record, handling encrypted photos.
@@ -9,12 +11,29 @@ import { firebaseDataService } from '../services/firebaseDataService';
  * - If decryption fails, returns a placeholder SVG.
  *
  * @param fish FishCaught record
- * @returns Promise<string> - displayable photo URL
+ * @returns Promise<string | undefined> - displayable photo URL or undefined
  */
-export async function getFishPhotoPreview(fish: FishCaught): Promise<string> {
+export async function getFishPhotoPreview(fish: FishCaught): Promise<string | undefined> {
   // Detect encrypted photo: must have encryptedMetadata and enc_photos path
   const isEncrypted = Boolean(fish.encryptedMetadata && typeof fish.photoPath === 'string' && fish.photoPath.includes('enc_photos'));
   const rawPhoto: string | undefined = fish.photoUrl || fish.photo;
+  // If photoPath exists and is not encrypted, try to resolve it to a usable URL
+  if (!isEncrypted && fish.photoPath) {
+    // If it's already a blob or data URL, return as-is
+    if (fish.photoPath.startsWith('blob:') || fish.photoPath.startsWith('data:') || fish.photoPath.startsWith('http')) {
+      return fish.photoPath;
+    }
+
+    // Otherwise assume it's a storage-relative path and try to get a download URL
+    try {
+      const ref = storageRef(storage, fish.photoPath);
+      const url = await getDownloadURL(ref);
+      return url;
+    } catch (err) {
+      // If we can't resolve the storage path, return a friendly placeholder instead of the raw path
+      return createPlaceholderSVG('No Photo');
+    }
+  }
   if (isEncrypted && typeof fish.photoPath === 'string') {
     try {
       const decryptedData = await firebaseDataService.getDecryptedPhoto(
@@ -28,11 +47,14 @@ export async function getFishPhotoPreview(fish: FishCaught): Promise<string> {
         return createPlaceholderSVG('Encrypted Photo');
       }
     } catch (err) {
-      console.warn('Failed to decrypt photo for display:', err);
       return createPlaceholderSVG('Encrypted Photo');
     }
   }
-  return rawPhoto || createPlaceholderSVG('No Photo');
+  // Return null/undefined if no image exists
+  if (!fish.photoPath && !fish.photoUrl && !fish.photo) {
+    return undefined;
+  }
+  return rawPhoto || undefined;
 }
 
 /**

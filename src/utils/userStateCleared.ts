@@ -108,6 +108,11 @@ export function validateUserContext<ReturnType>(
   fallbackValue?: ReturnType,
   operationType: string = 'unknown'
 ): ReturnType | undefined {
+    // Guest-mode write bypass: only allow when caller supplies an explicit guest- token
+    // This prevents generic write ops like `createTrip` from being implicitly allowed in guest mode.
+    if (!currentUserId && operationType.startsWith('guest-')) {
+      return operation();
+    }
   // If no user context, only allow read-only operations
   if (!currentUserId) {
     if (WRITE_OPERATIONS.has(operationType)) {
