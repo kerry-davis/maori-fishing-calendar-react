@@ -18,99 +18,123 @@ export class DatabaseService {
     if (this.initPromise) return this.initPromise;
 
     this.initPromise = new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_CONFIG.NAME, DB_CONFIG.VERSION);
+      let triedRecovery = false;
+      const openDb = () => {
+        const request = indexedDB.open(DB_CONFIG.NAME, DB_CONFIG.VERSION);
 
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        const transaction = (event.target as IDBOpenDBRequest).transaction!;
-        console.log("Upgrading database schema...");
+        request.onupgradeneeded = (event) => {
+          const db = (event.target as IDBOpenDBRequest).result;
+          const transaction = (event.target as IDBOpenDBRequest).transaction!;
+          console.log("Upgrading database schema...");
+          // ...existing code...
+          // Trips store (no changes needed)
+          if (!db.objectStoreNames.contains(DB_CONFIG.STORES.TRIPS)) {
+            const tripsStore = db.createObjectStore(DB_CONFIG.STORES.TRIPS, {
+              keyPath: "id",
+              autoIncrement: true,
+            });
+            tripsStore.createIndex("date", "date", { unique: false });
+            console.log(`'${DB_CONFIG.STORES.TRIPS}' object store created.`);
+          }
+          // ...existing code...
+          // Non-destructive migration for weather_logs
+          if (db.objectStoreNames.contains(DB_CONFIG.STORES.WEATHER_LOGS)) {
+              const store = transaction.objectStore(DB_CONFIG.STORES.WEATHER_LOGS);
+              if (store.autoIncrement) {
+                  console.log('Migrating weather_logs store...');
+                  const data: WeatherLog[] = [];
+                  store.openCursor().onsuccess = (e) => {
+                      const cursor = (e.target as IDBRequest<IDBCursorWithValue>).result;
+                      if (cursor) {
+                          data.push(cursor.value);
+                          cursor.continue();
+                      } else {
+                          db.deleteObjectStore(DB_CONFIG.STORES.WEATHER_LOGS);
+                          const newStore = db.createObjectStore(DB_CONFIG.STORES.WEATHER_LOGS, { keyPath: 'id' });
+                          newStore.createIndex('tripId', 'tripId', { unique: false });
+                          data.forEach((item: WeatherLog) => {
+                              const newItem = { ...item, id: `${item.tripId}-${Date.now()}` };
+                              newStore.add(newItem);
+                          });
+                          console.log('weather_logs store migration complete.');
+                      }
+                  };
+              }
+          } else {
+              const newStore = db.createObjectStore(DB_CONFIG.STORES.WEATHER_LOGS, { keyPath: 'id' });
+              newStore.createIndex('tripId', 'tripId', { unique: false });
+              console.log(`'${DB_CONFIG.STORES.WEATHER_LOGS}' object store created.`);
+          }
+          // ...existing code...
+          // Non-destructive migration for fish_caught
+          if (db.objectStoreNames.contains(DB_CONFIG.STORES.FISH_CAUGHT)) {
+              const store = transaction.objectStore(DB_CONFIG.STORES.FISH_CAUGHT);
+              if (store.autoIncrement) {
+                  console.log('Migrating fish_caught store...');
+                  const data: FishCaught[] = [];
+                  store.openCursor().onsuccess = (e) => {
+                      const cursor = (e.target as IDBRequest<IDBCursorWithValue>).result;
+                      if (cursor) {
+                          data.push(cursor.value);
+                          cursor.continue();
+                      } else {
+                          db.deleteObjectStore(DB_CONFIG.STORES.FISH_CAUGHT);
+                          const newStore = db.createObjectStore(DB_CONFIG.STORES.FISH_CAUGHT, { keyPath: 'id' });
+                          newStore.createIndex('tripId', 'tripId', { unique: false });
+                          data.forEach((item: FishCaught) => {
+                              const newItem = { ...item, id: `${item.tripId}-${Date.now()}` };
+                              newStore.add(newItem);
+                          });
+                          console.log('fish_caught store migration complete.');
+                      }
+                  };
+              }
+          } else {
+              const newStore = db.createObjectStore(DB_CONFIG.STORES.FISH_CAUGHT, { keyPath: 'id' });
+              newStore.createIndex('tripId', 'tripId', { unique: false });
+              console.log(`'${DB_CONFIG.STORES.FISH_CAUGHT}' object store created.`);
+          }
+        };
 
-        // Trips store (no changes needed)
-        if (!db.objectStoreNames.contains(DB_CONFIG.STORES.TRIPS)) {
-          const tripsStore = db.createObjectStore(DB_CONFIG.STORES.TRIPS, {
-            keyPath: "id",
-            autoIncrement: true,
-          });
-          tripsStore.createIndex("date", "date", { unique: false });
-          console.log(`'${DB_CONFIG.STORES.TRIPS}' object store created.`);
-        }
+        request.onsuccess = (event) => {
+          this.db = (event.target as IDBOpenDBRequest).result;
+          this.isInitialized = true;
+          console.log("Database initialized successfully.");
+          resolve();
+        };
 
-        // Non-destructive migration for weather_logs
-        if (db.objectStoreNames.contains(DB_CONFIG.STORES.WEATHER_LOGS)) {
-            const store = transaction.objectStore(DB_CONFIG.STORES.WEATHER_LOGS);
-            if (store.autoIncrement) {
-                console.log('Migrating weather_logs store...');
-                const data: WeatherLog[] = [];
-                store.openCursor().onsuccess = (e) => {
-                    const cursor = (e.target as IDBRequest<IDBCursorWithValue>).result;
-                    if (cursor) {
-                        data.push(cursor.value);
-                        cursor.continue();
-                    } else {
-                        db.deleteObjectStore(DB_CONFIG.STORES.WEATHER_LOGS);
-                        const newStore = db.createObjectStore(DB_CONFIG.STORES.WEATHER_LOGS, { keyPath: 'id' });
-                        newStore.createIndex('tripId', 'tripId', { unique: false });
-                        data.forEach((item: WeatherLog) => {
-                            const newItem = { ...item, id: `${item.tripId}-${Date.now()}` };
-                            newStore.add(newItem);
-                        });
-                        console.log('weather_logs store migration complete.');
-                    }
-                };
-            }
-        } else {
-            const newStore = db.createObjectStore(DB_CONFIG.STORES.WEATHER_LOGS, { keyPath: 'id' });
-            newStore.createIndex('tripId', 'tripId', { unique: false });
-            console.log(`'${DB_CONFIG.STORES.WEATHER_LOGS}' object store created.`);
-        }
-
-        // Non-destructive migration for fish_caught
-        if (db.objectStoreNames.contains(DB_CONFIG.STORES.FISH_CAUGHT)) {
-            const store = transaction.objectStore(DB_CONFIG.STORES.FISH_CAUGHT);
-            if (store.autoIncrement) {
-                console.log('Migrating fish_caught store...');
-                const data: FishCaught[] = [];
-                store.openCursor().onsuccess = (e) => {
-                    const cursor = (e.target as IDBRequest<IDBCursorWithValue>).result;
-                    if (cursor) {
-                        data.push(cursor.value);
-                        cursor.continue();
-                    } else {
-                        db.deleteObjectStore(DB_CONFIG.STORES.FISH_CAUGHT);
-                        const newStore = db.createObjectStore(DB_CONFIG.STORES.FISH_CAUGHT, { keyPath: 'id' });
-                        newStore.createIndex('tripId', 'tripId', { unique: false });
-                        data.forEach((item: FishCaught) => {
-                            const newItem = { ...item, id: `${item.tripId}-${Date.now()}` };
-                            newStore.add(newItem);
-                        });
-                        console.log('fish_caught store migration complete.');
-                    }
-                };
-            }
-        } else {
-            const newStore = db.createObjectStore(DB_CONFIG.STORES.FISH_CAUGHT, { keyPath: 'id' });
-            newStore.createIndex('tripId', 'tripId', { unique: false });
-            console.log(`'${DB_CONFIG.STORES.FISH_CAUGHT}' object store created.`);
-        }
+        request.onerror = (event) => {
+          const error = (event.target as IDBOpenDBRequest).error;
+          console.error("Database initialization error:", error);
+          // If error is a version error, attempt recovery
+          if (!triedRecovery && error?.name === "VersionError") {
+            triedRecovery = true;
+            console.warn("IndexedDB version mismatch detected. Attempting recovery by deleting database...");
+            const deleteRequest = indexedDB.deleteDatabase(DB_CONFIG.NAME);
+            deleteRequest.onsuccess = () => {
+              console.log("Database deleted successfully. Retrying initialization...");
+              openDb();
+            };
+            deleteRequest.onerror = (e) => {
+              console.error("Failed to delete database during recovery:", (e.target as IDBOpenDBRequest).error);
+              reject(
+                this.createDatabaseError(
+                  "connection",
+                  `Failed to delete database during recovery: ${(e.target as IDBOpenDBRequest).error?.message}`,
+                ),
+              );
+            };
+          } else {
+            reject(
+              this.createDatabaseError(
+                "connection",
+                `Failed to initialize database: ${error?.message}`,
+              ),
+            );
+          }
+        };
       };
-
-      request.onsuccess = (event) => {
-        this.db = (event.target as IDBOpenDBRequest).result;
-        this.isInitialized = true;
-        console.log("Database initialized successfully.");
-        resolve();
-      };
-
-      request.onerror = (event) => {
-        const error = (event.target as IDBOpenDBRequest).error;
-        console.error("Database initialization error:", error);
-        reject(
-          this.createDatabaseError(
-            "connection",
-            `Failed to initialize database: ${error?.message}`,
-          ),
-        );
-      };
+      openDb();
     });
 
     return this.initPromise;

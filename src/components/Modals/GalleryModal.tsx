@@ -123,7 +123,7 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
       // Detect encrypted photo: must have encryptedMetadata and enc_photos path
       const isEncrypted = Boolean(fish.encryptedMetadata && typeof fish.photoPath === 'string' && fish.photoPath.includes('enc_photos'));
       const rawPhoto: string | undefined = fish.photoUrl || fish.photo;
-      let displayPhoto = fixPhotoData(rawPhoto || '');
+      let displayPhoto: string | undefined = fixPhotoData(rawPhoto || '');
       if (isEncrypted && typeof fish.photoPath === 'string') {
         try {
           const decryptedData = await firebaseDataService.getDecryptedPhoto(
@@ -136,16 +136,16 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
             objectUrlsRef.current.push(objectUrl);
             displayPhoto = objectUrl;
           } else {
-            displayPhoto = createPlaceholderSVG('Encrypted Photo');
+            displayPhoto = undefined;
           }
         } catch (decryptError) {
           console.warn('Failed to decrypt photo for display:', decryptError);
-          displayPhoto = createPlaceholderSVG('Encrypted Photo');
+          displayPhoto = undefined;
         }
       }
-      // Only add if trip found
+      // Only add if trip found AND displayPhoto is usable
       const trip = trips.find((t: any) => t.id === fish.tripId);
-      if (trip) {
+      if (trip && displayPhoto) {
         const photoItem = {
           id: `${fish.id}-${fish.tripId}`,
           fishId: fish.id,
@@ -305,10 +305,10 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
 
 
   // Simplified photo data handling
-  const fixPhotoData = (photoData: string): string => {
+  const fixPhotoData = (photoData: string): string | undefined => {
     // Handle null, undefined, or empty data
     if (!photoData || typeof photoData !== 'string' || photoData.trim() === '') {
-      return createPlaceholderSVG('No Image Available');
+      return undefined;
     }
 
     // If it's already a valid data URL, return as-is
@@ -356,13 +356,13 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
           }
         } catch (error) {
           console.warn('Error processing image data:', error);
-          return createPlaceholderSVG('Error loading image');
+          return undefined;
         }
       }
     }
 
     // Fallback for any other cases
-    return createPlaceholderSVG('Invalid Image Data');
+    return undefined;
   };
 
   const createPlaceholderSVG = (text: string): string => {
@@ -576,7 +576,7 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
 
                                 // Try to reprocess the image data
                                 const fixedSrc = fixPhotoData(originalSrc);
-                                if (fixedSrc !== originalSrc && !fixedSrc.includes('data:image/svg+xml')) {
+                                if (fixedSrc && fixedSrc !== originalSrc && !fixedSrc.includes('data:image/svg+xml')) {
                                   target.src = fixedSrc;
                                 } else {
                                   // Use placeholder as final fallback
@@ -670,7 +670,7 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
 
                     // Try to reprocess the image data
                     const fixedSrc = fixPhotoData(originalSrc);
-                    if (fixedSrc !== originalSrc && !fixedSrc.includes('data:image/svg+xml')) {
+                    if (fixedSrc && fixedSrc !== originalSrc && !fixedSrc.includes('data:image/svg+xml')) {
                       target.src = fixedSrc;
                     } else {
                       // Use placeholder as final fallback
