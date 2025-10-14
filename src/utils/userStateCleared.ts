@@ -1,6 +1,8 @@
 import { encryptionService } from '../services/encryptionService';
 import { clearUserContext as enhancedClearUserContext } from './clearUserContext';
 import { auth } from '../services/firebase';
+import { firebaseDataService } from '../services/firebaseDataService';
+import { databaseService } from '../services/databaseService';
 
 /**
  * Enhanced user state clearing with comprehensive cleanup.
@@ -77,10 +79,6 @@ async function fallbackBasicCleanup(): Promise<void> {
   
   // Clear Firebase services if available (optional for fallback)
   try {
-    // Import dynamically to avoid dependency issues
-    const { firebaseDataService } = await import('../services/firebaseDataService');
-    const { databaseService } = await import('../services/databaseService');
-    
     firebaseDataService.clearSyncQueue();
     databaseService.clearAllData();
   } catch (error) {

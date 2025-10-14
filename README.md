@@ -229,6 +229,8 @@ Contexts: `login`, `register`, `google`, `generic`. Fallback includes offline hi
 | Offline queue stuck | Network offline or permission issue | Inspect `syncQueue_<userId>` and console logs |
 | PWA not updating | SW cached | Hard refresh / check `vite-plugin-pwa` manifest changes |
 | Photo decrypt fails (OperationError) | Different salt or pepper per device | Ensure `userSettings/<uid>.encSaltB64` exists and `VITE_KEY_PEPPER` matches across envs |
+| Trip log photos missing until edit modal opens | Legacy inline photos lacked preview fallback | Update to latest build (uses inline/URL fallback) or ensure `fish.photo`/`photoUrl` populated |
+| IndexedDB “VersionError” on load | Cached DB schema newer than requested version | Latest build auto-recovers by deleting the stale DB; refresh once more if seen |
 | Storage blocked by CORS | Missing origin in bucket CORS | Add your origin to `cors.json`, re-apply with `gsutil cors set`, and retry after cache window |
 
 ---
@@ -265,4 +267,4 @@ Follow `agent_rules.md`:
 * Keep `README.md` + a future `HANDOFF.md` current for continuity
 
 ---
-_Last updated: 2025-10-13_
+_Last updated: 2025-10-14_

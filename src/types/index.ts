@@ -215,6 +215,7 @@ export interface Trip {
   companions: string;
   notes: string;
   firebaseDocId?: string; // Firestore document ID for deletion
+  guestSessionId?: string; // Guest session ID for guest user data
 }
 
 export interface WeatherLog {
@@ -226,6 +227,7 @@ export interface WeatherLog {
   windDirection: string;
   waterTemp: string;
   airTemp: string;
+  guestSessionId?: string; // Guest session ID for guest user data
 }
 
 export interface FishCaught {
@@ -245,6 +247,7 @@ export interface FishCaught {
   photoMime?: string;     // e.g., image/jpeg
   photoUrl?: string;      // optional cached download URL
   encryptedMetadata?: string; // base64-encoded encryption metadata for encrypted photos
+  guestSessionId?: string; // Guest session ID for guest user data
 }
 
 export interface TackleItem {
