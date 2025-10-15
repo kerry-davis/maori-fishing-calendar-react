@@ -187,7 +187,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
   // Explicit debug to confirm rendering state if users report it not opening
   if (isOpen) {
-    try { console.debug('[SettingsModal] rendering open'); } catch {}
+    try { console.debug('[SettingsModal] rendering open'); } catch (e) { /* ignore errors */ }
   }
 
   return (

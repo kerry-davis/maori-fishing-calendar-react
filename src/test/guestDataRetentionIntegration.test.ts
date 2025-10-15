@@ -4,7 +4,6 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { useAuth } from '../contexts/AuthContext';
 import { AuthProvider } from '../contexts/AuthContext';
 import { guestDataRetentionService } from '../services/guestDataRetentionService';
-import type { Trip, WeatherLog, FishCaught } from '../types';
 
 // Mock Firebase and other services
 vi.mock('../src/services/firebase', () => ({
@@ -109,12 +108,12 @@ describe('Guest Data Retention Integration', () => {
       return React.createElement(AuthProvider, null, children);
     };
     
-    const { result } = renderHook(() => useAuth(), { wrapper });
+    const { result: _result } = renderHook(() => useAuth(), { wrapper });
     
     // Wait for any async operations
     await waitFor(async () => {
       // Check if guest data was saved
-      const allSessions = await guestDataRetentionService.getAllGuestSessions();
+      const _allSessions = await guestDataRetentionService.getAllGuestSessions();
       // This test verifies that the service has the proper structure to handle guest data
       expect(guestDataRetentionService).toBeDefined();
     });
