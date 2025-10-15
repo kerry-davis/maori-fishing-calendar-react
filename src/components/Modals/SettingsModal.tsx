@@ -8,6 +8,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { firebaseDataService } from '../../services/firebaseDataService';
 import { databaseService } from '../../services/databaseService';
 import type { ImportProgress } from '../../types';
+import { useLocationContext } from '../../contexts/LocationContext';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -16,6 +17,7 @@ interface SettingsModalProps {
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   const { user } = useAuth();
+  const { userLocation, tideCoverage, refreshTideCoverage } = useLocationContext();
   const [isExportingJSON, setIsExportingJSON] = useState(false);
   const [isExportingCSV, setIsExportingCSV] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -30,6 +32,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
   const [importStats, setImportStats] = useState<ImportResult | ZipImportResult | null>(null);
   const [deleteProgress, setDeleteProgress] = useState<ImportProgress | null>(null);
+  const [checkingTideCoverage, setCheckingTideCoverage] = useState(false);
 
   // Trigger file chooser for import
   const handleImportClick = () => {
@@ -130,6 +133,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     }
   };
 
+  const handleTideCoverageCheck = useCallback(async () => {
+    if (!userLocation) {
+      return;
+    }
+
+    setCheckingTideCoverage(true);
+    try {
+      await refreshTideCoverage();
+    } finally {
+      setCheckingTideCoverage(false);
+    }
+  }, [refreshTideCoverage, userLocation]);
+
   const clearErrors = () => {
     setExportError(null);
     setImportError(null);
@@ -195,6 +211,42 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       <ModalHeader title="Settings" onClose={handleCloseSettings} />
       <ModalBody>
         <div className="space-y-6">
+
+        {/* Location & Tide Coverage Section */}
+        <div className="pb-6" style={{ borderBottom: '1px solid var(--border-color)' }}>
+          <h3 className="text-lg font-semibold mb-3" style={{ color: 'var(--primary-text)' }}>
+            Location & Tide Coverage
+          </h3>
+          <p className="text-sm mb-3" style={{ color: 'var(--secondary-text)' }}>
+            Confirm that your saved location can retrieve marine tide forecasts from Open-Meteo.
+          </p>
+          <div className="rounded-lg p-3" style={{ border: '1px solid var(--border-color)' }}>
+            <p className="text-sm" style={{ color: 'var(--primary-text)' }}>
+              Current location:{' '}
+              <span className="font-medium">
+                {userLocation ? userLocation.name : 'Not set'}
+              </span>
+            </p>
+            <p className="text-xs mt-2" style={{ color: 'var(--secondary-text)' }}>
+              {userLocation
+                ? tideCoverage
+                  ? tideCoverage.available
+                    ? `Tide data available (checked ${new Date(tideCoverage.checkedAt).toLocaleString()})`
+                    : tideCoverage.message || 'Tide data is not available for this location.'
+                  : 'Checking coverage…'
+                : 'Set a location to verify tide coverage.'}
+            </p>
+          </div>
+          <div className="flex gap-3 mt-4">
+            <Button
+              onClick={handleTideCoverageCheck}
+              disabled={!userLocation || checkingTideCoverage}
+              loading={checkingTideCoverage}
+            >
+              {checkingTideCoverage ? 'Checking…' : 'Check Tide Coverage'}
+            </Button>
+          </div>
+        </div>
 
         {/* Data Export Section */}
         <div className="pb-6" style={{ borderBottom: '1px solid var(--border-color)' }}>

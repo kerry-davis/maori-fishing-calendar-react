@@ -49,3 +49,4 @@ pids
 tmp/
 temp/
 dev-dist/
+.vercel

@@ -15,16 +15,9 @@ import {
   calculateBiteTimes,
   getSunMoonTimes,
 } from "../../services/lunarService";
-import {
-  fetchWeatherForLocation,
-  getWeatherErrorMessage,
-  formatTemperatureRange,
-  formatWindInfo,
-  isWeatherAvailable,
-  type WeatherData,
-} from "../../services/weatherService";
 import type { BiteTime, UserLocation } from "../../types";
 import { BITE_QUALITY_COLORS } from "../../types";
+import { WeatherSection } from "../Weather/WeatherSection";
 
 export interface LunarModalProps {
   isOpen: boolean;
@@ -60,9 +53,6 @@ export const LunarModal: React.FC<LunarModalProps> = ({
   } = useLocationContext();
   const db = useDatabaseService();
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
-  const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
-  const [weatherError, setWeatherError] = useState<string | null>(null);
-  const [weatherLoading, setWeatherLoading] = useState(false);
   const [locationInput, setLocationInput] = useState("");
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
   const [isSearchingLocation, setIsSearchingLocation] = useState(false);
@@ -177,36 +167,6 @@ export const LunarModal: React.FC<LunarModalProps> = ({
       console.error("Error calculating sun/moon times:", error);
       return null;
     }
-  }, [currentDate, userLocation]);
-
-  // Fetch weather data when date or location changes
-  useEffect(() => {
-    if (!userLocation || !isWeatherAvailable(currentDate)) {
-      setWeatherData(null);
-      setWeatherError(null);
-      return;
-    }
-
-    const fetchWeather = async () => {
-      setWeatherLoading(true);
-      setWeatherError(null);
-
-      try {
-        const weather = await fetchWeatherForLocation(
-          userLocation,
-          currentDate,
-        );
-        setWeatherData(weather);
-      } catch (error: any) {
-        console.error("Weather fetch error:", error);
-        setWeatherError(getWeatherErrorMessage(error));
-        setWeatherData(null);
-      } finally {
-        setWeatherLoading(false);
-      }
-    };
-
-    fetchWeather();
   }, [currentDate, userLocation]);
 
   // Navigation handlers
@@ -638,42 +598,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
               </p>
             )}
           </div>
-          {/* Weather Forecast Section */}
-          <div className="border-t dark:border-gray-700 pt-4 mb-4">
-            <h4 className="form-label text-lg mb-3">
-              Weather Forecast
-            </h4>
-            <div className="text-sm" style={{ color: "#000000 !important" }}>
-              {weatherLoading ? (
-                <p>Loading weather...</p>
-              ) : weatherError ? (
-                <p className="text-red-500">{weatherError}</p>
-              ) : weatherData ? (
-                <div className="space-y-2">
-                  <p>
-                    Temperature:{" "}
-                    {formatTemperatureRange(
-                      weatherData.temperatureMin,
-                      weatherData.temperatureMax,
-                    )}
-                  </p>
-                  <p>
-                    Wind:{" "}
-                    {formatWindInfo(
-                      weatherData.windSpeed,
-                      weatherData.windDirectionCardinal,
-                    )}
-                  </p>
-                </div>
-              ) : !userLocation ? (
-                <p style={{ color: "#000000 !important" }}>Set a location to see weather forecast</p>
-              ) : !isWeatherAvailable(currentDate) ? (
-                <p>Weather forecast not available for this date</p>
-              ) : (
-                <p>Weather data unavailable</p>
-              )}
-            </div>{" "}
-          </div>
+          <WeatherSection date={currentDate} />
           {/* Sun and Moon Times Section */}
           <div className="border-t dark:border-gray-700 pt-4 mb-4">
             <h4 className="form-label text-lg mb-3">

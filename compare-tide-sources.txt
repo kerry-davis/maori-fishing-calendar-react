@@ -1,0 +1,36 @@
+# Tide Services Comparison for Kawhia, NZ  (Wed 15 Oct 2025)
+
+## METSERVICE (Reference - Gold Standard)
+- HIGH: 05:30 (2.9m)
+- LOW: 11:22 (1.3m) 
+- HIGH: 18:09 (3.0m)
+*Source: MetOcean Solutions, NZ-specific corrections*
+
+## MAREA API (From your console logs)
+- HIGH: 03:33 (0.89m) ❌
+- LOW: 10:02 (-0.83m) ❌  
+- HIGH: 16:13 (0.69m) ❌
+*Source: FES2014 global model, 6km from target location*
+*Differences: Wrong times, wrong heights, negative low tides*
+
+## OPEN-METEO (Need to test)
+- TODO: Get actual data from current app
+*Source: Global marine weather API*
+
+## ANALYSIS
+
+### Marea Issues:
+1. **Location Accuracy**: Using coordinates 6km away from Kawhia
+2. **Model Limitation**: FES2014 global model vs local NZ corrections
+3. **No Harbor Corrections**: Missing local bathymetry and harbor effects
+4. **Heights**: Significantly lower than expected (0.89m vs 2.9m)
+5. **Timing**: Off by 1-2 hours from MetService
+
+### Expected Open-Meteo:
+- Should be in the 2-3m range for high tides like MetService
+- Times should be closer to MetService than Marea
+- Global model but may have better NZ coverage
+
+### RECOMMENDATIONS:
+If Open-Meteo is closer to MetService values, use it as primary.
+If both global models are inaccurate, we may need NZ-specific data.
