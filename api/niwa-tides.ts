@@ -34,13 +34,15 @@ export default async function handler(req: any, res: any) {
     // Build the NIWA URL with query parameters
     const url = new URL(NIWA_API_BASE);
     
-    // Forward all query parameters to NIWA
+    // Forward all query parameters to NIWA, mapping lng to long
     Object.keys(req.query).forEach(key => {
       const value = req.query[key];
+      const paramName = key === 'lng' ? 'long' : key; // NIWA expects 'long' not 'lng'
+      
       if (typeof value === 'string') {
-        url.searchParams.set(key, value);
+        url.searchParams.set(paramName, value);
       } else if (Array.isArray(value)) {
-        url.searchParams.set(key, value.join(','));
+        url.searchParams.set(paramName, value.join(','));
       }
     });
     
