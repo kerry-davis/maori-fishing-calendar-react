@@ -175,25 +175,28 @@ function processTideData(data: NIWAResponse, targetDate: string): TideForecast {
     throw new Error('NIWA API: No tide data available for location');
   }
 
-  // Filter for target date (UTC timestamps) and convert to our format
-  const targetDateUTC = targetDate;
-  
-  console.log(`🔍 NIWA Processing: Looking for date ${targetDateUTC} in ${data.values.length} data points`);
+  // Filter for target date - convert UTC timestamps to NZ time before filtering
+  console.log(`🔍 NIWA Processing: Looking for date ${targetDate} in ${data.values.length} data points`);
   const firstDate = data.values[0]?.time?.split('T')[0];
   const lastDate = data.values[data.values.length-1]?.time?.split('T')[0];
-  console.log(`🔍 NIWA Date range: ${firstDate} to ${lastDate}`);
+  console.log(`🔍 NIWA Date range: ${firstDate} to ${lastDate} (UTC)`);
   
-  const seriesForDate = data.values
-    .filter(point => point.time.startsWith(targetDateUTC))
+  const targetDateValues = data.values.filter(point => {
+    // Convert UTC timestamp to NZ time (UTC+12 or UTC+13 depending on DST)
+    const utcDate = new Date(point.time);
+    // Simple NZ date adjustment (add 12 hours for NZST)
+    const nzDate = new Date(utcDate.getTime() + 12 * 60 * 60 * 1000);
+    const nzDateString = nzDate.toISOString().split('T')[0];
+    return nzDateString === targetDate;
+  });
+  
+  console.log(`🔍 NIWA UTC->NZ conversion: ${targetDateValues.length} points for NZ date ${targetDate}`);
+  
+  const seriesForDate = targetDateValues
     .map(point => ({
       time: point.time,
       height: Math.round(point.value * 100) / 100
     }));
-
-  // Find extrema (high/low tides) for target date by detecting local maxima and minima
-  const targetDateValues = data.values.filter(point => point.time.startsWith(targetDateUTC));
-  
-  console.log(`🔍 NIWA Filtered: ${targetDateValues.length} points for ${targetDateUTC}`);
   const extremaForDate: Array<{
     type: 'high' | 'low';
     time: string;
