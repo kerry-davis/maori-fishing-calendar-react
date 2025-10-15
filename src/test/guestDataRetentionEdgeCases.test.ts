@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { guestDataRetentionService } from '../services/guestDataRetentionService';
 import { guestConversionTrackingService } from '../services/guestConversionTrackingService';
 import type { Trip, WeatherLog, FishCaught } from '../types';
