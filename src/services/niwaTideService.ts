@@ -183,7 +183,7 @@ function processTideData(data: NIWAResponse, targetDate: string): TideForecast {
       height: Math.round(point.value * 100) / 100
     }));
 
-  // Find extrema (high/low tides) for target date
+  // Find extrema (high/low tides) for target date by detecting local maxima and minima
   const targetDateValues = data.values.filter(point => point.time.startsWith(targetDate));
   const extremaForDate: Array<{
     type: 'high' | 'low';
@@ -191,35 +191,28 @@ function processTideData(data: NIWAResponse, targetDate: string): TideForecast {
     height: number;
   }> = [];
 
-  let i = 0;
-  while (i < targetDateValues.length) {
+  // Detect local maxima and minima in the tide data
+  for (let i = 1; i < targetDateValues.length - 1; i++) {
+    const prev = targetDateValues[i - 1];
     const current = targetDateValues[i];
-    const currentValue = current.value;
+    const next = targetDateValues[i + 1];
     
-    // Find next tide (change from high to low or low to high)
-    let nextIndex = i + 1;
-    while (nextIndex < targetDateValues.length && 
-           Math.sign(targetDateValues[nextIndex].value) === Math.sign(currentValue)) {
-      nextIndex++;
-    }
-
-    if (nextIndex >= targetDateValues.length) break;
-
-    // Determine tide type
-    const tideType = currentValue > 0 ? 'high' as const : 'low' as const;
-    const actualValue = currentValue; // Use original value from NIWA
-    const nextValue = targetDateValues[nextIndex].value;
-
-    // Add both the current and next tide if they form a pair
-    if (Math.sign(currentValue) !== Math.sign(nextValue)) {
+    // Local maximum (high tide)
+    if (current.value > prev.value && current.value > next.value) {
       extremaForDate.push({
-        type: tideType,
+        type: 'high',
         time: current.time,
-        height: Math.round(actualValue * 100) / 100
+        height: Math.round(current.value * 100) / 100
       });
     }
-
-    i = nextIndex;
+    // Local minimum (low tide)
+    else if (current.value < prev.value && current.value < next.value) {
+      extremaForDate.push({
+        type: 'low',
+        time: current.time,
+        height: Math.round(current.value * 100) / 100
+      });
+    }
   }
 
   // Remove duplicates and sort by time
