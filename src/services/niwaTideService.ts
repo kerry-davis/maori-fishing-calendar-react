@@ -187,6 +187,12 @@ function processTideData(data: NIWAResponse, targetDate: string): TideForecast {
     // Simple NZ date adjustment (add 12 hours for NZST)
     const nzDate = new Date(utcDate.getTime() + 12 * 60 * 60 * 1000);
     const nzDateString = nzDate.toISOString().split('T')[0];
+    
+    // Debug first few points
+    if (data.values.indexOf(point) < 3) {
+      console.log(`🔧 UTC: ${point.time} -> NZ: ${nzDateString} (target: ${targetDate})`);
+    }
+    
     return nzDateString === targetDate;
   });
   
