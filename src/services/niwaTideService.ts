@@ -175,16 +175,25 @@ function processTideData(data: NIWAResponse, targetDate: string): TideForecast {
     throw new Error('NIWA API: No tide data available for location');
   }
 
-  // Filter for target date and convert to our format
+  // Filter for target date (UTC timestamps) and convert to our format
+  const targetDateUTC = targetDate;
+  
+  console.log(`🔍 NIWA Processing: Looking for date ${targetDateUTC} in ${data.values.length} data points`);
+  const firstDate = data.values[0]?.time?.split('T')[0];
+  const lastDate = data.values[data.values.length-1]?.time?.split('T')[0];
+  console.log(`🔍 NIWA Date range: ${firstDate} to ${lastDate}`);
+  
   const seriesForDate = data.values
-    .filter(point => point.time.startsWith(targetDate))
+    .filter(point => point.time.startsWith(targetDateUTC))
     .map(point => ({
       time: point.time,
       height: Math.round(point.value * 100) / 100
     }));
 
   // Find extrema (high/low tides) for target date by detecting local maxima and minima
-  const targetDateValues = data.values.filter(point => point.time.startsWith(targetDate));
+  const targetDateValues = data.values.filter(point => point.time.startsWith(targetDateUTC));
+  
+  console.log(`🔍 NIWA Filtered: ${targetDateValues.length} points for ${targetDateUTC}`);
   const extremaForDate: Array<{
     type: 'high' | 'low';
     time: string;
