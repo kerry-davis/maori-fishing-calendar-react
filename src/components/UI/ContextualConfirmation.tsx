@@ -10,6 +10,8 @@ interface ContextualConfirmationProps {
   onCancel: () => void;
   variant?: 'danger' | 'warning' | 'info';
   position?: 'center' | 'top-right';
+  confirmDisabled?: boolean;
+  extraContent?: React.ReactNode;
 }
 
 const ContextualConfirmation: React.FC<ContextualConfirmationProps> = ({
@@ -21,7 +23,9 @@ const ContextualConfirmation: React.FC<ContextualConfirmationProps> = ({
   onConfirm,
   onCancel,
   variant = 'danger',
-  position = 'center'
+  position = 'center',
+  confirmDisabled = false,
+  extraContent
 }) => {
   if (!isOpen) return null;
 
@@ -68,6 +72,8 @@ const ContextualConfirmation: React.FC<ContextualConfirmationProps> = ({
     ? 'bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 p-4 min-w-80 max-w-sm'
     : 'relative bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 p-4 max-w-sm w-full';
 
+  const confirmButtonClasses = `${styles.confirmButton} px-3 py-1.5 text-xs${confirmDisabled ? ' opacity-70 cursor-not-allowed' : ''}`;
+
   return (
     <div className={positionClasses}>
       {position === 'center' && (
@@ -88,9 +94,14 @@ const ContextualConfirmation: React.FC<ContextualConfirmationProps> = ({
             <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-1">
               {title}
             </h3>
-            <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+            <p className="text-xs text-gray-600 dark:text-gray-400 mb-3 whitespace-pre-line">
               {message}
             </p>
+            {extraContent && (
+              <div className="text-xs text-gray-600 dark:text-gray-300 mb-3 space-y-2">
+                {extraContent}
+              </div>
+            )}
             <div className="flex space-x-2">
               <button
                 type="button"
@@ -103,7 +114,8 @@ const ContextualConfirmation: React.FC<ContextualConfirmationProps> = ({
               <button
                 type="button"
                 onClick={onConfirm}
-                className={`${styles.confirmButton} px-3 py-1.5 text-xs`}
+                className={confirmButtonClasses}
+                disabled={confirmDisabled}
               >
                 {confirmText}
               </button>

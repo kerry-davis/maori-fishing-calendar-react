@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
+/* eslint-disable react-refresh/only-export-components */
+import React, { createContext, useContext, useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import type { User } from 'firebase/auth';
 import {
   signInWithEmailAndPassword,
@@ -17,6 +18,7 @@ import { usePWA } from './PWAContext';
 import { mapFirebaseError } from '../utils/firebaseErrorMessages';
 import { clearUserState } from '../utils/userStateCleared';
 import { secureLogoutWithCleanup } from '../utils/clearUserContext';
+import { SyncStatusProvider, useSyncStatusContext } from './SyncStatusContext';
 
 interface AuthContextType {
   user: User | null;
@@ -34,9 +36,49 @@ interface AuthContextType {
   isFirebaseConfigured: boolean;
   userDataReady: boolean; // New flag to indicate when user-specific data is ready
   authStateChanged: boolean; // New flag for immediate auth state change notifications
+  lastSyncTime: Date | null;
+  syncQueueLength: number;
+  isSyncing: boolean;
+  isOnline: boolean;
+  isFirebaseReachable: boolean | null;
+  refreshSyncStatus: () => void;
+  markSyncComplete: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+type DebugChromePWA = {
+  checkDetection: () => {
+    isPWA: boolean;
+    isChrome: boolean;
+    isAndroid: boolean;
+    isMobile: boolean;
+    userAgent: string;
+    currentUser: string;
+  };
+  testRedirect: () => Promise<void>;
+  forceRetry: () => void;
+};
+
+type ExtendedWindow = Window & {
+  lastAuthTime?: number;
+  clearSyncQueue?: () => boolean;
+  debugChromePWA?: DebugChromePWA;
+};
+
+const getExtendedWindow = (): ExtendedWindow | null => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  return window as ExtendedWindow;
+};
+
+const stampLastAuthTime = (): void => {
+  const extendedWindow = getExtendedWindow();
+  if (extendedWindow) {
+    extendedWindow.lastAuthTime = Date.now();
+  }
+};
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -44,6 +86,48 @@ export const useAuth = () => {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
+};
+
+type AuthContextBaseValue = Omit<
+  AuthContextType,
+  'lastSyncTime' | 'syncQueueLength' | 'isSyncing' | 'isOnline' | 'isFirebaseReachable' | 'refreshSyncStatus' | 'markSyncComplete'
+>;
+
+const AuthContextComposer: React.FC<{ baseValue: AuthContextBaseValue; children: React.ReactNode }> = ({
+  baseValue,
+  children
+}) => {
+  const {
+    lastSyncTime,
+    syncQueueLength,
+    isSyncing,
+    isOnline,
+    isFirebaseReachable,
+    refreshStatus,
+    markSyncComplete
+  } = useSyncStatusContext();
+
+  const contextValue = useMemo<AuthContextType>(() => ({
+    ...baseValue,
+    lastSyncTime,
+    syncQueueLength,
+    isSyncing,
+    isOnline,
+    isFirebaseReachable,
+    refreshSyncStatus: refreshStatus,
+    markSyncComplete
+  }), [
+    baseValue,
+    lastSyncTime,
+    syncQueueLength,
+    isSyncing,
+    isOnline,
+    isFirebaseReachable,
+    refreshStatus,
+    markSyncComplete
+  ]);
+
+  return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -300,7 +384,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     return unsubscribe;
-  }, [user, migrationStartedRef]);
+  }, [user, isPWA]);
 
   const login = async (email: string, password: string) => {
     if (!auth) {
@@ -308,9 +392,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     try {
       setError(null);
-      if (typeof window !== 'undefined') {
-        (window as any).lastAuthTime = Date.now();
-      }
+      stampLastAuthTime();
       await signInWithEmailAndPassword(auth, email, password);
       setSuccessMessage('Successfully signed in!');
     } catch (err) {
@@ -326,9 +408,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     try {
       setError(null);
-      if (typeof window !== 'undefined') {
-        (window as any).lastAuthTime = Date.now();
-      }
+      stampLastAuthTime();
       await createUserWithEmailAndPassword(auth, email, password);
       setSuccessMessage('Account created successfully!');
     } catch (err) {
@@ -354,9 +434,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setError(null);
 
       // Set authentication start timestamp for modal monitoring
-      if (typeof window !== 'undefined') {
-        (window as any).lastAuthTime = Date.now();
-      }
+      stampLastAuthTime();
 
       // ELEGANT: Clean modal state before authentication
       console.log('🧹 Cleaning modal state before authentication');
@@ -452,10 +530,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.log('Final cleanup: clearing settings URL hash');
             window.history.replaceState(null, '', window.location.pathname);
           }
-
-          // Set timestamp for monitoring window
-          (window as any).lastAuthTime = Date.now();
         }
+        stampLastAuthTime();
       }, 100);
 
     } catch (err) {
@@ -556,7 +632,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isFirebaseConfigured = auth !== null;
 
   // Debug method to clear sync queue (exposed to window for debugging)
-  const clearSyncQueue = () => {
+  const clearSyncQueue = useCallback(() => {
     try {
       firebaseDataService.clearSyncQueue();
       console.log('Sync queue cleared via debug method');
@@ -571,12 +647,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setError('Failed to clear sync queue');
       return false;
     }
-  };
+  }, []);
 
   // Expose debug methods to window for Chrome PWA troubleshooting
   useEffect(() => {
-    (window as any).clearSyncQueue = clearSyncQueue;
-    (window as any).debugChromePWA = {
+    const extendedWindow = getExtendedWindow();
+    if (!extendedWindow) {
+      return;
+    }
+
+    extendedWindow.clearSyncQueue = clearSyncQueue;
+    extendedWindow.debugChromePWA = {
       checkDetection: () => {
         const userAgent = navigator.userAgent;
         const isPWA = window.matchMedia('(display-mode: standalone)').matches;
@@ -635,9 +716,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
     };
-  }, [user, isPWA, auth]);
 
-  const value = {
+    return () => {
+      const cleanupWindow = getExtendedWindow();
+      if (cleanupWindow) {
+        delete cleanupWindow.clearSyncQueue;
+        delete cleanupWindow.debugChromePWA;
+      }
+    };
+  }, [user, isPWA, clearSyncQueue]);
+
+  const baseValue: AuthContextBaseValue = {
     user,
     loading,
     successMessage,
@@ -655,7 +744,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isFirebaseConfigured,
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <SyncStatusProvider userId={user?.uid ?? null}>
+      <AuthContextComposer baseValue={baseValue}>
+        {children}
+      </AuthContextComposer>
+    </SyncStatusProvider>
+  );
 };
 
 // Export the context for testing purposes

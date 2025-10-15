@@ -3,6 +3,12 @@
 Modern offline-first fishing planner grounded in traditional Māori lunar knowledge. Built as a lightweight, testable React + Vite + TypeScript Progressive Web App with deterministic client‑side field obfuscation (encryption) for selected user data.
 
 ---
+## Latest Updates
+* Introduced a shared sync status context that keeps connectivity, queue length, and last-sync timestamps in sync across the UI for clearer offline workflows.
+* Added a guarded logout flow that waits for pending sync activity (with retry and override options) before signing users out.
+* Hardened modal handling around PWA authentication redirects to prevent unintended settings screens from opening post-login.
+
+---
 ## 1. Purpose & Scope
 Helps anglers plan and review fishing activity using lunar phases, weather, and personal trip history while respecting and acknowledging Māori cultural knowledge. The app is personal-use focused: single authenticated user context per browser profile (no multi-tenant org features).
 
