@@ -1,8 +1,10 @@
-import type { FC, KeyboardEvent } from 'react';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import type { FC, KeyboardEvent, ReactNode } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useThemeContext, useAuth } from '../../contexts';
 import { LoginModal } from '../Auth/LoginModal';
 import { Container } from '../UI';
+import ContextualConfirmation from '../UI/ContextualConfirmation';
+import { useLogoutGuard } from '../../hooks/useLogoutGuard';
 
 interface HeaderProps {
   onSearchClick: () => void;
@@ -20,7 +22,7 @@ const Header: FC<HeaderProps> = ({
   onGalleryClick
 }) => {
   const { isDark, toggleTheme } = useThemeContext();
-  const { user, logout, isFirebaseConfigured } = useAuth();
+  const { user, isFirebaseConfigured } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAuthDropdownOpen, setIsAuthDropdownOpen] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -70,6 +72,61 @@ const Header: FC<HeaderProps> = ({
   const closeMobileMenu = () => {
     setIsMobileMenuOpen(false);
   };
+
+  const logoutGuard = useLogoutGuard({
+    onAfterLogout: () => {
+      closeAuthDropdown({ returnFocus: false });
+      closeMobileMenu();
+    }
+  });
+
+  const determineConfirmationPosition = useCallback((): 'center' | 'top-right' => (
+    isAuthDropdownOpen ? 'top-right' : 'center'
+  ), [isAuthDropdownOpen]);
+
+  const [confirmationPosition, setConfirmationPosition] = useState<'center' | 'top-right'>(determineConfirmationPosition());
+
+  const {
+    detailLines,
+    canRetry,
+    retryWait,
+    isDialogOpen,
+    statusMessage,
+    confirmText,
+    confirmDisabled,
+    handleConfirm,
+    handleCancel,
+    openDialog
+  } = logoutGuard;
+
+  const confirmationExtraContent = useMemo(() => {
+    const content: ReactNode[] = [];
+
+    if (detailLines.length > 0) {
+      content.push(
+        <ul key="details" className="list-disc list-inside space-y-1">
+          {detailLines.map((detail, index) => (
+            <li key={index}>{detail}</li>
+          ))}
+        </ul>
+      );
+    }
+
+    if (canRetry) {
+      content.push(
+        <button
+          key="retry"
+          type="button"
+          onClick={retryWait}
+          className="text-xs font-medium text-blue-600 dark:text-blue-300 hover:underline"
+        >
+          Retry waiting for sync
+        </button>
+      );
+    }
+
+    return content.length > 0 ? <div className="space-y-2">{content}</div> : null;
+  }, [canRetry, detailLines, retryWait]);
 
   const toggleAuthDropdown = () => {
     if (isAuthDropdownOpen) {
@@ -133,16 +190,6 @@ const Header: FC<HeaderProps> = ({
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       toggleAuthDropdown();
-    }
-  };
-
-  const handleSignOut = async () => {
-    try {
-      await logout();
-      closeAuthDropdown();
-      closeMobileMenu();
-    } catch (error) {
-      console.error('Logout error:', error);
     }
   };
 
@@ -301,7 +348,10 @@ const Header: FC<HeaderProps> = ({
                     
                     {user ? (
                       <button
-                        onClick={handleSignOut}
+                        onClick={() => {
+                          setConfirmationPosition(determineConfirmationPosition());
+                          openDialog();
+                        }}
                         role="menuitem"
                         data-auth-dropdown-item="true"
                         className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md transition-colors"
@@ -426,7 +476,10 @@ const Header: FC<HeaderProps> = ({
               
               {user ? (
                 <button
-                  onClick={handleSignOut}
+                  onClick={() => {
+                    setConfirmationPosition(determineConfirmationPosition());
+                    openDialog();
+                  }}
                   className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md transition-colors"
                   style={{ backgroundColor: 'var(--button-primary)', color: 'white' }}
                   onTouchStart={(e) => {
@@ -465,6 +518,20 @@ const Header: FC<HeaderProps> = ({
           </div>
         </div>
       </Container>
+
+      <ContextualConfirmation
+        isOpen={isDialogOpen}
+        title="Sign Out"
+        message={statusMessage}
+        confirmText={confirmText}
+        cancelText="Stay Signed In"
+        onConfirm={handleConfirm}
+        onCancel={handleCancel}
+        variant="warning"
+        position={confirmationPosition}
+        confirmDisabled={confirmDisabled}
+        extraContent={confirmationExtraContent}
+      />
       
       {/* Login Modal - only render when Firebase is configured */}
       {isFirebaseConfigured && showLoginModal && (

@@ -35,7 +35,7 @@ ChartJS.register(
   Legend
 );
 
-export interface AnalyticsModalProps extends ModalProps {}
+export type AnalyticsModalProps = ModalProps;
 
 /**
  * AnalyticsModal component displays comprehensive analytics and insights

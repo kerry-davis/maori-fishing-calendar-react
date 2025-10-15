@@ -4,6 +4,7 @@ import {
   useDatabaseContext,
   useAuth,
 } from "./contexts";
+import type { Trip, WeatherLog, FishCaught } from "./types";
 import "./utils/cleanupDuplicates"; // Load cleanup utilities
 import ErrorBoundary from "./components/ErrorBoundary";
 import { Header, Footer } from "./components/Layout";
@@ -55,10 +56,10 @@ function TimingOnReady() {
         performance.mark('app-ready');
         const total = performance.measure('app-reload-total', 'app-reload-start', 'app-ready');
         const totalMs = Math.round(total.duration);
-        const w: any = typeof window !== 'undefined' ? window : {};
+        const w = typeof window !== 'undefined' ? (window as unknown as Record<string, boolean | undefined>) : {};
         // End the console timer if it was started, only once
         if (w.__reloadTimerActive) {
-          try { console.timeEnd('[reload] total'); } catch {}
+          try { console.timeEnd('[reload] total'); } catch (e) { /* ignore errors */ }
           w.__reloadTimerActive = false;
         }
         if (!w.__reloadReadyLogged) {
@@ -81,7 +82,7 @@ function AppContent() {
       if (typeof performance !== 'undefined') {
         performance.mark('app-first-render');
       }
-    } catch {}
+    } catch (_e) { /* ignore errors */ }
   }, []);
 
   // Modal state management for routing between different views
@@ -133,7 +134,7 @@ function AppContent() {
     // The monitoring effect above will handle any unwanted modal openings smoothly
 
     // Only log if we're in an auth window
-    const lastAuthTime: number | undefined = (window as any).lastAuthTime;
+    const lastAuthTime: number | undefined = (window as unknown as Record<string, number | undefined>).lastAuthTime;
     const timeSinceLastAuth = typeof lastAuthTime === 'number'
       ? Date.now() - lastAuthTime
       : Number.POSITIVE_INFINITY;
@@ -148,7 +149,7 @@ function AppContent() {
       console.log('⚙️ Settings modal opening request detected');
 
       // Check if this might be during PWA authentication
-      const lastAuthTime: number | undefined = (window as any).lastAuthTime;
+      const lastAuthTime: number | undefined = (window as unknown as Record<string, number | undefined>).lastAuthTime;
       const timeSinceLastAuth = typeof lastAuthTime === 'number'
         ? Date.now() - lastAuthTime
         : Number.POSITIVE_INFINITY;
@@ -221,7 +222,7 @@ function AppContent() {
   }, []);
 
 
-  const handleTripCreated = useCallback((trip: any) => {
+  const handleTripCreated = useCallback((trip: Trip) => {
     console.log('App.tsx: handleTripCreated called with trip:', trip);
     console.log('App.tsx: Current modal before:', currentModal);
     // Close the trip form modal and refresh both trip log and calendar
@@ -238,13 +239,13 @@ function AppContent() {
     console.log('App.tsx: Triggered calendar refresh after trip deletion');
   }, []);
 
-  const handleWeatherLogged = useCallback((_weatherLog: any) => {
+  const handleWeatherLogged = useCallback((_weatherLog: WeatherLog) => {
     // Close the weather modal and refresh the trip log to show updated weather
     setCurrentModal("tripLog");
     setTripLogRefreshTrigger(prev => prev + 1); // Trigger refresh
   }, []);
 
-  const handleFishCaught = useCallback((_fish: any) => {
+  const handleFishCaught = useCallback((_fish: FishCaught) => {
     // Close the fish catch modal and refresh the trip log to show new catch
     setCurrentModal("tripLog");
     setTripLogRefreshTrigger(prev => prev + 1); // Trigger refresh
@@ -300,13 +301,13 @@ function AppContent() {
         performance.mark('app-loading-ui');
         const firstFrame = performance.measure('app-first-frame', 'app-reload-start', 'app-loading-ui');
         // Only log once per reload (guard StrictMode double render)
-        const w: any = typeof window !== 'undefined' ? window : {};
+        const w = typeof window !== 'undefined' ? (window as unknown as Record<string, boolean | undefined>) : {};
         if (!w.__reloadFirstFrameLogged) {
           w.__reloadFirstFrameLogged = true;
           console.info('[reload] first-frame:', Math.round(firstFrame.duration), 'ms');
         }
       }
-    } catch {}
+    } catch (_e) { /* ignore errors */ }
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--primary-background)', color: 'var(--primary-text)' }}>
         <div className="text-center">

@@ -35,6 +35,12 @@ export {
   AuthContext
 } from './AuthContext';
 
+// Sync Status Context
+export {
+  SyncStatusProvider,
+  useSyncStatusContext
+} from './SyncStatusContext';
+
 // Combined provider component for easy setup
 import React from 'react';
 import type { ReactNode } from 'react';
@@ -53,25 +59,17 @@ interface AppProvidersProps {
  * Use this to wrap your App component for easy setup
  */
 export function AppProviders({ children }: AppProvidersProps): React.ReactElement {
-  return React.createElement(
-    PWAProvider,
-    null,
-    React.createElement(
-      AuthProvider,
-      null,
-      React.createElement(
-        ThemeProvider,
-        null,
-        React.createElement(
-          LocationProvider,
-          null,
-          React.createElement(
-            DatabaseProvider,
-            null,
-            children
-          )
-        )
-      )
-    )
+  return (
+    <PWAProvider>
+      <AuthProvider>
+        <ThemeProvider>
+          <LocationProvider>
+            <DatabaseProvider>
+              {children}
+            </DatabaseProvider>
+          </LocationProvider>
+        </ThemeProvider>
+      </AuthProvider>
+    </PWAProvider>
   );
 }

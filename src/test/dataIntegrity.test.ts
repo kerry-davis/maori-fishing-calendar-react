@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, vi } from 'vitest';
 import { clearUserState, validateUserContext } from '../utils/userStateCleared';
 import { firebaseDataService } from '../services/firebaseDataService';
 import { encryptionService } from '../services/encryptionService';
@@ -41,20 +41,43 @@ const mockSessionStorage = {
   key: vi.fn((index: number) => Object.keys(mockSessionStorage.data)[index] || null)
 };
 
-// Setup global mocks
-Object.defineProperty(window, 'localStorage', { value: mockLocalStorage });
-Object.defineProperty(window, 'sessionStorage', { value: mockSessionStorage });
-Object.defineProperty(window, 'location', {
-  value: {
-    hash: '',
-    pathname: '/test',
-    replaceState: vi.fn()
-  },
-  writable: true
+
+let originalLocalStorage: any;
+let originalSessionStorage: any;
+let originalLocation: any;
+let originalTitle: any;
+
+beforeAll(() => {
+  originalLocalStorage = window.localStorage;
+  originalSessionStorage = window.sessionStorage;
+  originalLocation = window.location;
+  originalTitle = document.title;
 });
-Object.defineProperty(document, 'title', {
-  value: '',
-  writable: true
+
+beforeEach(() => {
+  Object.defineProperty(window, 'localStorage', { value: mockLocalStorage, configurable: true });
+  Object.defineProperty(window, 'sessionStorage', { value: mockSessionStorage, configurable: true });
+  Object.defineProperty(window, 'location', {
+    value: {
+      hash: '',
+      pathname: '/test',
+      replaceState: vi.fn()
+    },
+    writable: true,
+    configurable: true
+  });
+  Object.defineProperty(document, 'title', {
+    value: '',
+    writable: true,
+    configurable: true
+  });
+});
+
+afterAll(() => {
+  Object.defineProperty(window, 'localStorage', { value: originalLocalStorage, configurable: true });
+  Object.defineProperty(window, 'sessionStorage', { value: originalSessionStorage, configurable: true });
+  Object.defineProperty(window, 'location', { value: originalLocation, configurable: true });
+  Object.defineProperty(document, 'title', { value: originalTitle, configurable: true });
 });
 
 describe('Data Integrity - Cross-Account Contamination Prevention', () => {
@@ -195,6 +218,18 @@ describe('Data Integrity - Cross-Account Contamination Prevention', () => {
       const result = validateUserContext('user123', mockOperation);
       
       expect(result).toBeUndefined();
+    });
+
+    it('should allow guest-mode writes with explicit operationType', () => {
+      const mockOperation = vi.fn().mockReturnValue('guest write');
+      const result = validateUserContext(null, mockOperation, undefined, 'guest-createTrip');
+      expect(result).toBe('guest write');
+      expect(mockOperation).toHaveBeenCalled();
+    });
+
+    it('should block guest-mode writes without explicit operationType', () => {
+      const mockOperation = vi.fn().mockReturnValue('blocked');
+      expect(() => validateUserContext(null, mockOperation, undefined, 'createTrip')).toThrow();
     });
   });
 

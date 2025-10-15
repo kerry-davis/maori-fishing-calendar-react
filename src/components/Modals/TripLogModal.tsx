@@ -111,10 +111,19 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
       // Generate photo previews (including decryption)
       const previews: Record<string, string> = {};
       for (const fish of relevantFishCatches) {
+        // Only render preview if photo, photoUrl, or photoPath exists
+        if (!fish.photo && !fish.photoUrl && !fish.photoPath) {
+          continue;
+        }
         const preview = await getFishPhotoPreview(fish);
-        previews[fish.id] = preview;
-        // Track blob URLs for cleanup
-        if (preview.startsWith('blob:')) objectUrlsRef.current.push(preview);
+        const fallback = fish.photoUrl || fish.photo || undefined;
+        const resolvedPreview = preview || fallback;
+        if (resolvedPreview) {
+          previews[fish.id] = resolvedPreview;
+          if (preview?.startsWith('blob:')) {
+            objectUrlsRef.current.push(preview);
+          }
+        }
       }
       setPhotoPreviews(previews);
 
@@ -749,14 +758,18 @@ const TripCard: React.FC<TripCardProps> = ({
                   <div key={fish.id} className="p-3 rounded" style={{ backgroundColor: 'var(--card-background)', border: '1px solid var(--border-color)' }}>
                     <div className="flex items-start justify-between">
                       <div className="flex items-start gap-3 flex-1">
-                          {photoPreviews[fish.id] && (
-                            <img
-                              src={photoPreviews[fish.id]}
-                              alt={`${fish.species} photo`}
-                              className="w-8 h-8 object-cover rounded border flex-shrink-0"
-                              style={{ borderColor: 'var(--border-color)' }}
-                            />
-                          )}
+                          {(() => {
+                            const previewSrc = photoPreviews[fish.id] || fish.photoUrl || fish.photo;
+                            if (!previewSrc) return null;
+                            return (
+                              <img
+                                src={previewSrc}
+                                alt={`${fish.species} photo`}
+                                className="w-8 h-8 object-cover rounded border flex-shrink-0"
+                                style={{ borderColor: 'var(--border-color)' }}
+                              />
+                            );
+                          })()}
                         <div className="flex-1 min-w-0">
                           <div className="font-medium" style={{ color: 'var(--primary-text)' }}>
                             {fish.species}
