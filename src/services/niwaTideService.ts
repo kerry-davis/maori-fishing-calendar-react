@@ -231,7 +231,31 @@ function processTideData(data: NIWAResponse, targetDate: string): TideForecast {
     )
     .sort((a, b) => a.time.localeCompare(b.time));
 
-  if (seriesForDate.length === 0 || uniqueExtrema.length === 0) {
+  if (seriesForDate.length === 0) {
+    throw new Error('NIWA API: No tide data available for selected date');
+  }
+  
+  // If we couldn't detect extrema (less than 3 points), create artifical extrema from min/max
+  let finalExtrema = uniqueExtrema;
+  if (uniqueExtrema.length === 0 && seriesForDate.length > 0) {
+    const heights = seriesForDate.map(point => point.height);
+    const maxHeight = Math.max(...heights);
+    const minHeight = Math.min(...heights);
+    
+    // Find the times of min and max
+    const maxPoint = seriesForDate.find(point => point.height === maxHeight);
+    const minPoint = seriesForDate.find(point => point.height === minHeight);
+    
+    if (maxPoint && minPoint) {
+      finalExtrema = [
+        { type: 'high' as const, time: maxPoint.time, height: maxHeight },
+        { type: 'low' as const, time: minPoint.time, height: minHeight }
+      ];
+      console.log('🔧 NIWA: Generated extrema from min/max (insufficient points for local detection)');
+    }
+  }
+  
+  if (finalExtrema.length === 0) {
     throw new Error('NIWA API: No tide data available for selected date');
   }
 
@@ -243,7 +267,7 @@ function processTideData(data: NIWAResponse, targetDate: string): TideForecast {
     date: targetDate,
     timezone: 'Pacific/Auckland', // NZ timezone
     units: 'm',
-    extrema: uniqueExtrema.slice(0, 4), // Limit to 4 extrema (2 pairs)
+    extrema: finalExtrema.slice(0, 4), // Limit to 4 extrema (2 pairs)
     minHeight: Math.round(minHeight * 100) / 100,
     maxHeight: Math.round(maxHeight * 100) / 100,
     series: seriesForDate,
