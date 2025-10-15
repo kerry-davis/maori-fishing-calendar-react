@@ -1,7 +1,16 @@
-import { createContext, useContext, useCallback, useState } from "react";
+import { createContext, useContext, useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useLocationStorage } from "../hooks/useLocalStorage";
-import type { LocationContextType, UserLocation } from "../types";
+import type {
+  LocationContextType,
+  TideCoverageStatus,
+  UserLocation,
+} from "../types";
+import {
+  checkTideCoverage,
+  getTideErrorMessage,
+  type TideError,
+} from "../services/tideService";
 
 // Create the location context
 const LocationContext = createContext<LocationContextType | undefined>(
@@ -17,6 +26,7 @@ export function LocationProvider({ children }: LocationProviderProps) {
   const [userLocation, setUserLocationStorage, , storageError] =
     useLocationStorage();
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
+  const [tideCoverage, setTideCoverage] = useState<TideCoverageStatus | null>(null);
 
   // Set location and persist to localStorage
   const setLocation = useCallback(
@@ -215,12 +225,40 @@ export function LocationProvider({ children }: LocationProviderProps) {
     console.error("Location storage error:", storageError);
   }
 
+  const refreshTideCoverage = useCallback(async () => {
+    if (!userLocation) {
+      setTideCoverage(null);
+      return;
+    }
+
+    try {
+      const summary = await checkTideCoverage(userLocation.lat, userLocation.lon);
+      setTideCoverage(summary);
+    } catch (error) {
+      setTideCoverage({
+        available: false,
+        checkedAt: new Date().toISOString(),
+        message: getTideErrorMessage(error as TideError),
+      });
+    }
+  }, [userLocation]);
+
+  useEffect(() => {
+    if (!userLocation) {
+      setTideCoverage(null);
+      return;
+    }
+    void refreshTideCoverage();
+  }, [userLocation, refreshTideCoverage]);
+
   const contextValue: LocationContextType = {
     userLocation,
     setLocation,
     requestLocation,
     searchLocation,
     searchLocationSuggestions,
+    tideCoverage,
+    refreshTideCoverage,
   };
 
   return (

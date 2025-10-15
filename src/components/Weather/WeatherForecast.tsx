@@ -13,6 +13,7 @@ import {
   type WeatherError 
 } from '../../services/weatherService';
 import { useLocationContext } from '../../contexts/LocationContext';
+import { TideSummary } from '../Tide/TideSummary';
 
 interface WeatherForecastProps {
   date: Date;
@@ -81,7 +82,6 @@ export const WeatherForecast: React.FC<WeatherForecastProps> = ({
         error={error}
       />
       
-      {/* Retry button for errors */}
       {error && !loading && (
         <button
           onClick={handleRetry}
@@ -90,6 +90,14 @@ export const WeatherForecast: React.FC<WeatherForecastProps> = ({
           Try again
         </button>
       )}
+
+      <TideSummary
+        date={date}
+        className="mt-4"
+        title="Tide Forecast"
+        titleClassName="font-semibold text-sm mb-1"
+        bodyClassName="text-sm"
+      />
     </div>
   );
 };

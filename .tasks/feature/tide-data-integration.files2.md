@@ -1,0 +1,4 @@
+- src/components/Tide/TideSummary.tsx
+- src/components/Modals/TripLogModal.tsx
+- src/services/tideService.ts
+- test/tideService.test.ts

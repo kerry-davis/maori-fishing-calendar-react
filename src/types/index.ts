@@ -264,6 +264,14 @@ export interface UserLocation {
   name: string;
 }
 
+export interface TideCoverageStatus {
+  available: boolean;
+  checkedAt: string;
+  timezone?: string;
+  units?: string;
+  message?: string;
+}
+
 export interface WeatherForecast {
   temperature_max: number;
   temperature_min: number;
@@ -296,6 +304,8 @@ export interface LocationContextType {
   requestLocation: () => Promise<void>;
   searchLocation: (locationName: string) => Promise<void>;
   searchLocationSuggestions: (locationName: string) => Promise<UserLocation[]>;
+  tideCoverage: TideCoverageStatus | null;
+  refreshTideCoverage: () => Promise<void>;
 }
 
 export interface DatabaseContextType {

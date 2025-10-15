@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useLocationContext } from "../../contexts";
+import { TideSummary } from "../Tide/TideSummary";
 import {
   getCurrentMoonInfo,
   getSunMoonTimes,
@@ -26,6 +27,12 @@ export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
     moonrise: string;
     moonset: string;
   } | null>(null);
+  const tideDate = useMemo(() => {
+    const current = new Date();
+    current.setHours(0, 0, 0, 0);
+    return current;
+  }, []);
+
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [locationInput, setLocationInput] = useState("");
@@ -318,6 +325,17 @@ export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
                 </div>
               </div>
             )}
+
+            <TideSummary
+              date={userLocation ? tideDate : null}
+              className="mt-3"
+              title={<span style={{ color: 'var(--tertiary-text)' }}>Tide Forecast</span>}
+              titleClassName="text-xs uppercase tracking-wide mb-1"
+              bodyClassName="text-xs space-y-1"
+              retryButtonClassName="mt-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+              loadingMessage="Loading tide forecast…"
+              emptyMessage="Tide data unavailable."
+            />
 
             <button
               onClick={() => setLocation(null)}
