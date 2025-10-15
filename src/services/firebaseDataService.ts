@@ -22,6 +22,16 @@ import type { DocumentReference } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL, getMetadata, listAll, deleteObject, getBlob } from "firebase/storage";
 import type { StorageReference } from "firebase/storage";
 
+type QueuedSyncOperation = {
+  id?: number;
+  operation?: string;
+  collection?: string;
+  data?: any;
+  timestamp?: string;
+};
+
+type SyncCollectionName = 'trips' | 'weatherLogs' | 'fishCaught';
+
 /**
  * Firebase Data Service - Cloud-first with offline fallback
  * Replaces IndexedDB with Firestore while maintaining offline functionality
@@ -30,17 +40,18 @@ export class FirebaseDataService {
   private userId: string | null = null;
   private isGuest = true;
   private isOnline = navigator.onLine;
-  private syncQueue: any[] = [];
+  private syncQueue: QueuedSyncOperation[] = [];
   private isInitialized = false;
   private storageInstance = storage;
   private hasLoggedStorageUnavailable = false;
+  private isProcessingQueue = false;
+  private queueRetryTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     // Monitor online/offline status
     window.addEventListener('online', () => {
       this.isOnline = true;
-      // Temporarily disable sync processing to prevent UI blocking
-      // this.processSyncQueue();
+      void this.processSyncQueue();
     });
 
     window.addEventListener('offline', () => {
@@ -357,7 +368,7 @@ export class FirebaseDataService {
       this.userId = userId;
       this.isGuest = false;
       this.loadSyncQueue(); // Load user-specific queue
-      // await this.processSyncQueue();
+      void this.processSyncQueue();
       console.log('Firebase Data Service initialized for user:', userId);
     } else {
       this.userId = null;
@@ -393,6 +404,7 @@ export class FirebaseDataService {
       this.userId = userId;
       this.isGuest = false;
       this.loadSyncQueue();
+      void this.processSyncQueue();
       console.log('Switched to user mode:', userId);
     }
   }
@@ -2349,11 +2361,16 @@ export class FirebaseDataService {
     if (data.encryptedMetadata && !finalData.encryptedMetadata) {
       finalData.encryptedMetadata = data.encryptedMetadata;
     }
-    const queuedOperation = enqueue(finalData);
+    const queuedOperation: QueuedSyncOperation = enqueue(finalData);
     this.syncQueue.push(queuedOperation);
     this.saveSyncQueue();
     console.log('Operation queued for sync:', queuedOperation);
-    return queuedOperation.id;
+
+    if (this.isOnline) {
+      void this.processSyncQueue();
+    }
+
+    return queuedOperation.id ?? Date.now();
   }
 
   private queueOperation(operation: string, collection: string, data: any): number {
@@ -2363,18 +2380,428 @@ export class FirebaseDataService {
   }
 
 
-  private saveSyncQueue(): void {
-    if (this.userId) {
-      localStorage.setItem(`syncQueue_${this.userId}`, JSON.stringify(this.syncQueue));
+  private saveSyncQueue(shouldNotify = true): void {
+    if (!this.userId) {
+      return;
+    }
+
+    localStorage.setItem(`syncQueue_${this.userId}`, JSON.stringify(this.syncQueue));
+
+    if (shouldNotify) {
+      this.notifySyncQueueChanged();
     }
   }
 
   private loadSyncQueue(): void {
-    if (this.userId) {
-      const queue = localStorage.getItem(`syncQueue_${this.userId}`);
-      if (queue) {
-        this.syncQueue = JSON.parse(queue);
+    if (!this.userId) {
+      this.syncQueue = [];
+      return;
+    }
+
+    const queue = localStorage.getItem(`syncQueue_${this.userId}`);
+    if (!queue) {
+      this.syncQueue = [];
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(queue);
+      this.syncQueue = Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      console.warn('Failed to parse stored sync queue, resetting.', error);
+      this.syncQueue = [];
+    }
+  }
+
+  private clearQueueRetryTimeout(): void {
+    if (this.queueRetryTimeout) {
+      clearTimeout(this.queueRetryTimeout);
+      this.queueRetryTimeout = null;
+    }
+  }
+
+  private notifySyncQueueChanged(): void {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    window.dispatchEvent(new CustomEvent('syncQueueUpdated'));
+  }
+
+  private notifySyncQueueCleared(): void {
+    this.notifySyncQueueChanged();
+    if (typeof window === 'undefined') {
+      return;
+    }
+    window.dispatchEvent(new CustomEvent('syncQueueCleared'));
+  }
+
+  private recordSuccessfulSync(): void {
+    if (!this.userId) {
+      return;
+    }
+
+    try {
+      localStorage.setItem(`lastSync_${this.userId}`, new Date().toISOString());
+    } catch (error) {
+      console.warn('Failed to persist last sync timestamp', error);
+    }
+
+    this.clearQueueRetryTimeout();
+    this.notifySyncQueueCleared();
+  }
+
+  private async processSyncQueue(): Promise<void> {
+    if (this.isProcessingQueue) {
+      return;
+    }
+
+    if (this.isGuest || !this.userId || !this.isOnline || !firestore) {
+      return;
+    }
+
+    if (this.syncQueue.length === 0) {
+      this.clearQueueRetryTimeout();
+      return;
+    }
+
+    this.isProcessingQueue = true;
+    this.clearQueueRetryTimeout();
+
+    try {
+      const remaining: QueuedSyncOperation[] = [];
+      let processedAny = false;
+
+      for (const entry of this.syncQueue) {
+        try {
+          const success = await this.applyQueuedOperation(entry);
+          if (success) {
+            processedAny = true;
+          } else {
+            remaining.push(entry);
+          }
+        } catch (error) {
+          console.warn('Failed processing queued sync operation', entry, error);
+          remaining.push(entry);
+        }
       }
+
+      if (processedAny || remaining.length !== this.syncQueue.length) {
+        this.syncQueue = remaining;
+        this.saveSyncQueue(false);
+
+        if (this.syncQueue.length === 0 && processedAny) {
+          this.recordSuccessfulSync();
+        } else if (this.syncQueue.length > 0) {
+          this.scheduleQueueRetry();
+          if (processedAny) {
+            this.notifySyncQueueChanged();
+          }
+        }
+      } else if (this.syncQueue.length > 0) {
+        this.scheduleQueueRetry();
+      }
+    } finally {
+      this.isProcessingQueue = false;
+    }
+  }
+
+  private scheduleQueueRetry(): void {
+    if (this.queueRetryTimeout || !this.isOnline) {
+      return;
+    }
+
+    this.queueRetryTimeout = setTimeout(() => {
+      this.queueRetryTimeout = null;
+      void this.processSyncQueue();
+    }, 5_000);
+  }
+
+  private async applyQueuedOperation(entry: QueuedSyncOperation): Promise<boolean> {
+    if (!entry.collection || !entry.operation) {
+      return true;
+    }
+
+    const collectionName = entry.collection as SyncCollectionName;
+    const operationType = entry.operation;
+
+    switch (collectionName) {
+      case 'trips':
+        return this.applyTripOperation(operationType, entry.data);
+      case 'weatherLogs':
+        return this.applyWeatherOperation(operationType, entry.data);
+      case 'fishCaught':
+        return this.applyFishOperation(operationType, entry.data);
+      default:
+        console.warn('Unsupported collection in sync queue entry', collectionName);
+        return true;
+    }
+  }
+
+  private async applyTripOperation(operationType: string, rawData: any): Promise<boolean> {
+    if (!this.userId || !firestore) {
+      return false;
+    }
+
+    const payload = await this.prepareQueuedPayload('trips', rawData);
+    const localIdRaw = payload.id ?? rawData?.id;
+
+    if (localIdRaw == null) {
+      console.warn('Queued trip operation missing id, skipping');
+      return true;
+    }
+
+    const localId = typeof localIdRaw === 'number' ? localIdRaw : Number(localIdRaw);
+
+    if (!Number.isFinite(localId)) {
+      console.warn('Queued trip operation has invalid id', localIdRaw);
+      return true;
+    }
+
+    if (operationType === 'delete') {
+      const firebaseId = await this.resolveFirebaseDocId('trips', localId.toString(), localId);
+      if (!firebaseId) {
+        return true;
+      }
+      await deleteDoc(doc(firestore, 'trips', firebaseId));
+      localStorage.removeItem(`idMapping_${this.userId}_trips_${localId}`);
+      return true;
+    }
+
+    const firebaseId = await this.resolveFirebaseDocId('trips', localId.toString(), localId);
+    const basePayload = { ...payload };
+    delete basePayload.createdAt;
+    delete basePayload.updatedAt;
+
+    if (operationType === 'create') {
+      if (firebaseId) {
+        await updateDoc(doc(firestore, 'trips', firebaseId), {
+          ...basePayload,
+          updatedAt: serverTimestamp()
+        });
+        return true;
+      }
+
+      const docRef = await addDoc(collection(firestore, 'trips'), {
+        ...basePayload,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      await this.storeLocalMapping('trips', localId.toString(), docRef.id);
+      return true;
+    }
+
+    if (!firebaseId) {
+      // No mapping yet; treat as create to avoid losing data
+      return this.applyTripOperation('create', payload);
+    }
+
+    await updateDoc(doc(firestore, 'trips', firebaseId), {
+      ...basePayload,
+      updatedAt: serverTimestamp()
+    });
+    return true;
+  }
+
+  private async applyWeatherOperation(operationType: string, rawData: any): Promise<boolean> {
+    if (!this.userId || !firestore) {
+      return false;
+    }
+
+    const payload = await this.prepareQueuedPayload('weatherLogs', rawData);
+    const localId = (payload.id ?? rawData?.id) as string | undefined;
+
+    if (!localId) {
+      console.warn('Queued weather log operation missing id, skipping');
+      return true;
+    }
+
+    if (operationType === 'delete') {
+      const firebaseId = await this.resolveFirebaseDocId('weatherLogs', localId, localId);
+      if (!firebaseId) {
+        return true;
+      }
+      await deleteDoc(doc(firestore, 'weatherLogs', firebaseId));
+      localStorage.removeItem(`idMapping_${this.userId}_weatherLogs_${localId}`);
+      return true;
+    }
+
+    const firebaseId = await this.resolveFirebaseDocId('weatherLogs', localId, localId);
+    const basePayload = { ...payload };
+    delete basePayload.createdAt;
+    delete basePayload.updatedAt;
+
+    if (operationType === 'create') {
+      if (firebaseId) {
+        await updateDoc(doc(firestore, 'weatherLogs', firebaseId), {
+          ...basePayload,
+          updatedAt: serverTimestamp()
+        });
+        return true;
+      }
+
+      const docRef = await addDoc(collection(firestore, 'weatherLogs'), {
+        ...basePayload,
+        createdAt: serverTimestamp()
+      });
+      await this.storeLocalMapping('weatherLogs', localId, docRef.id);
+      return true;
+    }
+
+    if (!firebaseId) {
+      return this.applyWeatherOperation('create', payload);
+    }
+
+    await updateDoc(doc(firestore, 'weatherLogs', firebaseId), {
+      ...basePayload,
+      updatedAt: serverTimestamp()
+    });
+    return true;
+  }
+
+  private async applyFishOperation(operationType: string, rawData: any): Promise<boolean> {
+    if (!this.userId || !firestore) {
+      return false;
+    }
+
+    let payload = await this.prepareQueuedPayload('fishCaught', rawData);
+    const localId = (payload.id ?? rawData?.id) as string | undefined;
+
+    if (!localId) {
+      console.warn('Queued fish operation missing id, skipping');
+      return true;
+    }
+
+    if (this.isOnline) {
+      payload = await this.prepareFishQueuedPayload(payload);
+    }
+
+    if (operationType === 'delete') {
+      const firebaseId = await this.resolveFirebaseDocId('fishCaught', localId, localId);
+      if (!firebaseId) {
+        return true;
+      }
+      await deleteDoc(doc(firestore, 'fishCaught', firebaseId));
+      localStorage.removeItem(`idMapping_${this.userId}_fishCaught_${localId}`);
+      return true;
+    }
+
+    const firebaseId = await this.resolveFirebaseDocId('fishCaught', localId, localId);
+    const basePayload = { ...payload };
+    delete basePayload.createdAt;
+    delete basePayload.updatedAt;
+
+    if (operationType === 'create') {
+      if (firebaseId) {
+        await updateDoc(doc(firestore, 'fishCaught', firebaseId), {
+          ...basePayload,
+          updatedAt: serverTimestamp()
+        });
+        return true;
+      }
+
+      const docRef = await addDoc(collection(firestore, 'fishCaught'), {
+        ...basePayload,
+        createdAt: serverTimestamp()
+      });
+      await this.storeLocalMapping('fishCaught', localId, docRef.id);
+      return true;
+    }
+
+    if (!firebaseId) {
+      return this.applyFishOperation('create', payload);
+    }
+
+    await updateDoc(doc(firestore, 'fishCaught', firebaseId), {
+      ...basePayload,
+      updatedAt: serverTimestamp()
+    });
+    return true;
+  }
+
+  private async resolveFirebaseDocId(collectionName: SyncCollectionName, localId: string, queryValue: string | number): Promise<string | null> {
+    const existing = await this.getFirebaseId(collectionName, localId);
+    if (existing) {
+      return existing;
+    }
+
+    if (!firestore || !this.userId) {
+      return null;
+    }
+
+    try {
+      const value = collectionName === 'trips' ? Number(queryValue) : queryValue;
+      if (collectionName === 'trips' && !Number.isFinite(value as number)) {
+        return null;
+      }
+
+      const q = query(
+        collection(firestore, collectionName),
+        where('userId', '==', this.userId),
+        where('id', '==', value)
+      );
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        const docId = snapshot.docs[0].id;
+        await this.storeLocalMapping(collectionName, localId, docId);
+        return docId;
+      }
+    } catch (error) {
+      console.warn('Failed resolving Firebase ID for queued operation', { collectionName, localId, error });
+    }
+
+    return null;
+  }
+
+  private async prepareQueuedPayload(collectionName: SyncCollectionName, rawData: any): Promise<Record<string, any>> {
+    const base: Record<string, any> = rawData && typeof rawData === 'object' ? { ...rawData } : {};
+    delete base.timestamp;
+
+    if (!base.userId && this.userId) {
+      base.userId = this.userId;
+    }
+
+    if (!base._encrypted && encryptionService.isReady()) {
+      try {
+        return await encryptionService.encryptFields(collectionName, base);
+      } catch (error) {
+        console.warn('[Sync Queue] Failed to encrypt payload while processing queue', error);
+      }
+    }
+
+    return base;
+  }
+
+  private async prepareFishQueuedPayload(payload: Record<string, any>): Promise<Record<string, any>> {
+    if (!payload.photo || typeof payload.photo !== 'string' || !this.userId) {
+      return payload;
+    }
+
+    const data = this.dataUrlToBytes(payload.photo);
+    if (!data) {
+      return payload;
+    }
+
+    try {
+      const refInfo = await this.ensurePhotoInStorage(this.userId, data.bytes, data.mime);
+      if ('inlinePhoto' in refInfo) {
+        return { ...payload, photo: refInfo.inlinePhoto, photoHash: refInfo.photoHash };
+      }
+
+      const updated: Record<string, any> = { ...payload };
+      updated.photoHash = refInfo.photoHash;
+      updated.photoPath = refInfo.photoPath;
+      updated.photoMime = refInfo.photoMime;
+      if (refInfo.photoUrl) {
+        updated.photoUrl = refInfo.photoUrl;
+      }
+      if ('encryptedMetadata' in refInfo && refInfo.encryptedMetadata) {
+        updated.encryptedMetadata = refInfo.encryptedMetadata;
+      }
+      delete updated.photo;
+      return updated;
+    } catch (error) {
+      console.warn('Failed to upload queued fish photo to storage', error);
+      return payload;
     }
   }
 
@@ -2952,7 +3379,9 @@ export class FirebaseDataService {
     */
   clearSyncQueue(): void {
     this.syncQueue = [];
-    this.saveSyncQueue();
+    this.saveSyncQueue(false);
+    this.clearQueueRetryTimeout();
+    this.notifySyncQueueCleared();
     // Removed console.log to reduce debug messages
   }
 
