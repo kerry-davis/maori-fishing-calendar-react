@@ -34,10 +34,22 @@ export default async function handler(req: any, res: any) {
     // Build the NIWA URL with query parameters
     const url = new URL(NIWA_API_BASE);
     
-    // Forward all query parameters to NIWA, mapping lng to long
+    // Forward query parameters to NIWA with proper parameter mapping
     Object.keys(req.query).forEach(key => {
       const value = req.query[key];
-      const paramName = key === 'lng' ? 'long' : key; // NIWA expects 'long' not 'lng'
+      
+      // Handle parameter mapping for NIWA API
+      let paramName = key;
+      if (key === 'lng') {
+        paramName = 'long'; // NIWA expects 'long' not 'lng'
+      } else if (key === 'numberOfDays') {
+        paramName = 'days'; // NIWA expects 'days' not 'numberOfDays'
+      }
+      
+      // Skip unsupported parameters that NIWA doesn't accept
+      if (key === 'startDate' || key === 'endDate' || key === 'numberOfDays' && !value) {
+        return;
+      }
       
       if (typeof value === 'string') {
         url.searchParams.set(paramName, value);
