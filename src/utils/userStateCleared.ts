@@ -1,6 +1,8 @@
 import { encryptionService } from '../services/encryptionService';
 import { clearUserContext as enhancedClearUserContext } from './clearUserContext';
 import { auth } from '../services/firebase';
+import { firebaseDataService } from '../services/firebaseDataService';
+import { databaseService } from '../services/databaseService';
 
 /**
  * Enhanced user state clearing with comprehensive cleanup.
@@ -77,10 +79,6 @@ async function fallbackBasicCleanup(): Promise<void> {
   
   // Clear Firebase services if available (optional for fallback)
   try {
-    // Import dynamically to avoid dependency issues
-    const { firebaseDataService } = await import('../services/firebaseDataService');
-    const { databaseService } = await import('../services/databaseService');
-    
     firebaseDataService.clearSyncQueue();
     databaseService.clearAllData();
   } catch (error) {
@@ -108,6 +106,11 @@ export function validateUserContext<ReturnType>(
   fallbackValue?: ReturnType,
   operationType: string = 'unknown'
 ): ReturnType | undefined {
+    // Guest-mode write bypass: only allow when caller supplies an explicit guest- token
+    // This prevents generic write ops like `createTrip` from being implicitly allowed in guest mode.
+    if (!currentUserId && operationType.startsWith('guest-')) {
+      return operation();
+    }
   // If no user context, only allow read-only operations
   if (!currentUserId) {
     if (WRITE_OPERATIONS.has(operationType)) {

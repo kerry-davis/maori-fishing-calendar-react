@@ -3,6 +3,12 @@
 Modern offline-first fishing planner grounded in traditional Māori lunar knowledge. Built as a lightweight, testable React + Vite + TypeScript Progressive Web App with deterministic client‑side field obfuscation (encryption) for selected user data.
 
 ---
+## Latest Updates
+* Introduced a shared sync status context that keeps connectivity, queue length, and last-sync timestamps in sync across the UI for clearer offline workflows.
+* Added a guarded logout flow that waits for pending sync activity (with retry and override options) before signing users out.
+* Hardened modal handling around PWA authentication redirects to prevent unintended settings screens from opening post-login.
+
+---
 ## 1. Purpose & Scope
 Helps anglers plan and review fishing activity using lunar phases, weather, and personal trip history while respecting and acknowledging Māori cultural knowledge. The app is personal-use focused: single authenticated user context per browser profile (no multi-tenant org features).
 
@@ -229,6 +235,8 @@ Contexts: `login`, `register`, `google`, `generic`. Fallback includes offline hi
 | Offline queue stuck | Network offline or permission issue | Inspect `syncQueue_<userId>` and console logs |
 | PWA not updating | SW cached | Hard refresh / check `vite-plugin-pwa` manifest changes |
 | Photo decrypt fails (OperationError) | Different salt or pepper per device | Ensure `userSettings/<uid>.encSaltB64` exists and `VITE_KEY_PEPPER` matches across envs |
+| Trip log photos missing until edit modal opens | Legacy inline photos lacked preview fallback | Update to latest build (uses inline/URL fallback) or ensure `fish.photo`/`photoUrl` populated |
+| IndexedDB “VersionError” on load | Cached DB schema newer than requested version | Latest build auto-recovers by deleting the stale DB; refresh once more if seen |
 | Storage blocked by CORS | Missing origin in bucket CORS | Add your origin to `cors.json`, re-apply with `gsutil cors set`, and retry after cache window |
 
 ---
@@ -265,4 +273,4 @@ Follow `agent_rules.md`:
 * Keep `README.md` + a future `HANDOFF.md` current for continuity
 
 ---
-_Last updated: 2025-10-13_
+_Last updated: 2025-10-14_

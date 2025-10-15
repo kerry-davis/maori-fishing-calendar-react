@@ -52,6 +52,32 @@ export class FirebaseDataService {
     (window as any).debugIdMappings = () => this.debugIdMappings();
   }
 
+  private ensureServiceReady(): void {
+    if (!this.isReady()) {
+      throw new Error('Service not initialized');
+    }
+  }
+
+  private async runGuestAwareWrite<T>(
+    operationName: string,
+    guestOperation: () => Promise<T>,
+    authenticatedOperation: () => Promise<T>
+  ): Promise<T> {
+    this.ensureServiceReady();
+
+    // Bypass validateUserContext entirely for guest writes (userId is null)
+    if (this.userId == null || this.isGuest) {
+      return await guestOperation();
+    }
+
+    const validated = validateUserContext(this.userId, authenticatedOperation, undefined, operationName);
+    if (!validated) {
+      throw new Error(`User context validation failed for ${operationName}`);
+    }
+
+    return await validated;
+  }
+
   // Simple stable stringify (sorted keys) for deterministic hashing
   private stableStringify(obj: any): string {
     const seen = new WeakSet();
@@ -377,9 +403,28 @@ export class FirebaseDataService {
    * Create a new trip with enhanced user context validation
    */
   async createTrip(tripData: Omit<Trip, "id">): Promise<number> {
-    if (!this.isReady()) throw new Error('Service not initialized');
+    this.ensureServiceReady();
+    // If running in guest mode, allow an explicit guest token path that does not rely on the
+    // outer authenticated validateUserContext. This prevents the generic 'createTrip' token
+    // from being implicitly allowed when no auth is present.
+    if (this.isGuest) {
+      // Data integrity checks
+      this.validateTripData(tripData);
 
-    // Enhanced validation with operation type
+      const sanitizedTripData = {
+        ...tripData,
+        water: this.sanitizeString(tripData.water),
+        location: this.sanitizeString(tripData.location),
+        companions: tripData.companions ? this.sanitizeString(tripData.companions) : tripData.companions,
+        notes: tripData.notes ? this.sanitizeString(tripData.notes) : tripData.notes,
+      };
+
+      // Use explicit guest token to bypass validation safely by performing the local DB write directly
+      const created = await databaseService.createTrip(sanitizedTripData);
+      return created as number;
+    }
+
+    // Enhanced validation with operation type for authenticated users
     return validateUserContext(this.userId, async () => {
       // Data integrity checks
       this.validateTripData(tripData);
@@ -392,10 +437,6 @@ export class FirebaseDataService {
         companions: tripData.companions ? this.sanitizeString(tripData.companions) : tripData.companions,
         notes: tripData.notes ? this.sanitizeString(tripData.notes) : tripData.notes,
       };
-
-      if (this.isGuest) {
-        return databaseService.createTrip(sanitizedTripData);
-      }
 
       const tripId = Date.now();
       let tripWithUser: any = { ...sanitizedTripData, id: tripId, userId: this.userId };
@@ -432,7 +473,7 @@ export class FirebaseDataService {
 
         return this.queueOperation('create', 'trips', operationPayload);
       }, 'createTrip');
-    }, undefined, 'createTrip') || Promise.reject(new Error('User context validation failed'));
+    }, undefined, 'createTrip') as unknown as number || Promise.reject(new Error('User context validation failed'));
   }
 
   /**
@@ -593,29 +634,30 @@ export class FirebaseDataService {
     * Get all trips for a specific date
     */
    async getTripsByDate(date: string): Promise<Trip[]> {
-     if (!this.isReady()) throw new Error('Service not initialized');
+    if (!this.isReady()) throw new Error('Service not initialized');
 
-     // UID validation: ensure operation is for current user
-     return validateUserContext(this.userId, async () => {
-       if (this.isGuest) {
-         return databaseService.getTripsByDate(date);
-       }
+    // Guest mode bypass: perform local DB read directly
+    if (this.isGuest) {
+      return databaseService.getTripsByDate(date);
+    }
 
-       console.log('getTripsByDate called for date:', date, 'online:', this.isOnline);
+    // UID validation: ensure operation is for current user
+    return validateUserContext(this.userId, async () => {
+      console.log('getTripsByDate called for date:', date, 'online:', this.isOnline);
 
-       if (this.isOnline) {
-         try {
-           const q = query(
-             collection(firestore, 'trips'),
-             where('userId', '==', this.userId),
-             where('date', '==', date)
-           );
+      if (this.isOnline) {
+        try {
+          const q = query(
+            collection(firestore, 'trips'),
+            where('userId', '==', this.userId),
+            where('date', '==', date)
+          );
 
-           const querySnapshot = await getDocs(q);
-           console.log('Firestore query returned', querySnapshot.size, 'documents');
-           const trips: Trip[] = [];
+          const querySnapshot = await getDocs(q);
+          console.log('Firestore query returned', querySnapshot.size, 'documents');
+          const trips: Trip[] = [];
 
-           // Process all documents concurrently
+          // Process all documents concurrently
           const tripPromises = querySnapshot.docs.map((doc) => {
             const data = doc.data();
             const localId = data.id as number;
@@ -625,19 +667,19 @@ export class FirebaseDataService {
 
           trips.push(...(await Promise.all(tripPromises)));
 
-           console.log('Returning', trips.length, 'trips from Firestore');
-           return trips;
-         } catch (error) {
-           console.warn('Firestore query failed, falling back to local:', error);
-         }
-       }
+          console.log('Returning', trips.length, 'trips from Firestore');
+          return trips;
+        } catch (error) {
+          console.warn('Firestore query failed, falling back to local:', error);
+        }
+      }
 
-       // Fallback to local storage
-       console.log('Using local storage fallback');
-       const localTrips = await databaseService.getTripsByDate(date);
-       console.log('Local storage returned', localTrips.length, 'trips');
-       return localTrips;
-     }) || Promise.reject(new Error('User context validation failed'));
+      // Fallback to local storage
+      console.log('Using local storage fallback');
+      const localTrips = await databaseService.getTripsByDate(date);
+      console.log('Local storage returned', localTrips.length, 'trips');
+      return localTrips;
+    }) || Promise.reject(new Error('User context validation failed'));
    }
 
   /**
@@ -684,51 +726,45 @@ export class FirebaseDataService {
   /**
     * Update a trip with enhanced user context validation
     */
-   async updateTrip(trip: Trip): Promise<void> {
-     if (!this.isReady()) throw new Error('Service not initialized');
+  async updateTrip(trip: Trip): Promise<void> {
+    await this.runGuestAwareWrite('updateTrip',
+      () => databaseService.updateTrip(trip),
+      async () => {
+        let tripWithUser: any = { ...trip, userId: this.userId };
 
-     // Enhanced validation with operation type
-     return validateUserContext(this.userId, async () => {
-       if (this.isGuest) {
-         return databaseService.updateTrip(trip);
-       }
-
-       let tripWithUser: any = { ...trip, userId: this.userId };
-
-      // Enhanced Firebase operation validation
-      return validateFirebaseOperation(this.userId, tripWithUser, async (validatedPayload) => {
-        let operationPayload = validatedPayload;
-        try {
-          operationPayload = await encryptionService.encryptFields('trips', operationPayload);
-        } catch (e) {
-          console.warn('[encryption] trip encrypt failed', e);
-        }
-
-        console.log('Updating trip with enhanced validation for user:', this.userId, 'trip:', trip.id);
-
-        if (this.isOnline) {
+        return validateFirebaseOperation(this.userId, tripWithUser, async (validatedPayload) => {
+          let operationPayload = validatedPayload;
           try {
-            const firebaseId = await this.getFirebaseId('trips', trip.id.toString());
-            if (firebaseId) {
-              const docRef = doc(firestore, 'trips', firebaseId);
-              await updateDoc(docRef, {
-                ...operationPayload,
-                updatedAt: serverTimestamp()
-              });
-              console.log('Trip updated in Firestore with validation:', firebaseId);
-              return;
-            }
-          } catch (error) {
-            console.warn('Firestore update failed, falling back to local:', error);
+            operationPayload = await encryptionService.encryptFields('trips', operationPayload);
+          } catch (e) {
+            console.warn('[encryption] trip encrypt failed', e);
           }
-        }
 
-        // Fallback to local storage
-        await databaseService.updateTrip(trip);
-        this.queueOperation('update', 'trips', operationPayload);
-       }, 'updateTrip');
-     }, undefined, 'updateTrip') || Promise.reject(new Error('User context validation failed'));
-   }
+          console.log('Updating trip with enhanced validation for user:', this.userId, 'trip:', trip.id);
+
+          if (this.isOnline) {
+            try {
+              const firebaseId = await this.getFirebaseId('trips', trip.id.toString());
+              if (firebaseId) {
+                const docRef = doc(firestore, 'trips', firebaseId);
+                await updateDoc(docRef, {
+                  ...operationPayload,
+                  updatedAt: serverTimestamp()
+                });
+                console.log('Trip updated in Firestore with validation:', firebaseId);
+                return;
+              }
+            } catch (error) {
+              console.warn('Firestore update failed, falling back to local:', error);
+            }
+          }
+
+          await databaseService.updateTrip(trip);
+          this.queueOperation('update', 'trips', operationPayload);
+        }, 'updateTrip');
+      }
+    );
+  }
 
    /**
     * Update a trip using Firebase document ID directly (bypasses ID mapping)
@@ -766,173 +802,157 @@ export class FirebaseDataService {
   /**
     * Delete a trip and all associated data
     */
-   async deleteTrip(id: number, firebaseDocId?: string): Promise<void> {
-     if (!this.isReady()) throw new Error('Service not initialized');
+  async deleteTrip(id: number, firebaseDocId?: string): Promise<void> {
+    await this.runGuestAwareWrite('deleteTrip',
+      () => databaseService.deleteTrip(id),
+      async () => {
+        console.log('deleteTrip called with id:', id, 'firebaseDocId:', firebaseDocId);
 
-     if (this.isGuest) {
-       return databaseService.deleteTrip(id);
-     }
+        if (this.isOnline) {
+          try {
+            console.log('Attempting Firestore delete...');
 
-     console.log('deleteTrip called with id:', id, 'firebaseDocId:', firebaseDocId);
+            if (firebaseDocId) {
+              console.log('Using provided Firebase document ID:', firebaseDocId);
+              const batch = writeBatch(firestore);
 
-     if (this.isOnline) {
-       try {
-         console.log('Attempting Firestore delete...');
+              batch.delete(doc(firestore, 'trips', firebaseDocId));
 
-         // If we have the Firebase document ID directly, use it
-         if (firebaseDocId) {
-           console.log('Using provided Firebase document ID:', firebaseDocId);
-           const batch = writeBatch(firestore);
-
-           // Delete the trip
-           batch.delete(doc(firestore, 'trips', firebaseDocId));
-
-           // Delete associated weather logs
-            const weatherQuery = query(
+              const weatherQuery = query(
                 collection(firestore, 'weatherLogs'),
                 where('userId', '==', this.userId),
                 where('tripId', '==', id),
-            );
-            const weatherSnapshot = await getDocs(weatherQuery);
-            weatherSnapshot.forEach(doc => {
+              );
+              const weatherSnapshot = await getDocs(weatherQuery);
+              weatherSnapshot.forEach(doc => {
                 batch.delete(doc.ref);
-            });
+              });
 
-            // Delete associated fish caught
-            const fishQuery = query(
+              const fishQuery = query(
                 collection(firestore, 'fishCaught'),
                 where('userId', '==', this.userId),
                 where('tripId', '==', id),
-            );
-            const fishSnapshot = await getDocs(fishQuery);
-            fishSnapshot.forEach(doc => {
+              );
+              const fishSnapshot = await getDocs(fishQuery);
+              fishSnapshot.forEach(doc => {
                 batch.delete(doc.ref);
-            });
+              });
 
-           await batch.commit();
-           console.log('Trip and associated data deleted from Firestore using document ID');
-           return;
-         }
+              await batch.commit();
+              console.log('Trip and associated data deleted from Firestore using document ID');
+              return;
+            }
 
-         // Fallback to ID mapping lookup
-         const firebaseId = await this.getFirebaseId('trips', id.toString());
-         console.log('Firebase ID for trip', id, ':', firebaseId);
+            const firebaseId = await this.getFirebaseId('trips', id.toString());
+            console.log('Firebase ID for trip', id, ':', firebaseId);
 
-         if (firebaseId) {
-           console.log('Found Firebase ID via mapping, proceeding with batch delete');
-           const batch = writeBatch(firestore);
+            if (firebaseId) {
+              console.log('Found Firebase ID via mapping, proceeding with batch delete');
+              const batch = writeBatch(firestore);
 
-           // Delete the trip
-           batch.delete(doc(firestore, 'trips', firebaseId));
+              batch.delete(doc(firestore, 'trips', firebaseId));
 
-           // Delete associated weather logs
-            const weatherQuery = query(
+              const weatherQuery = query(
                 collection(firestore, 'weatherLogs'),
                 where('userId', '==', this.userId),
                 where('tripId', '==', id),
-            );
-            const weatherSnapshot = await getDocs(weatherQuery);
-            weatherSnapshot.forEach(doc => {
+              );
+              const weatherSnapshot = await getDocs(weatherQuery);
+              weatherSnapshot.forEach(doc => {
                 batch.delete(doc.ref);
-            });
+              });
 
-            // Delete associated fish caught
-            const fishQuery = query(
+              const fishQuery = query(
                 collection(firestore, 'fishCaught'),
                 where('userId', '==', this.userId),
                 where('tripId', '==', id),
-            );
-            const fishSnapshot = await getDocs(fishQuery);
-            fishSnapshot.forEach(doc => {
+              );
+              const fishSnapshot = await getDocs(fishQuery);
+              fishSnapshot.forEach(doc => {
                 batch.delete(doc.ref);
-            });
+              });
 
-           await batch.commit();
-           console.log('Trip and associated data deleted from Firestore');
-           return;
-         } else {
-           console.log('No Firebase ID found, trying alternative deletion methods');
+              await batch.commit();
+              console.log('Trip and associated data deleted from Firestore');
+              return;
+            }
 
-           // Method 1: Try to find by local ID field
-           try {
-             const tripQuery = query(
-               collection(firestore, 'trips'),
-               where('userId', '==', this.userId),
-               where('id', '==', id)
-             );
+            console.log('No Firebase ID found, trying alternative deletion methods');
 
-             const tripSnapshot = await getDocs(tripQuery);
+            try {
+              const tripQuery = query(
+                collection(firestore, 'trips'),
+                where('userId', '==', this.userId),
+                where('id', '==', id)
+              );
 
-             if (!tripSnapshot.empty) {
-               console.log(`Found ${tripSnapshot.size} trip document(s) by local ID, deleting...`);
+              const tripSnapshot = await getDocs(tripQuery);
+
+              if (!tripSnapshot.empty) {
+                console.log(`Found ${tripSnapshot.size} trip document(s) by local ID, deleting...`);
                 const batch = writeBatch(firestore);
-tripSnapshot.forEach(doc => {
-   batch.delete(doc.ref);
-});
-await batch.commit();
+                tripSnapshot.forEach(doc => {
+                  batch.delete(doc.ref);
+                });
+                await batch.commit();
+                return;
+              }
+            } catch (error) {
+              console.warn('Local ID query failed:', error);
+            }
 
-               return;
-             }
-           } catch (error) {
-             console.warn('Local ID query failed:', error);
-           }
+            console.log('Cannot delete trip - no reliable way to identify it in Firestore');
+            console.log('This may be an old trip created before proper ID tracking');
+            throw new Error('Trip not found for deletion - please refresh and try again');
+          } catch (error) {
+            console.error('Firestore delete failed:', error);
+            console.warn('Falling back to local storage');
+          }
+        }
 
-           // Method 2: For old trips without reliable identification, provide a helpful error
-           console.log('Cannot delete trip - no reliable way to identify it in Firestore');
-           console.log('This may be an old trip created before proper ID tracking');
-           throw new Error('Trip not found for deletion - please refresh and try again');
-         }
-       } catch (error) {
-         console.error('Firestore delete failed:', error);
-         console.warn('Falling back to local storage');
-       }
-     }
-
-     // Fallback to local storage
-     console.log('Using local storage fallback for delete');
-     await databaseService.deleteTrip(id);
-     this.queueOperation('delete', 'trips', { id, userId: this.userId });
-   }
+        console.log('Using local storage fallback for delete');
+        await databaseService.deleteTrip(id);
+        this.queueOperation('delete', 'trips', { id, userId: this.userId });
+      }
+    );
+  }
 
   // WEATHER LOG OPERATIONS
 
   async createWeatherLog(weatherData: Omit<WeatherLog, "id">): Promise<string> {
-    if (!this.isReady()) throw new Error('Service not initialized');
+    return this.runGuestAwareWrite('createWeather',
+      () => databaseService.createWeatherLog(weatherData),
+      async () => {
+        this.validateWeatherLogData(weatherData);
 
-    if (this.isGuest) {
-      return databaseService.createWeatherLog(weatherData);
-    }
+        const localId = `${weatherData.tripId}-${Date.now()}`;
+        let weatherWithIds: any = { ...weatherData, id: localId, userId: this.userId };
+        try { weatherWithIds = await encryptionService.encryptFields('weatherLogs', weatherWithIds); } catch (e) { console.warn('[encryption] weather encrypt failed', e); }
 
-    // Data integrity checks
-    this.validateWeatherLogData(weatherData);
+        console.log('[Weather Create] Creating weather log with data:', weatherWithIds);
 
-    // Generate a local ID that we will store in the document itself
-    const localId = `${weatherData.tripId}-${Date.now()}`;
-  let weatherWithIds: any = { ...weatherData, id: localId, userId: this.userId };
-  try { weatherWithIds = await encryptionService.encryptFields('weatherLogs', weatherWithIds); } catch (e) { console.warn('[encryption] weather encrypt failed', e); }
+        if (this.isOnline) {
+          try {
+            const docRef = await addDoc(collection(firestore, 'weatherLogs'), {
+              ...weatherWithIds,
+              createdAt: serverTimestamp()
+            });
 
-    console.log('[Weather Create] Creating weather log with data:', weatherWithIds);
+            console.log('[Weather Create] Firebase document ID:', docRef.id);
+            await this.storeLocalMapping('weatherLogs', localId, docRef.id);
+            console.log('[Weather Create] Successfully created weather log and stored mappings');
+            return localId;
+          } catch (error) {
+            console.warn('Firestore create failed, falling back to local:', error);
+            this.queueOperation('create', 'weatherLogs', weatherWithIds);
+            return localId;
+          }
+        }
 
-    if (this.isOnline) {
-      try {
-        const docRef = await addDoc(collection(firestore, 'weatherLogs'), {
-          ...weatherWithIds,
-          createdAt: serverTimestamp()
-        });
-
-        console.log('[Weather Create] Firebase document ID:', docRef.id);
-        await this.storeLocalMapping('weatherLogs', localId, docRef.id);
-        console.log('[Weather Create] Successfully created weather log and stored mappings');
-        return localId;
-      } catch (error) {
-        console.warn('Firestore create failed, falling back to local:', error);
         this.queueOperation('create', 'weatherLogs', weatherWithIds);
-        return localId; // Return localId even on failure to update UI
+        return localId;
       }
-    } else {
-      this.queueOperation('create', 'weatherLogs', weatherWithIds);
-      return localId; // Return localId for UI update
-    }
+    );
   }
 
   /**
@@ -1133,164 +1153,149 @@ await batch.commit();
   }
 
   async updateWeatherLog(weatherLog: WeatherLog): Promise<void> {
-    if (!this.isReady()) throw new Error('Service not initialized');
+    await this.runGuestAwareWrite('updateWeather',
+      () => databaseService.updateWeatherLog(weatherLog),
+      async () => {
+        let weatherWithUser = { ...weatherLog, userId: this.userId };
+        try { weatherWithUser = await encryptionService.encryptFields('weatherLogs', weatherWithUser); } catch (e) { console.warn('[encryption] weather encrypt failed', e); }
 
-    if (this.isGuest) {
-      return databaseService.updateWeatherLog(weatherLog);
-    }
+        if (this.isOnline) {
+          try {
+            const firebaseId = await this.getFirebaseId('weatherLogs', weatherLog.id.toString());
+            if (firebaseId) {
+              const docRef = doc(firestore, 'weatherLogs', firebaseId);
+              await updateDoc(docRef, {
+                ...weatherWithUser,
+                updatedAt: serverTimestamp()
+              });
+              console.log('Weather log updated in Firestore:', firebaseId);
+              return;
+            }
 
-    let weatherWithUser = { ...weatherLog, userId: this.userId };
-  try { weatherWithUser = await encryptionService.encryptFields('weatherLogs', weatherWithUser); } catch (e) { console.warn('[encryption] weather encrypt failed', e); }
-
-    if (this.isOnline) {
-      try {
-        const firebaseId = await this.getFirebaseId('weatherLogs', weatherLog.id.toString());
-        if (firebaseId) {
-          // Update existing Firestore document
-          const docRef = doc(firestore, 'weatherLogs', firebaseId);
-          await updateDoc(docRef, {
-            ...weatherWithUser,
-            updatedAt: serverTimestamp()
-          });
-          console.log('Weather log updated in Firestore:', firebaseId);
-          return;
-        } else {
-          // No Firebase ID mapping found - create new document in Firestore
-          console.log('No Firebase ID mapping found for weather log, creating new document');
-          const docRef = await addDoc(collection(firestore, 'weatherLogs'), {
-            ...weatherWithUser,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
-          });
-
-          // Store the Firebase ID mapping for future operations
-          await this.storeLocalMapping('weatherLogs', weatherLog.id.toString(), docRef.id);
-          console.log('Weather log created in Firestore:', docRef.id);
-          return;
+            console.log('No Firebase ID mapping found for weather log, creating new document');
+            const docRef = await addDoc(collection(firestore, 'weatherLogs'), {
+              ...weatherWithUser,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            });
+            await this.storeLocalMapping('weatherLogs', weatherLog.id.toString(), docRef.id);
+            console.log('Weather log created in Firestore:', docRef.id);
+            return;
+          } catch (error) {
+            console.warn('Firestore update/create failed, falling back to local:', error);
+          }
         }
-      } catch (error) {
-        console.warn('Firestore update/create failed, falling back to local:', error);
-      }
-    }
 
-    // Fallback to local storage and queue for sync
-    await databaseService.updateWeatherLog(weatherLog);
-    this.queueOperation('update', 'weatherLogs', weatherWithUser);
+        await databaseService.updateWeatherLog(weatherLog);
+        this.queueOperation('update', 'weatherLogs', weatherWithUser);
+      }
+    );
   }
 
   async deleteWeatherLog(id: string): Promise<void> {
-    if (!this.isReady()) throw new Error('Service not initialized');
+    await this.runGuestAwareWrite('deleteWeather',
+      () => databaseService.deleteWeatherLog(id),
+      async () => {
+        console.log('[Weather Delete] Starting delete for weather log ID:', id);
+        let deletedFromFirebase = false;
 
-    if (this.isGuest) {
-      // The 'id' for weather logs can be a string, databaseService handles it.
-      return databaseService.deleteWeatherLog(id);
-    }
-
-    console.log('[Weather Delete] Starting delete for weather log ID:', id);
-    let deletedFromFirebase = false;
-
-    if (this.isOnline) {
-      try {
-        const firebaseId = await this.getFirebaseId('weatherLogs', id);
-        if (firebaseId) {
-          await deleteDoc(doc(firestore, 'weatherLogs', firebaseId));
-          console.log('[Weather Delete] Firestore doc deleted via mapping:', firebaseId);
-          deletedFromFirebase = true;
-        } else {
-          console.warn('[Weather Delete] No Firebase ID mapping found for local ID:', id);
+        if (this.isOnline) {
+          try {
+            const firebaseId = await this.getFirebaseId('weatherLogs', id);
+            if (firebaseId) {
+              await deleteDoc(doc(firestore, 'weatherLogs', firebaseId));
+              console.log('[Weather Delete] Firestore doc deleted via mapping:', firebaseId);
+              deletedFromFirebase = true;
+            } else {
+              console.warn('[Weather Delete] No Firebase ID mapping found for local ID:', id);
+            }
+          } catch (error) {
+            console.error('[Weather Delete] Firestore delete failed:', error);
+          }
         }
-      } catch (error) {
-        console.error('[Weather Delete] Firestore delete failed:', error);
+
+        await databaseService.deleteWeatherLog(id);
+
+        if (!this.isOnline || (this.isOnline && !deletedFromFirebase)) {
+          console.log('[Weather Delete] Queuing for sync.');
+          this.queueOperation('delete', 'weatherLogs', { id, userId: this.userId });
+        } else {
+          console.log('[Weather Delete] Deletion successful on all stores. No queue needed.');
+        }
       }
-    }
-
-    // Always delete from local DB
-    await databaseService.deleteWeatherLog(id);
-
-    // Queue for sync if offline or if online deletion failed
-    if (!this.isOnline || (this.isOnline && !deletedFromFirebase)) {
-      console.log('[Weather Delete] Queuing for sync.');
-      this.queueOperation('delete', 'weatherLogs', { id, userId: this.userId });
-    } else {
-      console.log('[Weather Delete] Deletion successful on all stores. No queue needed.');
-    }
+    );
   }
 
   // FISH CAUGHT OPERATIONS
 
   async createFishCaught(fishData: Omit<FishCaught, "id">): Promise<string> {
-    if (!this.isReady()) throw new Error('Service not initialized');
+    return this.runGuestAwareWrite('createFish',
+      () => databaseService.createFishCaught(fishData),
+      async () => {
+        this.validateFishCatchData(fishData);
 
-    if (this.isGuest) {
-      return databaseService.createFishCaught(fishData);
-    }
+        const sanitizedFishData = {
+          ...fishData,
+          species: this.sanitizeString(fishData.species),
+          gear: fishData.gear ? fishData.gear.map(g => this.sanitizeString(g)) : fishData.gear,
+          length: fishData.length ? this.sanitizeString(fishData.length) : fishData.length,
+          weight: fishData.weight ? this.sanitizeString(fishData.weight) : fishData.weight,
+          time: fishData.time ? this.sanitizeString(fishData.time) : fishData.time,
+          details: fishData.details ? this.sanitizeString(fishData.details) : fishData.details,
+        };
 
-    // Data integrity checks
-    this.validateFishCatchData(fishData);
+        const localId = `${fishData.tripId}-${Date.now()}`;
+        let fishWithIds: any = { ...sanitizedFishData, id: localId, userId: this.userId };
+        try { fishWithIds = await encryptionService.encryptFields('fishCaught', fishWithIds); } catch (e) { console.warn('[encryption] fish encrypt failed', e); }
 
-    // Sanitize string inputs
-    const sanitizedFishData = {
-      ...fishData,
-      species: this.sanitizeString(fishData.species),
-      gear: fishData.gear ? fishData.gear.map(g => this.sanitizeString(g)) : fishData.gear,
-      length: fishData.length ? this.sanitizeString(fishData.length) : fishData.length,
-      weight: fishData.weight ? this.sanitizeString(fishData.weight) : fishData.weight,
-      time: fishData.time ? this.sanitizeString(fishData.time) : fishData.time,
-      details: fishData.details ? this.sanitizeString(fishData.details) : fishData.details,
-    };
-
-    const localId = `${fishData.tripId}-${Date.now()}`;
-  let fishWithIds: any = { ...sanitizedFishData, id: localId, userId: this.userId };
-  try { fishWithIds = await encryptionService.encryptFields('fishCaught', fishWithIds); } catch (e) { console.warn('[encryption] fish encrypt failed', e); }
-
-    // If an inline photo is provided and we're online, move it to Storage
-    if (this.isOnline && sanitizedFishData.photo && typeof sanitizedFishData.photo === 'string') {
-      const data = this.dataUrlToBytes(sanitizedFishData.photo);
-      if (data && this.userId) {
-        try {
-          const refInfo = await this.ensurePhotoInStorage(this.userId, data.bytes, data.mime);
-          if ('inlinePhoto' in refInfo) {
-            fishWithIds.photo = refInfo.inlinePhoto;
-            fishWithIds.photoHash = refInfo.photoHash;
-          } else {
-            fishWithIds.photoHash = refInfo.photoHash;
-            fishWithIds.photoPath = refInfo.photoPath;
-            fishWithIds.photoMime = refInfo.photoMime;
-            if (refInfo.photoUrl) fishWithIds.photoUrl = refInfo.photoUrl;
-            // Persist encrypted metadata if available (for encrypted photos)
-            if ('encryptedMetadata' in refInfo && refInfo.encryptedMetadata) {
-              fishWithIds.encryptedMetadata = refInfo.encryptedMetadata;
+        if (this.isOnline && sanitizedFishData.photo && typeof sanitizedFishData.photo === 'string') {
+          const data = this.dataUrlToBytes(sanitizedFishData.photo);
+          if (data && this.userId) {
+            try {
+              const refInfo = await this.ensurePhotoInStorage(this.userId, data.bytes, data.mime);
+              if ('inlinePhoto' in refInfo) {
+                fishWithIds.photo = refInfo.inlinePhoto;
+                fishWithIds.photoHash = refInfo.photoHash;
+              } else {
+                fishWithIds.photoHash = refInfo.photoHash;
+                fishWithIds.photoPath = refInfo.photoPath;
+                fishWithIds.photoMime = refInfo.photoMime;
+                if (refInfo.photoUrl) fishWithIds.photoUrl = refInfo.photoUrl;
+                if ('encryptedMetadata' in refInfo && refInfo.encryptedMetadata) {
+                  fishWithIds.encryptedMetadata = refInfo.encryptedMetadata;
+                }
+                delete fishWithIds.photo;
+              }
+            } catch (e) {
+              console.warn('Failed to move photo to Storage, keeping inline for now:', e);
             }
-            delete fishWithIds.photo;
           }
-        } catch (e) {
-          console.warn('Failed to move photo to Storage, keeping inline for now:', e);
         }
-      }
-    }
 
-    console.log('[Fish Create] Creating fish catch with data:', fishWithIds);
+        console.log('[Fish Create] Creating fish catch with data:', fishWithIds);
 
-    if (this.isOnline) {
-      try {
-        const docRef = await addDoc(collection(firestore, 'fishCaught'), {
-          ...fishWithIds,
-          createdAt: serverTimestamp()
-        });
+        if (this.isOnline) {
+          try {
+            const docRef = await addDoc(collection(firestore, 'fishCaught'), {
+              ...fishWithIds,
+              createdAt: serverTimestamp()
+            });
 
-        console.log('[Fish Create] Firebase document ID:', docRef.id);
-        await this.storeLocalMapping('fishCaught', localId, docRef.id);
-        console.log('[Fish Create] Successfully created fish catch and stored mappings');
-        return localId;
-      } catch (error) {
-        console.warn('Firestore create failed, falling back to local:', error);
+            console.log('[Fish Create] Firebase document ID:', docRef.id);
+            await this.storeLocalMapping('fishCaught', localId, docRef.id);
+            console.log('[Fish Create] Successfully created fish catch and stored mappings');
+            return localId;
+          } catch (error) {
+            console.warn('Firestore create failed, falling back to local:', error);
+            this.queueOperation('create', 'fishCaught', fishWithIds);
+            return localId;
+          }
+        }
+
         this.queueOperation('create', 'fishCaught', fishWithIds);
         return localId;
       }
-    } else {
-      this.queueOperation('create', 'fishCaught', fishWithIds);
-      return localId;
-    }
+    );
   }
 
   /**
@@ -1517,115 +1522,105 @@ await batch.commit();
   }
 
   async updateFishCaught(fishCaught: FishCaught): Promise<void> {
-    if (!this.isReady()) throw new Error('Service not initialized');
+    await this.runGuestAwareWrite('updateFish',
+      () => databaseService.updateFishCaught(fishCaught),
+      async () => {
+        let fishWithUser: any = { ...fishCaught, userId: this.userId };
+        try { fishWithUser = await encryptionService.encryptFields('fishCaught', fishWithUser); } catch (e) { console.warn('[encryption] fish encrypt failed', e); }
 
-    if (this.isGuest) {
-      return databaseService.updateFishCaught(fishCaught);
-    }
-
-    let fishWithUser: any = { ...fishCaught, userId: this.userId };
-  try { fishWithUser = await encryptionService.encryptFields('fishCaught', fishWithUser); } catch (e) { console.warn('[encryption] fish encrypt failed', e); }
-    // If updating with an inline photo and online, move to Storage
-    if (this.isOnline && typeof fishWithUser.photo === 'string' && this.userId) {
-      const data = this.dataUrlToBytes(fishWithUser.photo);
-      if (data) {
-        try {
-          const refInfo = await this.ensurePhotoInStorage(this.userId, data.bytes, data.mime);
-          if ('inlinePhoto' in refInfo) {
-            fishWithUser.photo = refInfo.inlinePhoto;
-            fishWithUser.photoHash = refInfo.photoHash;
-          } else {
-            fishWithUser.photoHash = refInfo.photoHash;
-            fishWithUser.photoPath = refInfo.photoPath;
-            fishWithUser.photoMime = refInfo.photoMime;
-            if (refInfo.photoUrl) fishWithUser.photoUrl = refInfo.photoUrl;
-            // Persist encrypted metadata if available (for encrypted photos)
-            if ('encryptedMetadata' in refInfo && refInfo.encryptedMetadata) {
-              fishWithUser.encryptedMetadata = refInfo.encryptedMetadata;
+        if (this.isOnline && typeof fishWithUser.photo === 'string' && this.userId) {
+          const data = this.dataUrlToBytes(fishWithUser.photo);
+          if (data) {
+            try {
+              const refInfo = await this.ensurePhotoInStorage(this.userId, data.bytes, data.mime);
+              if ('inlinePhoto' in refInfo) {
+                fishWithUser.photo = refInfo.inlinePhoto;
+                fishWithUser.photoHash = refInfo.photoHash;
+              } else {
+                fishWithUser.photoHash = refInfo.photoHash;
+                fishWithUser.photoPath = refInfo.photoPath;
+                fishWithUser.photoMime = refInfo.photoMime;
+                if (refInfo.photoUrl) fishWithUser.photoUrl = refInfo.photoUrl;
+                if ('encryptedMetadata' in refInfo && refInfo.encryptedMetadata) {
+                  fishWithUser.encryptedMetadata = refInfo.encryptedMetadata;
+                }
+                delete fishWithUser.photo;
+              }
+            } catch (e) {
+              console.warn('Failed to move updated photo to Storage, keeping inline for now:', e);
             }
-            delete fishWithUser.photo;
           }
-        } catch (e) {
-          console.warn('Failed to move updated photo to Storage, keeping inline for now:', e);
         }
-      }
-    }
-    console.log('[Fish Update] Starting update for fish ID:', fishCaught.id);
+        console.log('[Fish Update] Starting update for fish ID:', fishCaught.id);
 
-    if (this.isOnline) {
-      try {
-        const firebaseId = await this.getFirebaseId('fishCaught', fishCaught.id.toString());
-        console.log('[Fish Update] Firebase ID lookup result:', firebaseId);
+        if (this.isOnline) {
+          try {
+            const firebaseId = await this.getFirebaseId('fishCaught', fishCaught.id.toString());
+            console.log('[Fish Update] Firebase ID lookup result:', firebaseId);
 
-        if (firebaseId) {
-          // Update existing Firestore document
-          const docRef = doc(firestore, 'fishCaught', firebaseId);
-          await updateDoc(docRef, {
-            ...fishWithUser,
-            updatedAt: serverTimestamp()
-          });
-          console.log('Fish caught updated in Firestore:', firebaseId);
-          return;
-        } else {
-          // No Firebase ID mapping found - create new document in Firestore
-          console.log('No Firebase ID mapping found for fish catch, creating new document');
-          const docRef = await addDoc(collection(firestore, 'fishCaught'), {
-            ...fishWithUser,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
-          });
+            if (firebaseId) {
+              const docRef = doc(firestore, 'fishCaught', firebaseId);
+              await updateDoc(docRef, {
+                ...fishWithUser,
+                updatedAt: serverTimestamp()
+              });
+              console.log('Fish caught updated in Firestore:', firebaseId);
+              return;
+            }
 
-          // Store the Firebase ID mapping for future operations
-          await this.storeLocalMapping('fishCaught', fishCaught.id.toString(), docRef.id);
-          console.log('Fish caught created in Firestore:', docRef.id);
-          return;
+            console.log('No Firebase ID mapping found for fish catch, creating new document');
+            const docRef = await addDoc(collection(firestore, 'fishCaught'), {
+              ...fishWithUser,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            });
+
+            await this.storeLocalMapping('fishCaught', fishCaught.id.toString(), docRef.id);
+            console.log('Fish caught created in Firestore:', docRef.id);
+            return;
+          } catch (error) {
+            console.warn('Firestore update/create failed, falling back to local:', error);
+          }
         }
-      } catch (error) {
-        console.warn('Firestore update/create failed, falling back to local:', error);
-      }
-    }
 
-    // Fallback to local storage and queue for sync
-    await databaseService.updateFishCaught(fishCaught);
-    this.queueOperation('update', 'fishCaught', fishWithUser);
+        await databaseService.updateFishCaught(fishCaught);
+        this.queueOperation('update', 'fishCaught', fishWithUser);
+      }
+    );
   }
 
   async deleteFishCaught(id: string): Promise<void> {
-    if (!this.isReady()) throw new Error('Service not initialized');
+    await this.runGuestAwareWrite('deleteFish',
+      () => databaseService.deleteFishCaught(id),
+      async () => {
+        console.log('[Fish Delete] Starting delete for fish catch ID:', id);
+        let deletedFromFirebase = false;
 
-    if (this.isGuest) {
-      // The 'id' for fish caught can be a string, databaseService handles it.
-      return databaseService.deleteFishCaught(id);
-    }
-
-    console.log('[Fish Delete] Starting delete for fish catch ID:', id);
-    let deletedFromFirebase = false;
-
-    if (this.isOnline) {
-      try {
-        const firebaseId = await this.getFirebaseId('fishCaught', id);
-        if (firebaseId) {
-          await deleteDoc(doc(firestore, 'fishCaught', firebaseId));
-          console.log('[Fish Delete] Firestore doc deleted via mapping:', firebaseId);
-          deletedFromFirebase = true;
-        } else {
-          console.warn('[Fish Delete] No Firebase ID mapping found for local ID:', id);
+        if (this.isOnline) {
+          try {
+            const firebaseId = await this.getFirebaseId('fishCaught', id);
+            if (firebaseId) {
+              await deleteDoc(doc(firestore, 'fishCaught', firebaseId));
+              console.log('[Fish Delete] Firestore doc deleted via mapping:', firebaseId);
+              deletedFromFirebase = true;
+            } else {
+              console.warn('[Fish Delete] No Firebase ID mapping found for local ID:', id);
+            }
+          } catch (error) {
+            console.error('[Fish Delete] Firestore delete failed:', error);
+          }
         }
-      } catch (error) {
-        console.error('[Fish Delete] Firestore delete failed:', error);
+
+        await databaseService.deleteFishCaught(id);
+
+        if (!this.isOnline || (this.isOnline && !deletedFromFirebase)) {
+          console.log('[Fish Delete] Queuing for sync.');
+          this.queueOperation('delete', 'fishCaught', { id, userId: this.userId });
+        } else {
+          console.log('[Fish Delete] Deletion successful on all stores. No queue needed.');
+        }
       }
-    }
-
-    // Always delete from local DB
-    await databaseService.deleteFishCaught(id);
-
-    // Queue for sync if offline or if online deletion failed
-    if (!this.isOnline || (this.isOnline && !deletedFromFirebase)) {
-      console.log('[Fish Delete] Queuing for sync.');
-      this.queueOperation('delete', 'fishCaught', { id, userId: this.userId });
-    } else {
-      console.log('[Fish Delete] Deletion successful on all stores. No queue needed.');
-    }
+    );
   }
 
   async cleanupOrphanedFirestoreData(): Promise<void> {

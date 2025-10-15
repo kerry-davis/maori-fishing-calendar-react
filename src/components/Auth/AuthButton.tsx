@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { LoginModal } from './LoginModal';
 import ContextualConfirmation from '../UI/ContextualConfirmation';
+import { useLogoutGuard } from '../../hooks/useLogoutGuard';
 
 interface AuthButtonProps {
   mobile?: boolean;
@@ -9,111 +10,62 @@ interface AuthButtonProps {
 }
 
 export const AuthButton: React.FC<AuthButtonProps> = ({ mobile = false, onMobileMenuClose }) => {
-  const { user, logout, forceLogout, isFirebaseConfigured } = useAuth();
+  const { user, forceLogout, isFirebaseConfigured } = useAuth();
   const [showLoginModal, setShowLoginModal] = useState(false);
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const basePosition = mobile ? 'center' : 'top-right';
+  const [confirmationPosition, setConfirmationPosition] = useState<'center' | 'top-right'>(basePosition);
 
-  // Debug confirmation dialog state changes
-  useEffect(() => {
-    console.log('Confirmation dialog state changed:', showLogoutConfirm);
-    if (showLogoutConfirm) {
-      console.log('=== CONFIRMATION DIALOG SHOULD BE VISIBLE ===');
-      console.log('Dialog props:', {
-        isOpen: showLogoutConfirm,
-        title: 'Sign Out',
-        message: 'Your data will be safely backed up before signing out.',
-        position: mobile ? 'center' : 'top-right'
-      });
-    }
-  }, [showLogoutConfirm, mobile]);
-
-  const handleLogout = async () => {
-    console.log('=== LOGOUT BUTTON CLICKED ===');
-    console.log('Firebase configured:', isFirebaseConfigured);
-    console.log('User object:', user);
-    console.log('Current time:', new Date().toISOString());
-    console.log('Mobile mode:', mobile);
-    console.log('onMobileMenuClose function available:', !!onMobileMenuClose);
-
-    // Show modern confirmation dialog
-    console.log('Setting showLogoutConfirm to true');
-    setShowLogoutConfirm(true);
-  };
-
-  const handleLogoutConfirm = async () => {
-    console.log('=== LOGOUT CONFIRMATION ===');
-    console.log('User confirmed logout, proceeding...');
-
-    setShowLogoutConfirm(false);
-
-    try {
-      if (isFirebaseConfigured) {
-        console.log('Using Firebase logout...');
-        await logout();
-        console.log('✅ Firebase logout completed successfully');
-        console.log('User after logout:', user);
-        // Show success feedback
-        alert('Successfully signed out!');
-        // Close mobile menu after successful logout
-        if (onMobileMenuClose) {
-          console.log('Closing mobile menu after logout');
-          onMobileMenuClose();
-        }
-      } else {
-        console.log('Firebase not configured, using force logout');
-        forceLogout();
-        console.log('✅ Force logout completed successfully');
-        console.log('User after force logout:', user);
-        // Show success feedback
-        alert('Successfully signed out!');
-        // Close mobile menu after successful logout
-        if (onMobileMenuClose) {
-          console.log('Closing mobile menu after force logout');
-          onMobileMenuClose();
-        }
+  const logoutGuard = useLogoutGuard({
+    onAfterLogout: () => {
+      if (onMobileMenuClose) {
+        onMobileMenuClose();
       }
-    } catch (error) {
-      console.error('❌ Logout error:', error);
-      console.log('Error details:', error instanceof Error ? error.message : error);
-      // If Firebase logout fails, try force logout as fallback
-      console.log('Firebase logout failed, trying force logout as fallback');
-      try {
-        forceLogout();
-        console.log('✅ Force logout fallback completed successfully');
-        console.log('User after fallback force logout:', user);
-        // Show success feedback
-        alert('Successfully signed out!');
-        // Close mobile menu after successful logout
-        if (onMobileMenuClose) {
-          console.log('Closing mobile menu after fallback logout');
-          onMobileMenuClose();
-        }
-      } catch (fallbackError) {
-        console.error('❌ Force logout also failed:', fallbackError);
-        console.log('Fallback error details:', fallbackError instanceof Error ? fallbackError.message : fallbackError);
-        alert(`Logout failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    },
+    onCancel: () => {
+      if (mobile && onMobileMenuClose) {
+        onMobileMenuClose();
       }
     }
-  };
+  });
 
-  const handleLogoutCancel = () => {
-    console.log('User cancelled logout confirmation');
-    setShowLogoutConfirm(false);
+  const { detailLines, canRetry, retryWait, isDialogOpen, statusMessage, confirmText, confirmDisabled, handleConfirm, handleCancel, openDialog } = logoutGuard;
 
-    // Close mobile menu when user cancels logout
-    if (onMobileMenuClose) {
-      console.log('Closing mobile menu after logout cancellation');
-      onMobileMenuClose();
+  const extraContent = useMemo(() => {
+    const content: React.ReactNode[] = [];
+
+    if (detailLines.length > 0) {
+      content.push(
+        <ul key="details" className="list-disc list-inside space-y-1">
+          {detailLines.map((detail, index) => (
+            <li key={index}>{detail}</li>
+          ))}
+        </ul>
+      );
     }
-  };
+
+    if (canRetry) {
+      content.push(
+        <button
+          key="retry"
+          type="button"
+          onClick={retryWait}
+          className="text-xs font-medium text-blue-600 dark:text-blue-300 hover:underline"
+        >
+          Retry waiting for sync
+        </button>
+      );
+    }
+
+    return content.length > 0 ? <div className="space-y-2">{content}</div> : null;
+  }, [canRetry, detailLines, retryWait]);
 
   if (user) {
     return (
       <div className="relative">
         <button
           onClick={() => {
-            console.log('=== BUTTON CLICK DETECTED ===');
-            handleLogout();
+            setConfirmationPosition(basePosition);
+            openDialog();
           }}
           className={mobile
             ? "icon-btn flex flex-col items-center justify-center p-0 min-h-[24px] min-w-[60px]"
@@ -141,17 +93,18 @@ export const AuthButton: React.FC<AuthButtonProps> = ({ mobile = false, onMobile
           }>Logout</span>
         </button>
 
-        {/* Standardized Logout Confirmation */}
         <ContextualConfirmation
-          isOpen={showLogoutConfirm}
+          isOpen={isDialogOpen}
           title="Sign Out"
-          message="Your data will be safely backed up before signing out."
-          confirmText="Sign Out"
+          message={statusMessage}
+          confirmText={confirmText}
           cancelText="Stay Signed In"
-          onConfirm={handleLogoutConfirm}
-          onCancel={handleLogoutCancel}
+          onConfirm={handleConfirm}
+          onCancel={handleCancel}
           variant="warning"
-          position={mobile ? "center" : "top-right"}
+          position={confirmationPosition}
+          confirmDisabled={confirmDisabled}
+          extraContent={extraContent}
         />
 
         <LoginModal
