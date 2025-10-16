@@ -13,7 +13,7 @@ export async function testNwaTideAPI() {
   const url = new URL(NIWA_API_URL);
   url.searchParams.set('lat', '-38.9994');
   url.searchParams.set('long', '174.8183');
-  url.searchParams.set('datum', 'MSL');
+  url.searchParams.set('datum', 'LAT');
   url.searchParams.set('numberOfDays', '1');
   url.searchParams.set('apikey', NIWA_API_KEY);
 

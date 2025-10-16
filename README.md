@@ -86,7 +86,47 @@ Caution:
 - Changing `VITE_KEY_PEPPER` without migration will make existing ciphertext unreadable. Plan rotations with dual-decrypt or re-encryption scripts.
 
 ---
-## 6. Quick Start
+
+## 6. External Services & Integrations
+
+### 6.1 Tide Data (NIWA & Open-Meteo)
+The app provides tide forecasts with automatic provider fallback:
+
+**Primary Provider: NIWA (National Institute of Water and Atmospheric Research)**
+- **Source**: Official NZ tide data (most accurate for New Zealand waters)
+- **Datum**: Local Astronomical Tide (LAT) - aligns with NIWA's public tides.niwa.co.nz
+- **Coverage**: New Zealand waters (lat: -55° to -25°, lon: 165° to 185°)
+- **Latency**: ~7KB payload with 5-day buffer for timezone conversion reliability
+- **Fallback**: Seamlessly switches to Open-Meteo if NIWA proxy unavailable
+
+**Secondary Provider: Open-Meteo (Enhanced NZ Support)**
+- **Source**: Global marine API with NZ harbour optimizations
+- **Reliability**: Always available as backup provider
+- **Accuracy**: Good for planning with automatic provider prioritization
+
+**Technical Implementation:**
+- Proxy-only architecture (no client-side API keys for security)
+- Smart timezone handling (UTC+NZ time conversion with edge case protection)
+- Graceful error handling with user-friendly messages
+- Height units in meters, times in NZ timezone (Pacific/Auckland)
+
+**Integration Notes:**
+- Heights are LAT-based (compatible with NIWA's official tide tables)
+- **Height Reference**: LAT is approximately 1.4m above Mean Sea Level (MSL) - explains why heights shifted from previous integrations
+- No datum conversion required for consumer applications
+- Provider selection is automatic based on location and availability
+- Proxy deployed as serverless function (Vite/Next.js compatible)
+
+### 6.2 Weather Service
+Manual weather logging with optional Open-Meteo integration for:
+- Historical weather data at fishing locations
+- Wind conditions, sky coverage, and atmospheric pressure
+- Temperature and humidity tracking
+- Weather-tide correlation analysis
+
+---
+
+## 7. Quick Start
 ```bash
 git clone <repo>
 cd maori-fishing-calendar-react
@@ -116,7 +156,7 @@ VITE_KEY_PEPPER=some-long-random-pepper
 ```
 
 ---
-## 7. Scripts
+## 8. Scripts
 | Script | Purpose |
 | ------ | ------- |
 | dev | Vite dev server |
@@ -132,7 +172,7 @@ VITE_KEY_PEPPER=some-long-random-pepper
 Supporting utility scripts under `scripts/` handle: adding test data, migration validation, image compression, secret scanning, preview deploy.
 
 ---
-## 8. Testing Strategy
+## 9. Testing Strategy
 | Area | Coverage |
 | ---- | -------- |
 | Encryption | Deterministic key + migration helpers |
@@ -147,7 +187,7 @@ npm run test:run
 Add new tests colocated in `src/test/`. Prefer fast, deterministic tests; mock Firebase network where feasible.
 
 ---
-## 9. Deployment
+## 10. Deployment
 See `DEPLOYMENT.md` & `DEPLOYMENT_CHECKLIST.md`.
 High-level:
 1. Ensure secrets configured (Firebase vars + `VITE_KEY_PEPPER`).
@@ -155,7 +195,7 @@ High-level:
 3. Deploy `dist/` to static hosting (Firebase Hosting / Netlify / Vercel).
 4. Verify PWA install & service worker update path.
 
-### 9.1 Firebase Storage CORS (for encrypted photos)
+### 10.1 Firebase Storage CORS (for encrypted photos)
 If you use Firebase Storage for photo binary data, configure CORS to allow your app origins. Example `cors.json` used in this repo:
 
 ```
@@ -201,13 +241,13 @@ gsutil cors get gs://maori-fishing-calendar-react.firebasestorage.app
 ```
 
 ---
-## 10. Data & Migration Notes
+## 11. Data & Migration Notes
 * Guest mode uses local storage + IndexedDB; on auth merge occurs then local cleared (except visible continuity). 
 * Encryption migration: resumable per-collection state in `localStorage` (`encMigrationState_*`).
 * Offline writes stored in queue and replayed when connectivity resumes; encryption applied before enqueue if key ready.
 
 ---
-## 11. Friendly Firebase Error Messages
+## 12. Friendly Firebase Error Messages
 Utility: `src/utils/firebaseErrorMessages.ts` provides context-aware mapping.
 Example:
 ```ts
@@ -219,7 +259,7 @@ try { /* firebase op */ } catch (e) {
 Contexts: `login`, `register`, `google`, `generic`. Fallback includes offline hints.
 
 ---
-## 12. Contributing (Internal Guidelines)
+## 13. Contributing (Internal Guidelines)
 1. Keep PRs focused & under ~400 LOC diff when possible.
 2. Add/adjust tests for changed logic (no silent behavior drift).
 3. Run `npm run test:run` before pushing.
@@ -227,7 +267,7 @@ Contexts: `login`, `register`, `google`, `generic`. Fallback includes offline hi
 5. Document noteworthy architectural decisions in `MIGRATION_SUMMARY.md` or a new ADR.
 
 ---
-## 13. Troubleshooting
+## 14. Troubleshooting
 | Symptom | Likely Cause | Fix |
 | ------- | ------------ | --- |
 | Ciphertext shows in UI | Pepper mismatch / rotation | Restore old build & re-encrypt, or update docs for rotation plan |
@@ -240,24 +280,26 @@ Contexts: `login`, `register`, `google`, `generic`. Fallback includes offline hi
 | Storage blocked by CORS | Missing origin in bucket CORS | Add your origin to `cors.json`, re-apply with `gsutil cors set`, and retry after cache window |
 
 ---
-## 14. Changelog (Lite)
+## 15. Changelog (Lite)
 | Date | Change |
 | ---- | ------ |
+| 2025-10 | NIWA integration with LAT datum, enhanced error handling, production logging optimization |
 | 2025-10 | Deterministic encryption reintroduced + background migration UI pill |
 | 2025-10 | Legacy passphrase encryption removed, tests cleaned |
 | 2025-09 | Import/export & performance smoke test added |
 | 2025-08 | Initial PWA, lunar calendar, trip logging foundation |
 
 ---
-## 15. Cultural Acknowledgement
+---
+## 16. Cultural Acknowledgement |
 This project incorporates traditional Māori lunar knowledge (maramataka) for fishing guidance. Use respectfully; do not commercialize cultural data without appropriate consultation and acknowledgement.
 
 ---
-## 16. License / Usage
+## 17. License / Usage
 No explicit OSS license defined here. Assume “All Rights Reserved” by default pending cultural guidance. If you intend broader distribution, add a clear LICENSE file and cultural usage statement.
 
 ---
-## 17. Future Enhancements (Backlog Candidates)
+## 18. Future Enhancements (Backlog Candidates)
 * Pepper rotation with dual-decrypt window
 * Configurable blind indexes for search on encrypted fields
 * Richer analytics (seasonal heatmaps)
@@ -265,7 +307,7 @@ No explicit OSS license defined here. Assume “All Rights Reserved” by defaul
 * Offline-first image capture & progressive upload
 
 ---
-## 18. Maintainer Notes
+## 19. Maintainer Notes
 Follow `agent_rules.md`:
 * Work doggedly – keep iterative momentum
 * Verify with tests (`vitest`) after each substantive change
