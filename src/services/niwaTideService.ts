@@ -119,13 +119,20 @@ export class NwaTideProvider {
     const targetDateNz = nzDateFormatter.format(date);
     const startDateNz = shiftNzDateString(targetDateNz, -3);
     const endDateNz = shiftNzDateString(targetDateNz, 2);
+    const numberOfDays = Math.max(
+      1,
+      Math.round(
+        (Date.parse(`${endDateNz}T00:00:00Z`) - Date.parse(`${startDateNz}T00:00:00Z`)) /
+          DAY_IN_MS
+      ) + 1
+    );
 
     const params: Record<string, string> = {
       lat: lat.toString(),
       long: lon.toString(),
       datum: NIWA_DATUM,
       startDate: startDateNz,
-      endDate: endDateNz
+      numberOfDays: numberOfDays.toString()
     };
 
     // Never send API key from client - proxy will handle it server-side
@@ -213,7 +220,7 @@ export class NwaTideProvider {
         long: lon.toString(),
         datum: NIWA_DATUM,
         startDate: todayStr,
-        endDate: todayStr
+        numberOfDays: "1"
       };
 
       // Never send API key from client - proxy will handle it server-side

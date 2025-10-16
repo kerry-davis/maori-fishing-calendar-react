@@ -333,7 +333,7 @@ describe('NIWA Proxy Error Response Sanitization', () => {
           lng: '174.7633', // Should be converted to 'long'
           datum: 'LAT',
           startDate: '2024-10-07',
-          endDate: '2024-10-12'
+          numberOfDays: '6'
         }
       });
       
@@ -343,7 +343,7 @@ describe('NIWA Proxy Error Response Sanitization', () => {
       expect(capturedUrl).toContain('long=174.7633'); // lng converted to long
       expect(capturedUrl).toContain('datum=LAT');
       expect(capturedUrl).toContain('startDate=2024-10-07');
-      expect(capturedUrl).toContain('endDate=2024-10-12');
+      expect(capturedUrl).toContain('numberOfDays=6');
       expect(capturedUrl).toContain('apikey=test-api-key');
     });
   });
