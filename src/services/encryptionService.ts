@@ -20,6 +20,8 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import { DEV_WARN, PROD_WARN } from '../utils/loggingHelpers';
+
 const ENC_PREFIX = 'enc:v1:';
 
 interface EncryptionConfigEntry {
@@ -97,7 +99,7 @@ class EncryptionService {
     const material = new TextEncoder().encode(`${email}|${pepper}`);
     const subtle = (globalThis as any).crypto?.subtle;
     if (!subtle) {
-      console.warn('[encryption] Web Crypto not available - operating in plaintext mode');
+      PROD_WARN('[Encryption] Web Crypto not available - operating in plaintext mode');
       this.key = null;
       this.ready = false;
       return;
@@ -138,7 +140,7 @@ class EncryptionService {
       const dec = new TextDecoder();
       return dec.decode(plainBuf);
     } catch (e) {
-      console.warn('[encryption] decrypt failed, returning ciphertext', e);
+      DEV_WARN('[Encryption] Decrypt failed, returning ciphertext:', e);
       return ciphertext;
     }
   }
@@ -173,7 +175,7 @@ class EncryptionService {
     if (config.fields) {
       for (const field of config.fields) {
         if (field in clone && clone[field] != null) {
-          try { clone[field] = await this.encryptValue(clone[field]); } catch (e) { console.warn('encrypt field failed', collection, field, e); }
+          try { clone[field] = await this.encryptValue(clone[field]); } catch (e) { DEV_WARN('[Encryption] Encrypt field failed:', collection, field, e); }
         }
       }
     }
