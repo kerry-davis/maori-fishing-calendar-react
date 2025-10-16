@@ -21,6 +21,7 @@ import {
 import type { DocumentReference } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL, getMetadata, listAll, deleteObject, getBlob } from "firebase/storage";
 import type { StorageReference } from "firebase/storage";
+import { DEV_LOG, DEV_WARN, PROD_ERROR } from "../utils/loggingHelpers";
 
 type QueuedSyncOperation = {
   id?: number;
@@ -140,7 +141,7 @@ export class FirebaseDataService {
       for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
       return { bytes, mime };
     } catch (e) {
-      console.warn('Failed to decode data URL image:', e);
+      DEV_WARN('Failed to decode data URL image:', e);
       return null;
     }
   }
@@ -160,7 +161,7 @@ export class FirebaseDataService {
 
     if (!storageService) {
       if (!this.hasLoggedStorageUnavailable) {
-        console.warn('[Storage] Firebase storage unavailable; skipping photo upload operations');
+        DEV_WARN('[Storage] Firebase storage unavailable; skipping photo upload operations');
         this.hasLoggedStorageUnavailable = true;
       }
       const base64 = typeof Buffer !== 'undefined'
@@ -204,7 +205,7 @@ export class FirebaseDataService {
           encryptedMetadata: photoEncryptionService.serializeMetadata(encryptionResult.metadata)
         };
       } catch (encryptionError) {
-        console.warn('[Photo Encryption] Encryption failed, falling back to unencrypted storage:', encryptionError);
+        DEV_WARN('[Photo Encryption] Encryption failed, falling back to unencrypted storage:', encryptionError);
         // Fall through to unencrypted storage
       }
     }
@@ -237,7 +238,7 @@ export class FirebaseDataService {
     const storageService = this.storageInstance;
     if (!storageService) {
       if (!this.hasLoggedStorageUnavailable) {
-        console.warn('[Wipe] Firebase storage unavailable; skipping storage cleanup');
+        DEV_WARN('[Wipe] Firebase storage unavailable; skipping storage cleanup');
         this.hasLoggedStorageUnavailable = true;
       }
       return [];
@@ -259,7 +260,7 @@ export class FirebaseDataService {
         if (code === 'storage/object-not-found' || code === 'storage/invalid-root-operation') {
           continue;
         }
-        console.warn(`[Storage] Failed to list path ${current.fullPath}:`, error);
+        DEV_WARN(`[Storage] Failed to list path ${current.fullPath}:`, error);
       }
     }
 
@@ -274,7 +275,7 @@ export class FirebaseDataService {
 
     const storageService = this.storageInstance;
     if (!storageService) {
-      console.warn('[Photo] Storage unavailable for photo decryption');
+      DEV_WARN('[Photo] Storage unavailable for photo decryption');
       return null;
     }
 
@@ -301,7 +302,7 @@ export class FirebaseDataService {
         };
       }
     } catch (error) {
-      console.error('[Photo] Failed to retrieve photo:', error);
+      PROD_ERROR('[Photo] Failed to retrieve photo:', error);
       return null;
     }
   }
@@ -369,11 +370,11 @@ export class FirebaseDataService {
       this.isGuest = false;
       this.loadSyncQueue(); // Load user-specific queue
       void this.processSyncQueue();
-      console.log('Firebase Data Service initialized for user:', userId);
+      DEV_LOG('Firebase Data Service initialized for user:', userId);
     } else {
       this.userId = null;
       this.isGuest = true;
-      console.log('Firebase Data Service initialized for guest');
+      DEV_LOG('Firebase Data Service initialized for guest');
     }
     this.isInitialized = true;
   }
@@ -405,7 +406,7 @@ export class FirebaseDataService {
       this.isGuest = false;
       this.loadSyncQueue();
       void this.processSyncQueue();
-      console.log('Switched to user mode:', userId);
+      DEV_LOG('Switched to user mode:', userId);
     }
   }
 
@@ -459,10 +460,10 @@ export class FirebaseDataService {
         try {
           operationPayload = await encryptionService.encryptFields('trips', operationPayload);
         } catch (e) {
-          console.warn('[encryption] trip encrypt failed', e);
+          DEV_WARN('[encryption] trip encrypt failed', e);
         }
 
-        console.log('Creating trip with enhanced validation for user:', this.userId);
+        DEV_LOG('Creating trip with enhanced validation for user:', this.userId);
 
         if (this.isOnline) {
           try {
@@ -475,10 +476,10 @@ export class FirebaseDataService {
             // Store the Firebase ID mapping
             await this.storeLocalMapping('trips', tripId.toString(), docRef.id);
 
-            console.log('Trip created in Firestore with validation:', docRef.id);
+            DEV_LOG('Trip created in Firestore with validation:', docRef.id);
             return tripId;
           } catch (error) {
-            console.warn('Firestore create failed, falling back to local:', error);
+            DEV_WARN('Firestore create failed, falling back to local:', error);
             return this.queueOperation('create', 'trips', operationPayload);
           }
         }
@@ -517,7 +518,7 @@ export class FirebaseDataService {
     const cleanTrip: any = {};
     Object.entries(trip).forEach(([k, v]) => { if (v !== undefined) (cleanTrip as any)[k] = v; });
   let tripWithUser: any = { ...cleanTrip, userId: this.userId };
-  try { tripWithUser = await encryptionService.encryptFields('trips', tripWithUser); } catch (e) { console.warn('[encryption] trip encrypt failed', e); }
+  try { tripWithUser = await encryptionService.encryptFields('trips', tripWithUser); } catch (e) { DEV_WARN('[encryption] trip encrypt failed', e); }
   const contentHash = this.computeTripContentHash(trip);
   tripWithUser.contentHash = contentHash;
 
@@ -564,7 +565,7 @@ export class FirebaseDataService {
           return localId;
         }
       } catch (e) {
-        console.warn('Trip upsert query failed, falling back to create:', e);
+        DEV_WARN('Trip upsert query failed, falling back to create:', e);
       }
 
       // Create new
@@ -606,7 +607,7 @@ export class FirebaseDataService {
            }
          }
        } catch (error) {
-         console.warn('Firestore get failed, trying local:', error);
+         DEV_WARN('Firestore get failed, trying local:', error);
        }
      }
 
@@ -635,7 +636,7 @@ export class FirebaseDataService {
            return await this.convertFromFirestore(data, localId, firebaseId, 'trips');
          }
        } catch (error) {
-         console.warn('Firestore get by Firebase ID failed:', error);
+         DEV_WARN('Firestore get by Firebase ID failed:', error);
        }
      }
 
@@ -655,7 +656,7 @@ export class FirebaseDataService {
 
     // UID validation: ensure operation is for current user
     return validateUserContext(this.userId, async () => {
-      console.log('getTripsByDate called for date:', date, 'online:', this.isOnline);
+      DEV_LOG('getTripsByDate called for date:', date, 'online:', this.isOnline);
 
       if (this.isOnline) {
         try {
@@ -666,7 +667,7 @@ export class FirebaseDataService {
           );
 
           const querySnapshot = await getDocs(q);
-          console.log('Firestore query returned', querySnapshot.size, 'documents');
+          DEV_LOG('Firestore query returned', querySnapshot.size, 'documents');
           const trips: Trip[] = [];
 
           // Process all documents concurrently
@@ -679,17 +680,17 @@ export class FirebaseDataService {
 
           trips.push(...(await Promise.all(tripPromises)));
 
-          console.log('Returning', trips.length, 'trips from Firestore');
+          DEV_LOG('Returning', trips.length, 'trips from Firestore');
           return trips;
         } catch (error) {
-          console.warn('Firestore query failed, falling back to local:', error);
+          DEV_WARN('Firestore query failed, falling back to local:', error);
         }
       }
 
       // Fallback to local storage
-      console.log('Using local storage fallback');
+      DEV_LOG('Using local storage fallback');
       const localTrips = await databaseService.getTripsByDate(date);
-      console.log('Local storage returned', localTrips.length, 'trips');
+      DEV_LOG('Local storage returned', localTrips.length, 'trips');
       return localTrips;
     }) || Promise.reject(new Error('User context validation failed'));
    }
@@ -706,7 +707,7 @@ export class FirebaseDataService {
 
     if (this.isOnline) {
       try {
-        console.log('Fetching trips from Firebase for user:', this.userId);
+        DEV_LOG('Fetching trips from Firebase for user:', this.userId);
         const q = query(
           collection(firestore, 'trips'),
           where('userId', '==', this.userId),
@@ -724,10 +725,10 @@ export class FirebaseDataService {
         });
 
         const trips = await Promise.all(tripPromises) as Trip[];
-        console.log(`Found ${trips.length} trips in Firebase for user ${this.userId}`);
+        DEV_LOG(`Found ${trips.length} trips in Firebase for user ${this.userId}`);
         return trips;
       } catch (error) {
-        console.error('Firestore query failed, falling back to local:', error);
+        PROD_ERROR('Firestore query failed, falling back to local:', error);
       }
     }
 
@@ -749,10 +750,10 @@ export class FirebaseDataService {
           try {
             operationPayload = await encryptionService.encryptFields('trips', operationPayload);
           } catch (e) {
-            console.warn('[encryption] trip encrypt failed', e);
+            DEV_WARN('[encryption] trip encrypt failed', e);
           }
 
-          console.log('Updating trip with enhanced validation for user:', this.userId, 'trip:', trip.id);
+          DEV_LOG('Updating trip with enhanced validation for user:', this.userId, 'trip:', trip.id);
 
           if (this.isOnline) {
             try {
@@ -763,11 +764,11 @@ export class FirebaseDataService {
                   ...operationPayload,
                   updatedAt: serverTimestamp()
                 });
-                console.log('Trip updated in Firestore with validation:', firebaseId);
+                DEV_LOG('Trip updated in Firestore with validation:', firebaseId);
                 return;
               }
             } catch (error) {
-              console.warn('Firestore update failed, falling back to local:', error);
+              DEV_WARN('Firestore update failed, falling back to local:', error);
             }
           }
 
@@ -790,7 +791,7 @@ export class FirebaseDataService {
      }
 
   let tripWithUser: any = { ...trip, userId: this.userId };
-  try { tripWithUser = await encryptionService.encryptFields('trips', tripWithUser); } catch (e) { console.warn('[encryption] trip encrypt failed', e); }
+  try { tripWithUser = await encryptionService.encryptFields('trips', tripWithUser); } catch (e) { DEV_WARN('[encryption] trip encrypt failed', e); }
 
      if (this.isOnline) {
        try {
@@ -799,10 +800,10 @@ export class FirebaseDataService {
            ...tripWithUser,
            updatedAt: serverTimestamp()
          });
-         console.log('Trip updated in Firestore using direct Firebase ID:', firebaseId);
+         DEV_LOG('Trip updated in Firestore using direct Firebase ID:', firebaseId);
          return;
        } catch (error) {
-         console.warn('Firestore update with direct ID failed, falling back to local:', error);
+         DEV_WARN('Firestore update with direct ID failed, falling back to local:', error);
        }
      }
 
@@ -818,14 +819,14 @@ export class FirebaseDataService {
     await this.runGuestAwareWrite('deleteTrip',
       () => databaseService.deleteTrip(id),
       async () => {
-        console.log('deleteTrip called with id:', id, 'firebaseDocId:', firebaseDocId);
+        DEV_LOG('deleteTrip called with id:', id, 'firebaseDocId:', firebaseDocId);
 
         if (this.isOnline) {
           try {
-            console.log('Attempting Firestore delete...');
+            DEV_LOG('Attempting Firestore delete...');
 
             if (firebaseDocId) {
-              console.log('Using provided Firebase document ID:', firebaseDocId);
+              DEV_LOG('Using provided Firebase document ID:', firebaseDocId);
               const batch = writeBatch(firestore);
 
               batch.delete(doc(firestore, 'trips', firebaseDocId));
@@ -851,15 +852,15 @@ export class FirebaseDataService {
               });
 
               await batch.commit();
-              console.log('Trip and associated data deleted from Firestore using document ID');
+              DEV_LOG('Trip and associated data deleted from Firestore using document ID');
               return;
             }
 
             const firebaseId = await this.getFirebaseId('trips', id.toString());
-            console.log('Firebase ID for trip', id, ':', firebaseId);
+            DEV_LOG('Firebase ID for trip', id, ':', firebaseId);
 
             if (firebaseId) {
-              console.log('Found Firebase ID via mapping, proceeding with batch delete');
+              DEV_LOG('Found Firebase ID via mapping, proceeding with batch delete');
               const batch = writeBatch(firestore);
 
               batch.delete(doc(firestore, 'trips', firebaseId));
@@ -885,11 +886,11 @@ export class FirebaseDataService {
               });
 
               await batch.commit();
-              console.log('Trip and associated data deleted from Firestore');
+              DEV_LOG('Trip and associated data deleted from Firestore');
               return;
             }
 
-            console.log('No Firebase ID found, trying alternative deletion methods');
+            DEV_LOG('No Firebase ID found, trying alternative deletion methods');
 
             try {
               const tripQuery = query(
@@ -901,7 +902,7 @@ export class FirebaseDataService {
               const tripSnapshot = await getDocs(tripQuery);
 
               if (!tripSnapshot.empty) {
-                console.log(`Found ${tripSnapshot.size} trip document(s) by local ID, deleting...`);
+                DEV_LOG(`Found ${tripSnapshot.size} trip document(s) by local ID, deleting...`);
                 const batch = writeBatch(firestore);
                 tripSnapshot.forEach(doc => {
                   batch.delete(doc.ref);
@@ -910,19 +911,19 @@ export class FirebaseDataService {
                 return;
               }
             } catch (error) {
-              console.warn('Local ID query failed:', error);
+              DEV_WARN('Local ID query failed:', error);
             }
 
-            console.log('Cannot delete trip - no reliable way to identify it in Firestore');
-            console.log('This may be an old trip created before proper ID tracking');
+            DEV_LOG('Cannot delete trip - no reliable way to identify it in Firestore');
+            DEV_LOG('This may be an old trip created before proper ID tracking');
             throw new Error('Trip not found for deletion - please refresh and try again');
           } catch (error) {
-            console.error('Firestore delete failed:', error);
-            console.warn('Falling back to local storage');
+            PROD_ERROR('Firestore delete failed:', error);
+            DEV_WARN('Falling back to local storage');
           }
         }
 
-        console.log('Using local storage fallback for delete');
+        DEV_LOG('Using local storage fallback for delete');
         await databaseService.deleteTrip(id);
         this.queueOperation('delete', 'trips', { id, userId: this.userId });
       }
@@ -939,9 +940,9 @@ export class FirebaseDataService {
 
         const localId = `${weatherData.tripId}-${Date.now()}`;
         let weatherWithIds: any = { ...weatherData, id: localId, userId: this.userId };
-        try { weatherWithIds = await encryptionService.encryptFields('weatherLogs', weatherWithIds); } catch (e) { console.warn('[encryption] weather encrypt failed', e); }
+        try { weatherWithIds = await encryptionService.encryptFields('weatherLogs', weatherWithIds); } catch (e) { DEV_WARN('[encryption] weather encrypt failed', e); }
 
-        console.log('[Weather Create] Creating weather log with data:', weatherWithIds);
+        DEV_LOG('[Weather Create] Creating weather log with data:', weatherWithIds);
 
         if (this.isOnline) {
           try {
@@ -950,12 +951,12 @@ export class FirebaseDataService {
               createdAt: serverTimestamp()
             });
 
-            console.log('[Weather Create] Firebase document ID:', docRef.id);
+            DEV_LOG('[Weather Create] Firebase document ID:', docRef.id);
             await this.storeLocalMapping('weatherLogs', localId, docRef.id);
-            console.log('[Weather Create] Successfully created weather log and stored mappings');
+            DEV_LOG('[Weather Create] Successfully created weather log and stored mappings');
             return localId;
           } catch (error) {
-            console.warn('Firestore create failed, falling back to local:', error);
+            DEV_WARN('Firestore create failed, falling back to local:', error);
             this.queueOperation('create', 'weatherLogs', weatherWithIds);
             return localId;
           }
@@ -994,7 +995,7 @@ export class FirebaseDataService {
     const cleanWeather: any = {};
     Object.entries(weather).forEach(([k, v]) => { if (v !== undefined) (cleanWeather as any)[k] = v; });
   let weatherWithUser: any = { ...cleanWeather, userId: this.userId };
-  try { weatherWithUser = await encryptionService.encryptFields('weatherLogs', weatherWithUser); } catch (e) { console.warn('[encryption] weather encrypt failed', e); }
+  try { weatherWithUser = await encryptionService.encryptFields('weatherLogs', weatherWithUser); } catch (e) { DEV_WARN('[encryption] weather encrypt failed', e); }
   const contentHash = this.computeWeatherContentHash(weather);
   weatherWithUser.contentHash = contentHash;
 
@@ -1036,7 +1037,7 @@ export class FirebaseDataService {
           return localId;
         }
       } catch (e) {
-        console.warn('Weather upsert query failed, falling back to create:', e);
+        DEV_WARN('Weather upsert query failed, falling back to create:', e);
       }
 
       const docRef = await addDoc(collection(firestore, 'weatherLogs'), {
@@ -1090,7 +1091,7 @@ export class FirebaseDataService {
         }
 
       } catch (error) {
-        console.warn('Firestore get failed, trying local:', error);
+        DEV_WARN('Firestore get failed, trying local:', error);
       }
     }
 
@@ -1124,7 +1125,7 @@ export class FirebaseDataService {
         const weatherLogs = await Promise.all(weatherLogPromises) as WeatherLog[];
         return weatherLogs;
       } catch (error) {
-        console.warn('Firestore query failed, falling back to local:', error);
+        DEV_WARN('Firestore query failed, falling back to local:', error);
       }
     }
 
@@ -1157,7 +1158,7 @@ export class FirebaseDataService {
         const weatherLogs = await Promise.all(weatherLogPromises) as WeatherLog[];
         return weatherLogs;
       } catch (error) {
-        console.warn('Firestore query failed, falling back to local:', error);
+        DEV_WARN('Firestore query failed, falling back to local:', error);
       }
     }
 
@@ -1169,7 +1170,7 @@ export class FirebaseDataService {
       () => databaseService.updateWeatherLog(weatherLog),
       async () => {
         let weatherWithUser = { ...weatherLog, userId: this.userId };
-        try { weatherWithUser = await encryptionService.encryptFields('weatherLogs', weatherWithUser); } catch (e) { console.warn('[encryption] weather encrypt failed', e); }
+        try { weatherWithUser = await encryptionService.encryptFields('weatherLogs', weatherWithUser); } catch (e) { DEV_WARN('[encryption] weather encrypt failed', e); }
 
         if (this.isOnline) {
           try {
@@ -1180,21 +1181,21 @@ export class FirebaseDataService {
                 ...weatherWithUser,
                 updatedAt: serverTimestamp()
               });
-              console.log('Weather log updated in Firestore:', firebaseId);
+              DEV_LOG('Weather log updated in Firestore:', firebaseId);
               return;
             }
 
-            console.log('No Firebase ID mapping found for weather log, creating new document');
+            DEV_LOG('No Firebase ID mapping found for weather log, creating new document');
             const docRef = await addDoc(collection(firestore, 'weatherLogs'), {
               ...weatherWithUser,
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp()
             });
             await this.storeLocalMapping('weatherLogs', weatherLog.id.toString(), docRef.id);
-            console.log('Weather log created in Firestore:', docRef.id);
+            DEV_LOG('Weather log created in Firestore:', docRef.id);
             return;
           } catch (error) {
-            console.warn('Firestore update/create failed, falling back to local:', error);
+            DEV_WARN('Firestore update/create failed, falling back to local:', error);
           }
         }
 
@@ -1208,7 +1209,7 @@ export class FirebaseDataService {
     await this.runGuestAwareWrite('deleteWeather',
       () => databaseService.deleteWeatherLog(id),
       async () => {
-        console.log('[Weather Delete] Starting delete for weather log ID:', id);
+        DEV_LOG('[Weather Delete] Starting delete for weather log ID:', id);
         let deletedFromFirebase = false;
 
         if (this.isOnline) {
@@ -1216,23 +1217,23 @@ export class FirebaseDataService {
             const firebaseId = await this.getFirebaseId('weatherLogs', id);
             if (firebaseId) {
               await deleteDoc(doc(firestore, 'weatherLogs', firebaseId));
-              console.log('[Weather Delete] Firestore doc deleted via mapping:', firebaseId);
+              DEV_LOG('[Weather Delete] Firestore doc deleted via mapping:', firebaseId);
               deletedFromFirebase = true;
             } else {
-              console.warn('[Weather Delete] No Firebase ID mapping found for local ID:', id);
+              DEV_WARN('[Weather Delete] No Firebase ID mapping found for local ID:', id);
             }
           } catch (error) {
-            console.error('[Weather Delete] Firestore delete failed:', error);
+            PROD_ERROR('[Weather Delete] Firestore delete failed:', error);
           }
         }
 
         await databaseService.deleteWeatherLog(id);
 
         if (!this.isOnline || (this.isOnline && !deletedFromFirebase)) {
-          console.log('[Weather Delete] Queuing for sync.');
+          DEV_LOG('[Weather Delete] Queuing for sync.');
           this.queueOperation('delete', 'weatherLogs', { id, userId: this.userId });
         } else {
-          console.log('[Weather Delete] Deletion successful on all stores. No queue needed.');
+          DEV_LOG('[Weather Delete] Deletion successful on all stores. No queue needed.');
         }
       }
     );
@@ -1258,7 +1259,7 @@ export class FirebaseDataService {
 
         const localId = `${fishData.tripId}-${Date.now()}`;
         let fishWithIds: any = { ...sanitizedFishData, id: localId, userId: this.userId };
-        try { fishWithIds = await encryptionService.encryptFields('fishCaught', fishWithIds); } catch (e) { console.warn('[encryption] fish encrypt failed', e); }
+        try { fishWithIds = await encryptionService.encryptFields('fishCaught', fishWithIds); } catch (e) { DEV_WARN('[encryption] fish encrypt failed', e); }
 
         if (this.isOnline && sanitizedFishData.photo && typeof sanitizedFishData.photo === 'string') {
           const data = this.dataUrlToBytes(sanitizedFishData.photo);
@@ -1279,12 +1280,12 @@ export class FirebaseDataService {
                 delete fishWithIds.photo;
               }
             } catch (e) {
-              console.warn('Failed to move photo to Storage, keeping inline for now:', e);
+              DEV_WARN('Failed to move photo to Storage, keeping inline for now:', e);
             }
           }
         }
 
-        console.log('[Fish Create] Creating fish catch with data:', fishWithIds);
+        DEV_LOG('[Fish Create] Creating fish catch with data:', fishWithIds);
 
         if (this.isOnline) {
           try {
@@ -1293,12 +1294,12 @@ export class FirebaseDataService {
               createdAt: serverTimestamp()
             });
 
-            console.log('[Fish Create] Firebase document ID:', docRef.id);
+            DEV_LOG('[Fish Create] Firebase document ID:', docRef.id);
             await this.storeLocalMapping('fishCaught', localId, docRef.id);
-            console.log('[Fish Create] Successfully created fish catch and stored mappings');
+            DEV_LOG('[Fish Create] Successfully created fish catch and stored mappings');
             return localId;
           } catch (error) {
-            console.warn('Firestore create failed, falling back to local:', error);
+            DEV_WARN('Firestore create failed, falling back to local:', error);
             this.queueOperation('create', 'fishCaught', fishWithIds);
             return localId;
           }
@@ -1338,7 +1339,7 @@ export class FirebaseDataService {
   const cleanFish: any = {};
     Object.entries(fish).forEach(([k, v]) => { if (v !== undefined) (cleanFish as any)[k] = v; });
   let fishWithUser: any = { ...cleanFish, userId: this.userId };
-  try { fishWithUser = await encryptionService.encryptFields('fishCaught', fishWithUser); } catch (e) { console.warn('[encryption] fish encrypt failed', e); }
+  try { fishWithUser = await encryptionService.encryptFields('fishCaught', fishWithUser); } catch (e) { DEV_WARN('[encryption] fish encrypt failed', e); }
 
   // If we have an inline photo and we're online, move it to Storage
   if (this.isOnline && typeof fishWithUser.photo === 'string' && this.userId) {
@@ -1361,7 +1362,7 @@ export class FirebaseDataService {
           delete fishWithUser.photo;
         }
       } catch (e) {
-        console.warn('Failed to move import photo to Storage, keeping inline for now:', e);
+        DEV_WARN('Failed to move import photo to Storage, keeping inline for now:', e);
       }
     }
   }
@@ -1408,7 +1409,7 @@ export class FirebaseDataService {
           return localId;
         }
       } catch (e) {
-        console.warn('Fish upsert query failed, falling back to create:', e);
+        DEV_WARN('Fish upsert query failed, falling back to create:', e);
       }
 
       const docRef = await addDoc(collection(firestore, 'fishCaught'), {
@@ -1459,7 +1460,7 @@ export class FirebaseDataService {
         }
 
       } catch (error) {
-        console.warn('Firestore get failed, trying local:', error);
+        DEV_WARN('Firestore get failed, trying local:', error);
       }
     }
 
@@ -1493,7 +1494,7 @@ export class FirebaseDataService {
         const fishCaught = await Promise.all(fishPromises) as FishCaught[];
         return fishCaught;
       } catch (error) {
-        console.warn('Firestore query failed, falling back to local:', error);
+        DEV_WARN('Firestore query failed, falling back to local:', error);
       }
     }
 
@@ -1526,7 +1527,7 @@ export class FirebaseDataService {
         const fishCaught = await Promise.all(fishPromises) as FishCaught[];
         return fishCaught;
       } catch (error) {
-        console.warn('Firestore query failed, falling back to local:', error);
+        DEV_WARN('Firestore query failed, falling back to local:', error);
       }
     }
 
@@ -1538,7 +1539,7 @@ export class FirebaseDataService {
       () => databaseService.updateFishCaught(fishCaught),
       async () => {
         let fishWithUser: any = { ...fishCaught, userId: this.userId };
-        try { fishWithUser = await encryptionService.encryptFields('fishCaught', fishWithUser); } catch (e) { console.warn('[encryption] fish encrypt failed', e); }
+        try { fishWithUser = await encryptionService.encryptFields('fishCaught', fishWithUser); } catch (e) { DEV_WARN('[encryption] fish encrypt failed', e); }
 
         if (this.isOnline && typeof fishWithUser.photo === 'string' && this.userId) {
           const data = this.dataUrlToBytes(fishWithUser.photo);
@@ -1559,16 +1560,16 @@ export class FirebaseDataService {
                 delete fishWithUser.photo;
               }
             } catch (e) {
-              console.warn('Failed to move updated photo to Storage, keeping inline for now:', e);
+              DEV_WARN('Failed to move updated photo to Storage, keeping inline for now:', e);
             }
           }
         }
-        console.log('[Fish Update] Starting update for fish ID:', fishCaught.id);
+        DEV_LOG('[Fish Update] Starting update for fish ID:', fishCaught.id);
 
         if (this.isOnline) {
           try {
             const firebaseId = await this.getFirebaseId('fishCaught', fishCaught.id.toString());
-            console.log('[Fish Update] Firebase ID lookup result:', firebaseId);
+            DEV_LOG('[Fish Update] Firebase ID lookup result:', firebaseId);
 
             if (firebaseId) {
               const docRef = doc(firestore, 'fishCaught', firebaseId);
@@ -1576,11 +1577,11 @@ export class FirebaseDataService {
                 ...fishWithUser,
                 updatedAt: serverTimestamp()
               });
-              console.log('Fish caught updated in Firestore:', firebaseId);
+              DEV_LOG('Fish caught updated in Firestore:', firebaseId);
               return;
             }
 
-            console.log('No Firebase ID mapping found for fish catch, creating new document');
+            DEV_LOG('No Firebase ID mapping found for fish catch, creating new document');
             const docRef = await addDoc(collection(firestore, 'fishCaught'), {
               ...fishWithUser,
               createdAt: serverTimestamp(),
@@ -1588,10 +1589,10 @@ export class FirebaseDataService {
             });
 
             await this.storeLocalMapping('fishCaught', fishCaught.id.toString(), docRef.id);
-            console.log('Fish caught created in Firestore:', docRef.id);
+            DEV_LOG('Fish caught created in Firestore:', docRef.id);
             return;
           } catch (error) {
-            console.warn('Firestore update/create failed, falling back to local:', error);
+            DEV_WARN('Firestore update/create failed, falling back to local:', error);
           }
         }
 
@@ -1605,7 +1606,7 @@ export class FirebaseDataService {
     await this.runGuestAwareWrite('deleteFish',
       () => databaseService.deleteFishCaught(id),
       async () => {
-        console.log('[Fish Delete] Starting delete for fish catch ID:', id);
+        DEV_LOG('[Fish Delete] Starting delete for fish catch ID:', id);
         let deletedFromFirebase = false;
 
         if (this.isOnline) {
@@ -1613,23 +1614,23 @@ export class FirebaseDataService {
             const firebaseId = await this.getFirebaseId('fishCaught', id);
             if (firebaseId) {
               await deleteDoc(doc(firestore, 'fishCaught', firebaseId));
-              console.log('[Fish Delete] Firestore doc deleted via mapping:', firebaseId);
+              DEV_LOG('[Fish Delete] Firestore doc deleted via mapping:', firebaseId);
               deletedFromFirebase = true;
             } else {
-              console.warn('[Fish Delete] No Firebase ID mapping found for local ID:', id);
+              DEV_WARN('[Fish Delete] No Firebase ID mapping found for local ID:', id);
             }
           } catch (error) {
-            console.error('[Fish Delete] Firestore delete failed:', error);
+            PROD_ERROR('[Fish Delete] Firestore delete failed:', error);
           }
         }
 
         await databaseService.deleteFishCaught(id);
 
         if (!this.isOnline || (this.isOnline && !deletedFromFirebase)) {
-          console.log('[Fish Delete] Queuing for sync.');
+          DEV_LOG('[Fish Delete] Queuing for sync.');
           this.queueOperation('delete', 'fishCaught', { id, userId: this.userId });
         } else {
-          console.log('[Fish Delete] Deletion successful on all stores. No queue needed.');
+          DEV_LOG('[Fish Delete] Deletion successful on all stores. No queue needed.');
         }
       }
     );
@@ -1640,7 +1641,7 @@ export class FirebaseDataService {
       return;
     }
 
-    console.log("Checking for orphaned data in Firestore...");
+    DEV_LOG("Checking for orphaned data in Firestore...");
 
     try {
       // Get all trips for this user - collect both local IDs and Firebase document IDs
@@ -1660,11 +1661,11 @@ export class FirebaseDataService {
         validFirebaseTripIds.add(doc.id); // Firebase document ID
       });
 
-      console.log(`Found ${validLocalTripIds.size} valid trips in Firestore (local IDs: ${Array.from(validLocalTripIds).join(', ')})`);
+      DEV_LOG(`Found ${validLocalTripIds.size} valid trips in Firestore (local IDs: ${Array.from(validLocalTripIds).join(', ')})`);
 
       // Only proceed with cleanup if we have trips to validate against
       if (validLocalTripIds.size === 0) {
-        console.log("No trips found - skipping orphaned data cleanup to avoid removing valid data");
+        DEV_LOG("No trips found - skipping orphaned data cleanup to avoid removing valid data");
         return;
       }
 
@@ -1680,9 +1681,9 @@ export class FirebaseDataService {
         const data = doc.data();
         // Weather logs should have local trip IDs, not Firebase document IDs
         if (!data.tripId || !validLocalTripIds.has(data.tripId)) {
-          console.log(`Found potentially orphaned weather log: ${doc.id} with tripId: ${data.tripId}`);
-          console.log(`  Valid local trip IDs: ${Array.from(validLocalTripIds).join(', ')}`);
-          console.log(`  Valid Firebase trip IDs: ${Array.from(validFirebaseTripIds).join(', ')}`);
+          DEV_LOG(`Found potentially orphaned weather log: ${doc.id} with tripId: ${data.tripId}`);
+          DEV_LOG(`  Valid local trip IDs: ${Array.from(validLocalTripIds).join(', ')}`);
+          DEV_LOG(`  Valid Firebase trip IDs: ${Array.from(validFirebaseTripIds).join(', ')}`);
           orphanedWeatherDocs.push(doc.id);
         }
       });
@@ -1699,9 +1700,9 @@ export class FirebaseDataService {
         const data = doc.data();
         // Fish caught should have local trip IDs, not Firebase document IDs
         if (!data.tripId || !validLocalTripIds.has(data.tripId)) {
-          console.log(`Found potentially orphaned fish caught: ${doc.id} with tripId: ${data.tripId}`);
-          console.log(`  Valid local trip IDs: ${Array.from(validLocalTripIds).join(', ')}`);
-          console.log(`  Valid Firebase trip IDs: ${Array.from(validFirebaseTripIds).join(', ')}`);
+          DEV_LOG(`Found potentially orphaned fish caught: ${doc.id} with tripId: ${data.tripId}`);
+          DEV_LOG(`  Valid local trip IDs: ${Array.from(validLocalTripIds).join(', ')}`);
+          DEV_LOG(`  Valid Firebase trip IDs: ${Array.from(validFirebaseTripIds).join(', ')}`);
           orphanedFishDocs.push(doc.id);
         }
       });
@@ -1713,11 +1714,11 @@ export class FirebaseDataService {
 
         // If we have more than 10 orphaned records, be very cautious
         if (totalOrphaned > 10) {
-          console.log(`Found ${totalOrphaned} potentially orphaned records - this seems high, skipping cleanup to avoid data loss`);
+          DEV_LOG(`Found ${totalOrphaned} potentially orphaned records - this seems high, skipping cleanup to avoid data loss`);
           return;
         }
 
-        console.log(`Cleaning up ${orphanedWeatherDocs.length} orphaned weather logs and ${orphanedFishDocs.length} orphaned fish caught records from Firestore.`);
+        DEV_LOG(`Cleaning up ${orphanedWeatherDocs.length} orphaned weather logs and ${orphanedFishDocs.length} orphaned fish caught records from Firestore.`);
 
         const batch = writeBatch(firestore);
 
@@ -1730,34 +1731,34 @@ export class FirebaseDataService {
         });
 
         await batch.commit();
-        console.log("Orphaned data cleanup completed successfully.");
+        DEV_LOG("Orphaned data cleanup completed successfully.");
       } else {
-        console.log("No orphaned data found in Firestore.");
+        DEV_LOG("No orphaned data found in Firestore.");
       }
     } catch (error) {
-      console.error("Error during orphaned data cleanup:", error);
+      PROD_ERROR("Error during orphaned data cleanup:", error);
       // Don't throw - this is a cleanup operation, we don't want to break the main flow
     }
   }
 
   async mergeLocalDataForUser(): Promise<void> {
     if (this.isGuest || !this.userId) {
-      console.warn("Cannot merge local data in guest mode or without a user.");
+      DEV_WARN("Cannot merge local data in guest mode or without a user.");
       return;
     }
 
-    console.log("Starting local data merge for user:", this.userId);
+    DEV_LOG("Starting local data merge for user:", this.userId);
 
     const localTrips = await databaseService.getAllTrips();
     const localWeatherLogs = await databaseService.getAllWeatherLogs();
     const localFishCaught = await databaseService.getAllFishCaught();
 
     if (localTrips.length === 0 && localWeatherLogs.length === 0 && localFishCaught.length === 0) {
-      console.log("No local data to merge.");
+      DEV_LOG("No local data to merge.");
       return;
     }
 
-    console.log(`Found ${localTrips.length} trips, ${localWeatherLogs.length} weather logs, and ${localFishCaught.length} fish caught locally.`);
+    DEV_LOG(`Found ${localTrips.length} trips, ${localWeatherLogs.length} weather logs, and ${localFishCaught.length} fish caught locally.`);
 
     const batch = writeBatch(firestore);
     const tripIdMap = new Map<number, string>();
@@ -1786,7 +1787,7 @@ export class FirebaseDataService {
             return firebaseId;
           } else {
             // Document doesn't exist, remove the stale mapping
-            console.warn(`Stale ID mapping found for trip ${localTripId}, removing mapping`);
+            DEV_WARN(`Stale ID mapping found for trip ${localTripId}, removing mapping`);
             const key = `idMapping_${this.userId}_trips_${localTripId}`;
             localStorage.removeItem(key);
           }
@@ -1807,7 +1808,7 @@ export class FirebaseDataService {
         }
         return null;
       } catch (error) {
-        console.warn('Error checking for existing trip:', error);
+        DEV_WARN('Error checking for existing trip:', error);
         return null;
       }
     };
@@ -1825,7 +1826,7 @@ export class FirebaseDataService {
             return firebaseId;
           } else {
             // Document doesn't exist, remove the stale mapping
-            console.warn(`Stale ID mapping found for weather log ${localId}, removing mapping`);
+            DEV_WARN(`Stale ID mapping found for weather log ${localId}, removing mapping`);
             const key = `idMapping_${this.userId}_weatherLogs_${localId}`;
             localStorage.removeItem(key);
           }
@@ -1846,7 +1847,7 @@ export class FirebaseDataService {
         }
         return null;
       } catch (error) {
-        console.warn('Error checking for existing weather log:', error);
+        DEV_WARN('Error checking for existing weather log:', error);
         return null;
       }
     };
@@ -1864,7 +1865,7 @@ export class FirebaseDataService {
             return firebaseId;
           } else {
             // Document doesn't exist, remove the stale mapping
-            console.warn(`Stale ID mapping found for fish caught ${localId}, removing mapping`);
+            DEV_WARN(`Stale ID mapping found for fish caught ${localId}, removing mapping`);
             const key = `idMapping_${this.userId}_fishCaught_${localId}`;
             localStorage.removeItem(key);
           }
@@ -1885,7 +1886,7 @@ export class FirebaseDataService {
         }
         return null;
       } catch (error) {
-        console.warn('Error checking for existing fish caught:', error);
+        DEV_WARN('Error checking for existing fish caught:', error);
         return null;
       }
     };
@@ -1902,19 +1903,19 @@ export class FirebaseDataService {
       try {
         tripWithData = await encryptionService.encryptFields('trips', tripWithData);
       } catch (e) { 
-        console.warn('[encryption] merge trip encrypt failed', e); 
+        DEV_WARN('[encryption] merge trip encrypt failed', e); 
       }
 
       if (existingFirebaseId) {
         // Trip already exists, update it
-        console.log(`Trip ${localId} already exists in Firestore, updating...`);
+        DEV_LOG(`Trip ${localId} already exists in Firestore, updating...`);
         const tripRef = doc(firestore, 'trips', existingFirebaseId);
         const cleanTrip = cleanForFirebase(tripWithData);
         batch.update(tripRef, { ...cleanTrip, updatedAt: serverTimestamp() });
         tripIdMap.set(localId, existingFirebaseId);
       } else {
         // Trip doesn't exist, create new one
-        console.log(`Trip ${localId} doesn't exist in Firestore, creating...`);
+        DEV_LOG(`Trip ${localId} doesn't exist in Firestore, creating...`);
         const newTripRef = doc(collection(firestore, 'trips'));
         const cleanTrip = cleanForFirebase(tripWithData);
         batch.set(newTripRef, { ...cleanTrip, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
@@ -1928,7 +1929,7 @@ export class FirebaseDataService {
     // Merge weather logs with new trip IDs (only those associated with valid trips)
     const validWeatherLogs = localWeatherLogs.filter(log => {
       if (!log.tripId || !validTripIds.has(log.tripId)) {
-        console.log(`Skipping orphaned weather log with tripId: ${log.tripId}`);
+        DEV_LOG(`Skipping orphaned weather log with tripId: ${log.tripId}`);
         return false;
       }
       return true;
@@ -1948,18 +1949,18 @@ export class FirebaseDataService {
         try {
           logWithData = await encryptionService.encryptFields('weatherLogs', logWithData);
         } catch (e) { 
-          console.warn('[encryption] merge weather log encrypt failed', e); 
+          DEV_WARN('[encryption] merge weather log encrypt failed', e); 
         }
 
         if (existingFirebaseId) {
           // Weather log already exists, update it
-          console.log(`Weather log ${localId} already exists in Firestore, updating...`);
+          DEV_LOG(`Weather log ${localId} already exists in Firestore, updating...`);
           const logRef = doc(firestore, 'weatherLogs', existingFirebaseId);
           const cleanLog = cleanForFirebase(logWithData);
           batch.update(logRef, { ...cleanLog, updatedAt: serverTimestamp() });
         } else {
           // Weather log doesn't exist, create new one
-          console.log(`Weather log ${localId} doesn't exist in Firestore, creating...`);
+          DEV_LOG(`Weather log ${localId} doesn't exist in Firestore, creating...`);
           const newLogRef = doc(collection(firestore, 'weatherLogs'));
           const cleanLog = cleanForFirebase(logWithData);
           batch.set(newLogRef, { ...cleanLog, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
@@ -1970,7 +1971,7 @@ export class FirebaseDataService {
     // Merge fish caught with new trip IDs (only those associated with valid trips)
     const validFishCaught = localFishCaught.filter(fish => {
       if (!fish.tripId || !validTripIds.has(fish.tripId)) {
-        console.log(`Skipping orphaned fish caught with tripId: ${fish.tripId}`);
+        DEV_LOG(`Skipping orphaned fish caught with tripId: ${fish.tripId}`);
         return false;
       }
       return true;
@@ -1990,7 +1991,7 @@ export class FirebaseDataService {
         try {
           fishWithData = await encryptionService.encryptFields('fishCaught', fishWithData);
         } catch (e) {
-          console.warn('[encryption] merge fish encrypt failed', e);
+          DEV_WARN('[encryption] merge fish encrypt failed', e);
         }
 
         // Preserve encryptedMetadata if present in local data
@@ -2000,13 +2001,13 @@ export class FirebaseDataService {
 
         if (existingFirebaseId) {
           // Fish caught already exists, update it
-          console.log(`Fish caught ${localId} already exists in Firestore, updating...`);
+          DEV_LOG(`Fish caught ${localId} already exists in Firestore, updating...`);
           const fishRef = doc(firestore, 'fishCaught', existingFirebaseId);
           const cleanFish = cleanForFirebase(fishWithData);
           batch.update(fishRef, { ...cleanFish, updatedAt: serverTimestamp() });
         } else {
           // Fish caught doesn't exist, create new one
-          console.log(`Fish caught ${localId} doesn't exist in Firestore, creating...`);
+          DEV_LOG(`Fish caught ${localId} doesn't exist in Firestore, creating...`);
           const newFishRef = doc(collection(firestore, 'fishCaught'));
           const cleanFish = cleanForFirebase(fishWithData);
           batch.set(newFishRef, { ...cleanFish, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
@@ -2014,14 +2015,14 @@ export class FirebaseDataService {
       }
     }
 
-    console.log(`Merging ${localTrips.length} trips, ${validWeatherLogs.length} valid weather logs, and ${validFishCaught.length} valid fish caught.`);
+    DEV_LOG(`Merging ${localTrips.length} trips, ${validWeatherLogs.length} valid weather logs, and ${validFishCaught.length} valid fish caught.`);
 
     // Clean up orphaned data from local storage
     const orphanedWeatherLogs = localWeatherLogs.length - validWeatherLogs.length;
     const orphanedFishCaught = localFishCaught.length - validFishCaught.length;
 
     if (orphanedWeatherLogs > 0 || orphanedFishCaught > 0) {
-      console.log(`Cleaning up ${orphanedWeatherLogs} orphaned weather logs and ${orphanedFishCaught} orphaned fish caught records from local storage.`);
+      DEV_LOG(`Cleaning up ${orphanedWeatherLogs} orphaned weather logs and ${orphanedFishCaught} orphaned fish caught records from local storage.`);
 
       // Remove orphaned weather logs
       for (const log of localWeatherLogs) {
@@ -2040,16 +2041,16 @@ export class FirebaseDataService {
 
     try {
       await batch.commit();
-      console.log("Successfully merged local data to Firestore.");
+      DEV_LOG("Successfully merged local data to Firestore.");
 
       // Clean up any existing orphaned data in Firestore
       await this.cleanupOrphanedFirestoreData();
 
       // Keep local data visible for better UX - don't clear after merge
       // await databaseService.clearAllData();
-      console.log("Local data backed up successfully - keeping visible for continuity");
+      DEV_LOG("Local data backed up successfully - keeping visible for continuity");
     } catch (error) {
-      console.error("Failed to merge local data to Firestore:", error);
+      PROD_ERROR("Failed to merge local data to Firestore:", error);
       // Not clearing local data if merge fails, so we can retry later.
     }
   }
@@ -2081,7 +2082,7 @@ export class FirebaseDataService {
     this.saveSyncQueue();
 
     // Note: We don't clear Firestore data here as it's the source of truth
-    console.log('Local data cleared, Firestore data preserved');
+    DEV_LOG('Local data cleared, Firestore data preserved');
   }
 
   /**
@@ -2109,7 +2110,7 @@ export class FirebaseDataService {
     for (const path of storagePaths) {
       const refs = await this.collectStorageObjects(path);
       if (refs.length) {
-        console.log(`[Wipe] Found ${refs.length} storage objects under ${path}`);
+        DEV_LOG(`[Wipe] Found ${refs.length} storage objects under ${path}`);
         storageRefsToDelete.push(...refs);
       }
     }
@@ -2167,13 +2168,13 @@ export class FirebaseDataService {
                 await deleteObject(ref);
                 const deletedCount = Math.min(i + index + 1, storageRefsToDelete.length);
                 emitProgress('storage-delete', `Deleted ${deletedCount}/${storageRefsToDelete.length} storage objects`, 1);
-                console.log(`[Wipe] Deleted storage object ${ref.fullPath}`);
+                DEV_LOG(`[Wipe] Deleted storage object ${ref.fullPath}`);
               } catch (error: any) {
                 if (error?.code === 'storage/object-not-found') {
                   emitProgress('storage-delete', `Storage object already removed (${ref.fullPath})`, 1);
                   return;
                 }
-                console.warn(`[Wipe] Failed to delete storage object ${ref.fullPath}:`, error);
+                DEV_WARN(`[Wipe] Failed to delete storage object ${ref.fullPath}:`, error);
                 emitProgress('storage-delete', `Failed deleting storage object ${ref.fullPath}`, 1);
               }
             }));
@@ -2184,7 +2185,7 @@ export class FirebaseDataService {
       for (const { name, refs } of collectionPlans) {
         if (refs.length === 0) {
           emitProgress(`delete-${name}`, `No documents found in ${name}`, 1);
-          console.log(`[Wipe] No documents to delete from ${name} for user ${this.userId}`);
+          DEV_LOG(`[Wipe] No documents to delete from ${name} for user ${this.userId}`);
           continue;
         }
 
@@ -2202,7 +2203,7 @@ export class FirebaseDataService {
           });
         }
 
-        console.log(`[Wipe] Cleared ${refs.length} documents from ${name} for user ${this.userId}`);
+        DEV_LOG(`[Wipe] Cleared ${refs.length} documents from ${name} for user ${this.userId}`);
       }
 
       this.clearLocalIdMappings();
@@ -2212,7 +2213,7 @@ export class FirebaseDataService {
       emitProgress('cleanup', 'Clearing local caches…', 1);
 
       emitProgress('complete', 'Firestore user data wipe complete');
-      console.log('[Wipe] Completed Firestore user data wipe');
+      DEV_LOG('[Wipe] Completed Firestore user data wipe');
     } catch (error) {
       const total = totalUnits || 1;
       const current = Math.min(unitsCompleted, total);
@@ -2242,7 +2243,7 @@ export class FirebaseDataService {
     keysToRemove.forEach(k => localStorage.removeItem(k));
     // Also clear the user's sync queue key explicitly
     localStorage.removeItem(`syncQueue_${this.userId}`);
-    console.log(`[Wipe] Cleared ${keysToRemove.length} local ID mappings for user ${this.userId}`);
+    DEV_LOG(`[Wipe] Cleared ${keysToRemove.length} local ID mappings for user ${this.userId}`);
   }
 
   /**
@@ -2251,40 +2252,40 @@ export class FirebaseDataService {
    */
   async backupLocalDataBeforeLogout(): Promise<void> {
     if (this.isGuest) {
-      console.log("Service is in guest mode, skipping data download");
+      DEV_LOG("Service is in guest mode, skipping data download");
       return;
     }
 
     if (!this.userId) {
-      console.log("No user ID available, skipping data download");
+      DEV_LOG("No user ID available, skipping data download");
       return;
     }
 
-    console.log("Downloading Firebase data to local storage before logout...");
+    DEV_LOG("Downloading Firebase data to local storage before logout...");
 
     try {
       // Only download if we're online and can access Firebase
       if (!this.isOnline) {
-        console.log("Offline - cannot download Firebase data, keeping any existing local data");
+        DEV_LOG("Offline - cannot download Firebase data, keeping any existing local data");
         return;
       }
 
       // Download all user data from Firebase
-      console.log('Fetching trips from Firebase...');
+      DEV_LOG('Fetching trips from Firebase...');
       const firebaseTrips = await this.getAllTrips();
-      console.log('Fetching weather logs from Firebase...');
+      DEV_LOG('Fetching weather logs from Firebase...');
       const firebaseWeatherLogs = await this.getAllWeatherLogs();
-      console.log('Fetching fish caught from Firebase...');
+      DEV_LOG('Fetching fish caught from Firebase...');
       const firebaseFishCaught = await this.getAllFishCaught();
 
-      console.log(`Found ${firebaseTrips.length} trips, ${firebaseWeatherLogs.length} weather logs, and ${firebaseFishCaught.length} fish caught in Firebase`);
+      DEV_LOG(`Found ${firebaseTrips.length} trips, ${firebaseWeatherLogs.length} weather logs, and ${firebaseFishCaught.length} fish caught in Firebase`);
 
       if (firebaseTrips.length === 0 && firebaseWeatherLogs.length === 0 && firebaseFishCaught.length === 0) {
-        console.log('No data found in Firebase - user may not have any data yet');
+        DEV_LOG('No data found in Firebase - user may not have any data yet');
         return;
       }
 
-      console.log(`Downloading ${firebaseTrips.length} trips, ${firebaseWeatherLogs.length} weather logs, and ${firebaseFishCaught.length} fish caught to local storage`);
+      DEV_LOG(`Downloading ${firebaseTrips.length} trips, ${firebaseWeatherLogs.length} weather logs, and ${firebaseFishCaught.length} fish caught to local storage`);
 
       // Clear local storage first to avoid duplicates
       await databaseService.clearAllData();
@@ -2306,12 +2307,12 @@ export class FirebaseDataService {
         await databaseService.updateFishCaught(fishCaught);
       }
 
-      console.log("Successfully downloaded Firebase data to local storage for guest mode access");
+      DEV_LOG("Successfully downloaded Firebase data to local storage for guest mode access");
 
     } catch (error) {
-      console.error("Failed to download Firebase data to local storage:", error);
+      PROD_ERROR("Failed to download Firebase data to local storage:", error);
       // Don't throw error - we don't want to prevent logout, but log the issue
-      console.warn("Logout will continue, but Firebase data may not be available in guest mode");
+      DEV_WARN("Logout will continue, but Firebase data may not be available in guest mode");
     }
   }
 
@@ -2333,12 +2334,12 @@ export class FirebaseDataService {
       const totalLocalItems = localTrips.length + localWeatherLogs.length + localFishCaught.length;
 
       if (totalLocalItems > 0) {
-        console.log(`Safety sync: Found ${totalLocalItems} local items to sync`);
+        DEV_LOG(`Safety sync: Found ${totalLocalItems} local items to sync`);
         await this.mergeLocalDataForUser();
-        console.log('Safety sync completed successfully');
+        DEV_LOG('Safety sync completed successfully');
       }
     } catch (error) {
-      console.warn('Safety sync failed:', error);
+      DEV_WARN('Safety sync failed:', error);
       // Don't throw - this is a background safety operation
     }
   }
@@ -2355,7 +2356,7 @@ export class FirebaseDataService {
     });
     let finalData = data;
     if (!data?._encrypted && encryptionService.isReady()) {
-      try { finalData = await encryptionService.encryptFields(collection, data); } catch (e) { console.warn('[encryption] queue encrypt failed', e); }
+      try { finalData = await encryptionService.encryptFields(collection, data); } catch (e) { DEV_WARN('[encryption] queue encrypt failed', e); }
     }
     // Preserve encryptedMetadata in sync queue if present
     if (data.encryptedMetadata && !finalData.encryptedMetadata) {
@@ -2364,7 +2365,7 @@ export class FirebaseDataService {
     const queuedOperation: QueuedSyncOperation = enqueue(finalData);
     this.syncQueue.push(queuedOperation);
     this.saveSyncQueue();
-    console.log('Operation queued for sync:', queuedOperation);
+    DEV_LOG('Operation queued for sync:', queuedOperation);
 
     if (this.isOnline) {
       void this.processSyncQueue();
@@ -2408,7 +2409,7 @@ export class FirebaseDataService {
       const parsed = JSON.parse(queue);
       this.syncQueue = Array.isArray(parsed) ? parsed : [];
     } catch (error) {
-      console.warn('Failed to parse stored sync queue, resetting.', error);
+      DEV_WARN('Failed to parse stored sync queue, resetting.', error);
       this.syncQueue = [];
     }
   }
@@ -2443,7 +2444,7 @@ export class FirebaseDataService {
     try {
       localStorage.setItem(`lastSync_${this.userId}`, new Date().toISOString());
     } catch (error) {
-      console.warn('Failed to persist last sync timestamp', error);
+      DEV_WARN('Failed to persist last sync timestamp', error);
     }
 
     this.clearQueueRetryTimeout();
@@ -2480,7 +2481,7 @@ export class FirebaseDataService {
             remaining.push(entry);
           }
         } catch (error) {
-          console.warn('Failed processing queued sync operation', entry, error);
+          DEV_WARN('Failed processing queued sync operation', entry, error);
           remaining.push(entry);
         }
       }
@@ -2532,7 +2533,7 @@ export class FirebaseDataService {
       case 'fishCaught':
         return this.applyFishOperation(operationType, entry.data);
       default:
-        console.warn('Unsupported collection in sync queue entry', collectionName);
+        DEV_WARN('Unsupported collection in sync queue entry', collectionName);
         return true;
     }
   }
@@ -2546,14 +2547,14 @@ export class FirebaseDataService {
     const localIdRaw = payload.id ?? rawData?.id;
 
     if (localIdRaw == null) {
-      console.warn('Queued trip operation missing id, skipping');
+      DEV_WARN('Queued trip operation missing id, skipping');
       return true;
     }
 
     const localId = typeof localIdRaw === 'number' ? localIdRaw : Number(localIdRaw);
 
     if (!Number.isFinite(localId)) {
-      console.warn('Queued trip operation has invalid id', localIdRaw);
+      DEV_WARN('Queued trip operation has invalid id', localIdRaw);
       return true;
     }
 
@@ -2611,7 +2612,7 @@ export class FirebaseDataService {
     const localId = (payload.id ?? rawData?.id) as string | undefined;
 
     if (!localId) {
-      console.warn('Queued weather log operation missing id, skipping');
+      DEV_WARN('Queued weather log operation missing id, skipping');
       return true;
     }
 
@@ -2667,7 +2668,7 @@ export class FirebaseDataService {
     const localId = (payload.id ?? rawData?.id) as string | undefined;
 
     if (!localId) {
-      console.warn('Queued fish operation missing id, skipping');
+      DEV_WARN('Queued fish operation missing id, skipping');
       return true;
     }
 
@@ -2746,7 +2747,7 @@ export class FirebaseDataService {
         return docId;
       }
     } catch (error) {
-      console.warn('Failed resolving Firebase ID for queued operation', { collectionName, localId, error });
+      DEV_WARN('Failed resolving Firebase ID for queued operation', { collectionName, localId, error });
     }
 
     return null;
@@ -2764,7 +2765,7 @@ export class FirebaseDataService {
       try {
         return await encryptionService.encryptFields(collectionName, base);
       } catch (error) {
-        console.warn('[Sync Queue] Failed to encrypt payload while processing queue', error);
+        DEV_WARN('[Sync Queue] Failed to encrypt payload while processing queue', error);
       }
     }
 
@@ -2800,7 +2801,7 @@ export class FirebaseDataService {
       delete updated.photo;
       return updated;
     } catch (error) {
-      console.warn('Failed to upload queued fish photo to storage', error);
+      DEV_WARN('Failed to upload queued fish photo to storage', error);
       return payload;
     }
   }
@@ -2810,24 +2811,24 @@ export class FirebaseDataService {
   private async storeLocalMapping(collection: string, localId: string, firebaseId: string): Promise<void> {
     const key = `idMapping_${this.userId}_${collection}_${localId}`;
     localStorage.setItem(key, firebaseId);
-    console.log(`[ID Mapping] Stored mapping: ${key} -> ${firebaseId}`);
+    DEV_LOG(`[ID Mapping] Stored mapping: ${key} -> ${firebaseId}`);
   }
 
   private async getFirebaseId(collection: string, localId: string): Promise<string | null> {
     const key = `idMapping_${this.userId}_${collection}_${localId}`;
     const firebaseId = localStorage.getItem(key);
-    console.log(`[ID Mapping] Looking up: ${key} -> ${firebaseId || 'NOT FOUND'}`);
-    console.log(`[ID Mapping] User ID: ${this.userId}, Collection: ${collection}, Local ID: ${localId}`);
+    DEV_LOG(`[ID Mapping] Looking up: ${key} -> ${firebaseId || 'NOT FOUND'}`);
+    DEV_LOG(`[ID Mapping] User ID: ${this.userId}, Collection: ${collection}, Local ID: ${localId}`);
 
     if (!firebaseId) {
-      console.log(`[ID Mapping] No mapping found for ${collection} ID ${localId}`);
-      console.log(`[ID Mapping] Available mappings for ${collection}:`);
+      DEV_LOG(`[ID Mapping] No mapping found for ${collection} ID ${localId}`);
+      DEV_LOG(`[ID Mapping] Available mappings for ${collection}:`);
       // Debug: show all available mappings for this collection
       for (let i = 0; i < localStorage.length; i++) {
         const storageKey = localStorage.key(i);
         if (storageKey && storageKey.includes(`idMapping_${this.userId}_${collection}_`)) {
           const mappingValue = localStorage.getItem(storageKey);
-          console.log(`[ID Mapping]   ${storageKey} -> ${mappingValue}`);
+          DEV_LOG(`[ID Mapping]   ${storageKey} -> ${mappingValue}`);
         }
       }
     }
@@ -2936,7 +2937,7 @@ export class FirebaseDataService {
         let cont = true;
         while (cont) {
           if (!this.isOnline) { cont = false; break; }
-          if (localStorage.getItem(this.getEncAbortKey()) === '1') { console.warn('[enc-migration] abort flag'); cont = false; break; }
+          if (localStorage.getItem(this.getEncAbortKey()) === '1') { DEV_WARN('[enc-migration] abort flag'); cont = false; break; }
           const batchRes = await this.processEncryptionMigrationBatch(collection, state);
             state.processed += batchRes.scanned;
             state.updated += batchRes.updated;
@@ -2949,11 +2950,11 @@ export class FirebaseDataService {
         }
       }
     } catch (e) { 
-      console.error('[enc-migration] error', e); 
+      PROD_ERROR('[enc-migration] error', e); 
       
       // Handle Firebase index errors specifically
       if (e instanceof Error && this.isFirebaseIndexError(e)) {
-        console.error('[enc-migration] Firebase index error detected - failing fast');
+        PROD_ERROR('[enc-migration] Firebase index error detected - failing fast');
         
         // Mark the affected collection as done to prevent indefinite hanging
         const affectedCollection = this.extractCollectionFromError(e) || 'trips';
@@ -2963,7 +2964,7 @@ export class FirebaseDataService {
           currentState.done = true;
           this.saveEncState(stateKey, currentState);
           
-          console.warn(`[enc-migration] Marked collection '${affectedCollection}' as done due to index error`);
+          DEV_WARN(`[enc-migration] Marked collection '${affectedCollection}' as done due to index error`);
           
           // Dispatch index error event for UI to show proper message
           window.dispatchEvent(new CustomEvent('encryptionIndexError', {
@@ -2975,12 +2976,12 @@ export class FirebaseDataService {
             }
           }));
         } catch (stateError) {
-          console.error('[enc-migration] Failed to mark collection as done after index error:', stateError);
+          PROD_ERROR('[enc-migration] Failed to mark collection as done after index error:', stateError);
         }
       }
       
       // Log migration failure telemetry
-      console.error('[enc-migration] Migration failed:', {
+      PROD_ERROR('[enc-migration] Migration failed:', {
         error: e instanceof Error ? e.message : 'Unknown error',
         userId: this.userId,
         isGuest: this.isGuest,
@@ -2996,7 +2997,7 @@ export class FirebaseDataService {
         try {
           const finalStatus = this.getEncryptionMigrationStatus();
           if (finalStatus.allDone) {
-            console.log('[enc-migration] Migration completed successfully:', {
+            DEV_LOG('[enc-migration] Migration completed successfully:', {
               userId: this.userId,
               collections: finalStatus.collections,
               totalProcessed: Object.values(finalStatus.collections).reduce((sum, col) => sum + col.processed, 0),
@@ -3012,7 +3013,7 @@ export class FirebaseDataService {
             }));
           }
         } catch (statusError) {
-          console.warn('[enc-migration] Failed to get final migration status:', statusError);
+          DEV_WARN('[enc-migration] Failed to get final migration status:', statusError);
         }
       }
     }
@@ -3044,10 +3045,10 @@ export class FirebaseDataService {
           const encrypted = await encryptionService.encryptFields(collectionName, data);
           batch.update(d.ref, encrypted);
           updated++;
-        } catch (e) { console.warn('[enc-migration] encrypt failed doc '+d.id, e); }
+        } catch (e) { DEV_WARN('[enc-migration] encrypt failed doc '+d.id, e); }
       }
     }
-    if (updated > 0) { try { await batch.commit(); } catch (e) { console.error('[enc-migration] commit failed', e); updated = 0; } }
+    if (updated > 0) { try { await batch.commit(); } catch (e) { PROD_ERROR('[enc-migration] commit failed', e); updated = 0; } }
     const lastDoc = snapshot.docs[snapshot.docs.length - 1];
     const lastData: any = lastDoc?.data?.();
     const nextCursor = lastData?.createdAt || null;
@@ -3086,7 +3087,7 @@ export class FirebaseDataService {
       const querySnapshot = await getDocs(q);
       return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     } catch (error) {
-      console.error('Error fetching tackle items:', error);
+      PROD_ERROR('Error fetching tackle items:', error);
       throw error;
     }
   }
@@ -3122,13 +3123,13 @@ export class FirebaseDataService {
       try {
         itemData = await encryptionService.encryptFields('tackleItems', itemData);
       } catch (e) { 
-        console.warn('[encryption] tackle create encrypt failed', e); 
+        DEV_WARN('[encryption] tackle create encrypt failed', e); 
       }
 
       const docRef = await addDoc(collection(firestore, 'tackleItems'), itemData);
       return docRef.id;
     } catch (error) {
-      console.error('Error creating tackle item:', error);
+      PROD_ERROR('Error creating tackle item:', error);
       throw error;
     }
   }
@@ -3146,12 +3147,12 @@ export class FirebaseDataService {
       try {
         encryptedUpdates = await encryptionService.encryptFields('tackleItems', encryptedUpdates);
       } catch (e) { 
-        console.warn('[encryption] tackle update encrypt failed', e); 
+        DEV_WARN('[encryption] tackle update encrypt failed', e); 
       }
       const itemRef = doc(firestore, 'tackleItems', id);
       await updateDoc(itemRef, { ...encryptedUpdates, updatedAt: serverTimestamp() });
     } catch (error) {
-      console.error('Error updating tackle item:', error);
+      PROD_ERROR('Error updating tackle item:', error);
       throw error;
     }
   }
@@ -3167,7 +3168,7 @@ export class FirebaseDataService {
     try {
       await deleteDoc(doc(firestore, 'tackleItems', id));
     } catch (error) {
-      console.error('Error deleting tackle item:', error);
+      PROD_ERROR('Error deleting tackle item:', error);
       throw error;
     }
   }
@@ -3188,7 +3189,7 @@ export class FirebaseDataService {
       const querySnapshot = await getDocs(q);
       return querySnapshot.docs.map(doc => doc.data().name);
     } catch (error) {
-      console.error('Error fetching gear types:', error);
+      PROD_ERROR('Error fetching gear types:', error);
       throw error;
     }
   }
@@ -3212,7 +3213,7 @@ export class FirebaseDataService {
       const docRef = await addDoc(collection(firestore, 'gearTypes'), typeData);
       return docRef.id;
     } catch (error) {
-      console.error('Error creating gear type:', error);
+      PROD_ERROR('Error creating gear type:', error);
       throw error;
     }
   }
@@ -3232,7 +3233,7 @@ export class FirebaseDataService {
         updatedAt: serverTimestamp()
       });
     } catch (error) {
-      console.error('Error updating gear type:', error);
+      PROD_ERROR('Error updating gear type:', error);
       throw error;
     }
   }
@@ -3248,7 +3249,7 @@ export class FirebaseDataService {
     try {
       await deleteDoc(doc(firestore, 'gearTypes', id));
     } catch (error) {
-      console.error('Error deleting gear type:', error);
+      PROD_ERROR('Error deleting gear type:', error);
       throw error;
     }
   }
@@ -3276,18 +3277,18 @@ export class FirebaseDataService {
     };
 
     try {
-      console.log('Starting data migration...');
+      DEV_LOG('Starting data migration...');
 
       // Migrate trips
       const localTrips = await this.getLocalTrips();
       if (localTrips.length > 0) {
-        console.log(`Migrating ${localTrips.length} trips...`);
+        DEV_LOG(`Migrating ${localTrips.length} trips...`);
         for (const trip of localTrips) {
           try {
             await this.createTrip(trip);
             results.tripsMigrated++;
           } catch (error) {
-            console.error('Failed to migrate trip:', trip.id, error);
+            PROD_ERROR('Failed to migrate trip:', trip.id, error);
           }
         }
       }
@@ -3295,13 +3296,13 @@ export class FirebaseDataService {
       // Migrate weather logs
       const localWeather = await this.getLocalWeatherLogs();
       if (localWeather.length > 0) {
-        console.log(`Migrating ${localWeather.length} weather logs...`);
+        DEV_LOG(`Migrating ${localWeather.length} weather logs...`);
         for (const weather of localWeather) {
           try {
             await this.createWeatherLog(weather);
             results.weatherLogsMigrated++;
           } catch (error) {
-            console.error('Failed to migrate weather log:', weather.id, error);
+            PROD_ERROR('Failed to migrate weather log:', weather.id, error);
           }
         }
       }
@@ -3309,13 +3310,13 @@ export class FirebaseDataService {
       // Migrate fish catches
       const localFish = await this.getLocalFishCatches();
       if (localFish.length > 0) {
-        console.log(`Migrating ${localFish.length} fish catches...`);
+        DEV_LOG(`Migrating ${localFish.length} fish catches...`);
         for (const fish of localFish) {
           try {
             await this.createFishCaught(fish);
             results.fishCatchesMigrated++;
           } catch (error) {
-            console.error('Failed to migrate fish catch:', fish.id, error);
+            PROD_ERROR('Failed to migrate fish catch:', fish.id, error);
           }
         }
       }
@@ -3323,13 +3324,13 @@ export class FirebaseDataService {
       // Migrate tackle box
       const localTackle = await this.getLocalTackleItems();
       if (localTackle.length > 0) {
-        console.log(`Migrating ${localTackle.length} tackle items...`);
+        DEV_LOG(`Migrating ${localTackle.length} tackle items...`);
         for (const item of localTackle) {
           try {
             await this.createTackleItem(item);
             results.tackleItemsMigrated++;
           } catch (error) {
-            console.error('Failed to migrate tackle item:', item.id, error);
+            PROD_ERROR('Failed to migrate tackle item:', item.id, error);
           }
         }
       }
@@ -3337,10 +3338,10 @@ export class FirebaseDataService {
       // Mark migration as complete
       await this.markMigrationComplete();
 
-      console.log('Data migration completed:', results);
+      DEV_LOG('Data migration completed:', results);
       return results;
     } catch (error) {
-      console.error('Data migration failed:', error);
+      PROD_ERROR('Data migration failed:', error);
       throw error;
     }
   }
@@ -3390,22 +3391,22 @@ export class FirebaseDataService {
    */
   debugIdMappings(): void {
     if (!this.userId) {
-      console.log('[ID Mapping Debug] No user ID set');
+      DEV_LOG('[ID Mapping Debug] No user ID set');
       return;
     }
 
-    console.log('[ID Mapping Debug] Current ID mappings for user:', this.userId);
+    DEV_LOG('[ID Mapping Debug] Current ID mappings for user:', this.userId);
     const collections = ['trips', 'weatherLogs', 'fishCaught'];
 
     collections.forEach(collection => {
-      console.log(`\n[ID Mapping Debug] ${collection.toUpperCase()} mappings:`);
+      DEV_LOG(`\n[ID Mapping Debug] ${collection.toUpperCase()} mappings:`);
       // Look for all keys that match the pattern
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (key && key.includes(`idMapping_${this.userId}_${collection}_`)) {
           const firebaseId = localStorage.getItem(key);
           const localId = key.split('_').pop();
-          console.log(`  ${localId} -> ${firebaseId}`);
+          DEV_LOG(`  ${localId} -> ${firebaseId}`);
         }
       }
     });
@@ -3417,7 +3418,7 @@ export class FirebaseDataService {
     try {
       return await databaseService.getAllTrips();
     } catch (error) {
-      console.error('Failed to get local trips:', error);
+      PROD_ERROR('Failed to get local trips:', error);
       return [];
     }
   }
@@ -3426,7 +3427,7 @@ export class FirebaseDataService {
     try {
       return await databaseService.getAllWeatherLogs();
     } catch (error) {
-      console.error('Failed to get local weather logs:', error);
+      PROD_ERROR('Failed to get local weather logs:', error);
       return [];
     }
   }
@@ -3435,7 +3436,7 @@ export class FirebaseDataService {
     try {
       return await databaseService.getAllFishCaught();
     } catch (error) {
-      console.error('Failed to get local fish catches:', error);
+      PROD_ERROR('Failed to get local fish catches:', error);
       return [];
     }
   }
@@ -3445,7 +3446,7 @@ export class FirebaseDataService {
       const tackleData = localStorage.getItem('tacklebox');
       return tackleData ? JSON.parse(tackleData) : [];
     } catch (error) {
-      console.error('Failed to get local tackle items:', error);
+      PROD_ERROR('Failed to get local tackle items:', error);
       return [];
     }
   }
@@ -3455,7 +3456,7 @@ export class FirebaseDataService {
     try {
       localStorage.setItem(`migrationComplete_${this.userId}`, 'true');
     } catch (error) {
-      console.error('Failed to mark migration complete:', error);
+      PROD_ERROR('Failed to mark migration complete:', error);
     }
   }
 

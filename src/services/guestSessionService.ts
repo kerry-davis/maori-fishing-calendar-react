@@ -1,3 +1,5 @@
+import { DEV_WARN } from '../utils/loggingHelpers';
+
 const STORAGE_KEY = 'guestSessionState';
 const SESSION_ID_KEY = 'activeGuestSessionId';
 const DEFAULT_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
@@ -18,7 +20,7 @@ const isStorageAvailable = (): boolean => {
   try {
     return typeof window !== 'undefined' && !!window.localStorage;
   } catch (error) {
-    console.warn('[guestSession] localStorage unavailable:', error);
+    DEV_WARN('[Guest Session] localStorage unavailable:', error);
     return false;
   }
 };
@@ -44,7 +46,7 @@ const readState = (): GuestSessionState => {
       sessions: parsed.sessions ?? {},
     };
   } catch (error) {
-    console.warn('[guestSession] Failed to parse session state:', error);
+    DEV_WARN('[Guest Session] Failed to parse session state:', error);
     return { currentId: null, sessions: {} };
   }
 };
@@ -60,7 +62,7 @@ const writeState = (state: GuestSessionState): void => {
       window.localStorage.removeItem(SESSION_ID_KEY);
     }
   } catch (error) {
-    console.warn('[guestSession] Failed to persist session state:', error);
+    DEV_WARN('[Guest Session] Failed to persist session state:', error);
   }
 };
 
@@ -153,7 +155,7 @@ export const resetGuestSessionState = (): void => {
     window.localStorage.removeItem(STORAGE_KEY);
     window.localStorage.removeItem(SESSION_ID_KEY);
   } catch (error) {
-    console.warn('[guestSession] Failed to reset session state:', error);
+    DEV_WARN('[Guest Session] Failed to reset session state:', error);
   }
 };
 

@@ -1,5 +1,6 @@
 import { firestore } from './firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { DEV_WARN } from '../utils/loggingHelpers';
 
 /**
  * Ensures a stable per-user encryption salt exists and is shared across devices.
@@ -40,7 +41,7 @@ export async function ensureUserSalt(uid: string): Promise<void> {
     localStorage.setItem(saltKey, b64);
     await setDoc(ref, { userId: uid, encSaltB64: b64 }, { merge: true });
   } catch (e) {
-    console.warn('[salt] Failed to sync user salt; falling back to local only', e);
+    DEV_WARN('[Salt] Failed to sync user salt; falling back to local only:', e);
     if (!localStorage.getItem(saltKey)) {
       const saltBytes = crypto.getRandomValues(new Uint8Array(16));
       const b64 = btoa(String.fromCharCode(...saltBytes));
