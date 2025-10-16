@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { FishCaught, FormValidation } from '../../types';
+import { PROD_ERROR } from '../../utils/loggingHelpers';
 
 export interface FishCaughtFormProps {
   tripId: number;
@@ -131,7 +132,7 @@ export const FishCaughtForm: React.FC<FishCaughtFormProps> = ({
     try {
       await onSave(formData);
     } catch (error) {
-      console.error('Error saving fish catch:', error);
+      PROD_ERROR('Error saving fish catch:', error);
     } finally {
       setIsSaving(false);
     }

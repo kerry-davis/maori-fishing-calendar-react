@@ -10,6 +10,7 @@ import {
   checkNwaTideCoverage 
 } from "./niwaTideService";
 import type { UserLocation } from "../types";
+import { DEV_LOG } from "../utils/loggingHelpers";
 
 export interface TideProvider {
   readonly name: string;
@@ -82,26 +83,26 @@ export class TideProviderFactory {
   ];
 
   static {
-    console.log('🌊 Tide Provider Factory initialized:');
-    console.log('   1️⃣ Primary: NIWA API (Official NZ tide data)');
-    console.log('   2️⃣ Secondary: Open-Meteo (Enhanced NZ)');
-    console.log('   3️⃣ Fallback: Original Tide Service');
+    DEV_LOG('🌊 Tide Provider Factory initialized:');
+    DEV_LOG('   1️⃣ Primary: NIWA API (Official NZ tide data)');
+    DEV_LOG('   2️⃣ Secondary: Open-Meteo (Enhanced NZ)');
+    DEV_LOG('   3️⃣ Fallback: Original Tide Service');
   }
 
   // Get best available provider for location
   static getProvider(lat: number, lon: number): TideProvider {
-    console.log(`🔍 Checking providers for location: ${lat}, ${lon}`);
+    DEV_LOG(`🔍 Checking providers for location: ${lat}, ${lon}`);
     
     const availableProviders = this.providers
       .filter(provider => {
         const supports = provider.supportsLocation(lat, lon);
-        console.log(`  - ${provider.name}: ${supports ? '✅ SUPPORTS' : '❌ NOT SUPPORTED'}`);
+        DEV_LOG(`  - ${provider.name}: ${supports ? '✅ SUPPORTS' : '❌ NOT SUPPORTED'}`);
         return supports;
       })
       .sort((a, b) => a.priority - b.priority);
 
     const selectedProvider = availableProviders[0] || this.providers[this.providers.length - 1];
-    console.log(`📡 Selected provider: ${selectedProvider.name} (priority: ${selectedProvider.priority})`);
+    DEV_LOG(`📡 Selected provider: ${selectedProvider.name} (priority: ${selectedProvider.priority})`);
     
     return selectedProvider;
   }
@@ -122,24 +123,24 @@ export class TideProviderFactory {
 
     let lastError: Error | null = null;
 
-    console.log('REFERENCE: MetService Kawhia TODAY (Wed 15 Oct)');
-    console.log('HIGH: 05:30 (2.9m)');
-    console.log('LOW: 11:22 (1.3m)'); 
-    console.log('HIGH: 18:09 (3.0m)');
-    console.log('=================================================');
+    DEV_LOG('REFERENCE: MetService Kawhia TODAY (Wed 15 Oct)');
+    DEV_LOG('HIGH: 05:30 (2.9m)');
+    DEV_LOG('LOW: 11:22 (1.3m)'); 
+    DEV_LOG('HIGH: 18:09 (3.0m)');
+    DEV_LOG('=================================================');
 
     for (const provider of providers) {
       try {
-        console.log(`Attempting tide fetch with ${provider.name}`);
+        DEV_LOG(`Attempting tide fetch with ${provider.name}`);
         const forecast = await provider.fetchForecast(lat, lon, date);
         
         // Validate forecast data
         if (this.validateForecast(forecast)) {
-          console.log(`${provider.name} SUCCESS! Using data from ${provider.name}`);
-          console.log(`=== TIDE COMPARISON FOR ${provider.name} ===`);
-          console.log('HIGH TIDES:', forecast.extrema.filter(e => e.type === 'high').map(e => `${e.time.split('T')[1].substring(0,5)} (${e.height}m)`));
-          console.log('LOW TIDES:', forecast.extrema.filter(e => e.type === 'low').map(e => `${e.time.split('T')[1].substring(0,5)} (${e.height}m)`));
-          console.log('=======================================');
+          DEV_LOG(`${provider.name} SUCCESS! Using data from ${provider.name}`);
+          DEV_LOG(`=== TIDE COMPARISON FOR ${provider.name} ===`);
+          DEV_LOG('HIGH TIDES:', forecast.extrema.filter(e => e.type === 'high').map(e => `${e.time.split('T')[1].substring(0,5)} (${e.height}m)`));
+          DEV_LOG('LOW TIDES:', forecast.extrema.filter(e => e.type === 'low').map(e => `${e.time.split('T')[1].substring(0,5)} (${e.height}m)`));
+          DEV_LOG('=======================================');
           return {
             forecast,
             provider,
@@ -147,11 +148,11 @@ export class TideProviderFactory {
           };
         } else {
           console.warn(`${provider.name} returned invalid data, trying next provider`);
-          console.log('Validation failed on forecast:', forecast);
+          DEV_LOG('Validation failed on forecast:', forecast);
           if (forecast && forecast.extrema) {
-            console.log('FAILED TIDE DATA:');
-            console.log('HIGH TIDES:', forecast.extrema.filter(e => e.type === 'high').map(e => `${e.time.split('T')[1].substring(0,5)} (${e.height}m)`));
-            console.log('LOW TIDES:', forecast.extrema.filter(e => e.type === 'low').map(e => `${e.time.split('T')[1].substring(0,5)} (${e.height}m)`));
+            DEV_LOG('FAILED TIDE DATA:');
+            DEV_LOG('HIGH TIDES:', forecast.extrema.filter(e => e.type === 'high').map(e => `${e.time.split('T')[1].substring(0,5)} (${e.height}m)`));
+            DEV_LOG('LOW TIDES:', forecast.extrema.filter(e => e.type === 'low').map(e => `${e.time.split('T')[1].substring(0,5)} (${e.height}m)`));
           }
         }
       } catch (error) {
@@ -217,7 +218,7 @@ export async function fetchTideForLocation(
   );
 
   if (result.fallbackUsed) {
-    console.log(`Using fallback provider: ${result.provider.name}`);
+    DEV_LOG(`Using fallback provider: ${result.provider.name}`);
   }
 
   return result.forecast;

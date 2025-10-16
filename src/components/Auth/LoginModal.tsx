@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { DEV_LOG, PROD_ERROR } from '../../utils/loggingHelpers';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -62,23 +63,23 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onMobil
   };
 
   const handleGoogleSignIn = async () => {
-    console.log('Google sign-in button clicked');
-    console.log('isFirebaseConfigured:', isFirebaseConfigured);
+    DEV_LOG('Google sign-in button clicked');
+    DEV_LOG('isFirebaseConfigured:', isFirebaseConfigured);
 
     setError('');
     setLoading(true);
 
     try {
-      console.log('Attempting Google sign-in...');
+      DEV_LOG('Attempting Google sign-in...');
       await signInWithGoogle();
-      console.log('Google sign-in successful');
+      DEV_LOG('Google sign-in successful');
       onClose(); // Close modal on successful Google sign-in
       // Close mobile menu after successful Google sign-in
       if (onMobileMenuClose) {
         onMobileMenuClose();
       }
     } catch (err) {
-      console.error('Google sign-in error:', err);
+      PROD_ERROR('Google sign-in error:', err);
       const friendly = err instanceof Error ? err.message : 'Google sign-in failed';
       if (!navigator.onLine) {
         setError('You appear to be offline. Connect to the internet and try again.');
