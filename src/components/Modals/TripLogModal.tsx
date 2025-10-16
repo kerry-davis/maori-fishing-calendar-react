@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { getFishPhotoPreview } from '../../utils/photoPreviewUtils';
 import { Button } from "../UI";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "./Modal";
@@ -7,7 +7,6 @@ import { WeatherLogModal } from "./WeatherLogModal";
 import { FishCatchModal } from "./FishCatchModal";
 import ConfirmationDialog from "../UI/ConfirmationDialog";
 import type { Trip, WeatherLog, FishCaught, DateModalProps } from "../../types";
-import { TideSummary } from "../Tide/TideSummary";
 import { DEV_LOG, PROD_ERROR } from '../../utils/loggingHelpers';
 
 export interface TripLogModalProps extends DateModalProps {
@@ -565,30 +564,6 @@ const TripCard: React.FC<TripCardProps> = ({
   fishCatches,
   photoPreviews
 }) => {
-  const tripDate = useMemo(() => {
-    if (!trip.date) {
-      return null;
-    }
-
-    const parts = trip.date.split("-");
-    if (parts.length !== 3) {
-      return null;
-    }
-
-    const [yearStr, monthStr, dayStr] = parts;
-    const year = Number(yearStr);
-    const month = Number(monthStr);
-    const day = Number(dayStr);
-
-    if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) {
-      return null;
-    }
-
-    // Create UTC date to ensure correct date slice for tide API calls
-    const utcDate = new Date(Date.UTC(year, month - 1, day));
-    return utcDate;
-  }, [trip.date]);
-
   const formatHours = (hours: number): string => {
     if (hours === 1) return "1 hour";
     return `${hours} hours`;
@@ -676,19 +651,6 @@ const TripCard: React.FC<TripCardProps> = ({
           </Button>
         </div>
       </div>
-
-      <TideSummary
-        date={tripDate}
-        className="mt-3"
-        title={<span style={{ color: 'var(--primary-text)' }}>Tide Forecast</span>}
-        titleClassName="text-sm font-medium mb-1"
-        bodyClassName="text-xs space-y-1"
-        retryButtonClassName="mt-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
-        loadingMessage="Loading tide forecast…"
-        emptyMessage="Tide data unavailable."
-        showShortLabel={false}
-        instanceId="trip-modal"
-      />
 
       <div className="grid grid-cols-2 gap-4 text-sm">
         <div>
