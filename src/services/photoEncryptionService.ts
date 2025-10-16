@@ -12,6 +12,7 @@
  */
 
 import { encryptionService } from './encryptionService';
+import { PROD_ERROR } from '../utils/loggingHelpers';
 
 interface EncryptedPhotoMetadata {
   version: number;
@@ -93,7 +94,7 @@ class PhotoEncryptionService {
         storagePath
       };
     } catch (error) {
-      console.error('Photo encryption failed:', error);
+      PROD_ERROR('Photo encryption failed:', error);
       throw new Error(`Failed to encrypt photo: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -138,7 +139,7 @@ class PhotoEncryptionService {
         mimeType: metadata.originalMime
       };
     } catch (error) {
-      console.error('Photo decryption failed:', error);
+      PROD_ERROR('Photo decryption failed:', error);
       throw new Error(`Failed to decrypt photo: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }

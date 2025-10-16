@@ -1,6 +1,17 @@
 import React, { useMemo } from "react";
+
+// Inject a tiny stylesheet to ensure short labels are hidden inside the trip modal
+if (typeof document !== "undefined" && !document.getElementById("tide-short-label-style")) {
+  const style = document.createElement("style");
+  style.id = "tide-short-label-style";
+  style.innerHTML = 
+    ".trip-log-modal .tide-short-label { display: none !important; }\n" +
+    ".tide-short-label { font-weight: inherit; margin-right: 0.25rem; }";
+  document.head.appendChild(style);
+}
 import { useTideData } from "../../hooks/useTideData";
 import { getUtcDateFromTideTime } from "../../services/tideService";
+import type { TideExtremum } from "../../services/tideService";
 import { TideChart } from "./TideChart";
 
 interface TideSummaryProps {
@@ -13,6 +24,8 @@ interface TideSummaryProps {
   loadingMessage?: string;
   emptyMessage?: string;
   showProviderInfo?: boolean;
+  showShortLabel?: boolean;
+  instanceId?: string;
 }
 
 export const TideSummary: React.FC<TideSummaryProps> = ({
@@ -25,20 +38,28 @@ export const TideSummary: React.FC<TideSummaryProps> = ({
   loadingMessage = "Loading tide information…",
   emptyMessage = "No tide data available for this date.",
   showProviderInfo = true,
+  showShortLabel = true,
+  instanceId,
 }) => {
+  const effectiveShowShortLabel = instanceId === "trip-modal" ? false : showShortLabel;
   const { tide, loading, error, refetch, providerUsed } = useTideData(date);
 
-  const timeFormatter = useMemo(() => {
+  // (replaced by `fullDateFormatter` for date+time labels)
+
+  // Full date+time formatter for tide labels (e.g. "Fri Oct 17, 7:01 pm")
+  const fullDateFormatter = useMemo(() => {
     const options: Intl.DateTimeFormatOptions = {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
       hour: "numeric",
       minute: "2-digit",
     };
-
     if (tide?.timezone) {
-      options.timeZone = tide.timezone;
+      // Use tide timezone when available so strings match the chart
+      return (d: Date) => d.toLocaleString(undefined, { ...options, timeZone: tide.timezone });
     }
-
-    return new Intl.DateTimeFormat(undefined, options);
+    return (d: Date) => d.toLocaleString(undefined, options);
   }, [tide?.timezone]);
 
   const renderTitle = () => {
@@ -106,31 +127,56 @@ export const TideSummary: React.FC<TideSummaryProps> = ({
             {tide.extrema.length > 0 ? (
               <div className="grid grid-cols-2 gap-4" style={{ color: "var(--tertiary-text)" }}>
                 {(() => {
-                  // Group tides into pairs (high with following low)
-                  const pairs = [];
-                  for (let i = 0; i < tide.extrema.length; i += 2) {
-                    if (i + 1 < tide.extrema.length) {
-                      const high = tide.extrema[i].type === 'high' ? tide.extrema[i] : tide.extrema[i + 1];
-                      const low = tide.extrema[i].type === 'low' ? tide.extrema[i] : tide.extrema[i + 1];
-                      pairs.push({ high, low });
+                  // Pair each high tide with the next available low tide so UI ordering matches natural tide cycles.
+                  // Simple adjacent pairing: group sorted extrema into consecutive pairs (0&1, 2&3, ...)
+                  const sortedExtrema = [...tide.extrema].sort((a, b) => a.time.localeCompare(b.time));
+                  type TidePair = { high?: TideExtremum; low?: TideExtremum };
+                  const pairs: TidePair[] = [];
+                  for (let i = 0; i < sortedExtrema.length; i += 2) {
+                    const first = sortedExtrema[i];
+                    const second = sortedExtrema[i + 1];
+                    if (first && second) {
+                      // assign based on their types so labels still say High/Low correctly
+                      if (first.type === "high" && second.type === "low") {
+                        pairs.push({ high: first, low: second });
+                      } else if (first.type === "low" && second.type === "high") {
+                        pairs.push({ high: second, low: first });
+                      } else {
+                        // two of the same type: push both but keep order
+                        pairs.push({ high: first.type === "high" ? first : undefined, low: first.type === "low" ? first : undefined });
+                        pairs.push({ high: second.type === "high" ? second : undefined, low: second.type === "low" ? second : undefined });
+                      }
+                    } else if (first) {
+                      // leftover single extremum
+                      pairs.push({ high: first.type === "high" ? first : undefined, low: first.type === "low" ? first : undefined });
                     }
                   }
-                  return pairs.map((pair, index) => (
-                    <div key={index} className="space-y-2">
-                      <p className="flex items-center">
-                        <i className="fas fa-arrow-up mr-1" aria-hidden="true"></i>
-                        <span>
-                          High Tide: {timeFormatter.format(getUtcDateFromTideTime(pair.high.time, tide.utcOffsetSeconds))} ({pair.high.height.toFixed(2)} {tide.units})
-                        </span>
-                      </p>
-                      <p className="flex items-center">
-                        <i className="fas fa-arrow-down mr-1" aria-hidden="true"></i>
-                        <span>
-                          Low Tide: {timeFormatter.format(getUtcDateFromTideTime(pair.low.time, tide.utcOffsetSeconds))} ({pair.low.height.toFixed(2)} {tide.units})
-                        </span>
-                      </p>
-                    </div>
-                  ));
+
+                  return pairs.map((pair, index) => {
+                    // collect existing extrema in this pair and sort them by time so earlier shows first
+                    const entries: { extremum: TideExtremum; label: "High" | "Low" }[] = [];
+                    if (pair.high) entries.push({ extremum: pair.high, label: "High" });
+                    if (pair.low) entries.push({ extremum: pair.low, label: "Low" });
+                    entries.sort((a, b) => a.extremum.time.localeCompare(b.extremum.time));
+
+                    return (
+                      <div key={index} className="space-y-2">
+                        {entries.map((e, i) => (
+                          <p className="flex items-center" key={i}>
+                            <i className={e.label === "High" ? "fas fa-arrow-up mr-1" : "fas fa-arrow-down mr-1"} aria-hidden="true"></i>
+                            <span>
+                              {effectiveShowShortLabel && (
+                                <span className="tide-short-label">
+                                  {`${e.label}, `}
+                                </span>
+                              )}
+                              {fullDateFormatter(getUtcDateFromTideTime(e.extremum.time, tide.utcOffsetSeconds))} ({e.extremum.height.toFixed(2)} {tide.units})
+                            </span>
+                          </p>
+                        ))}
+                      </div>
+                    );
+                  });
                 })()}
               </div>
             ) : (

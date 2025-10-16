@@ -1,6 +1,7 @@
 import React from 'react';
 import { useEncryptionMigrationStatus } from '../../hooks/useEncryptionMigrationStatus';
 import { useAuth } from '../../contexts/AuthContext';
+import { DEV_LOG } from '../../utils/loggingHelpers';
 
 /**
  * Development-only component for debugging and verifying migration status
@@ -16,21 +17,21 @@ export const MigrationVerification: React.FC = () => {
   }
 
   const handleConsoleStatus = () => {
-    console.log('=== Migration Verification Status ===');
-    console.log('User:', user?.email || 'Not logged in');
-    console.log('Encryption Ready:', encryptionReady);
-    console.log('Migration Status:', migrationStatus);
-    console.log('All Done:', migrationStatus.allDone);
-    console.log('Running:', migrationStatus.running);
-    console.log('Error:', migrationStatus.error);
-    console.log('Collections:', migrationStatus.collections);
-    console.log('Total Processed:', migrationStatus.totalProcessed);
-    console.log('Total Updated:', migrationStatus.totalUpdated);
-    console.log('=====================================');
+    DEV_LOG('=== Migration Verification Status ===');
+    DEV_LOG('User:', user?.email || 'Not logged in');
+    DEV_LOG('Encryption Ready:', encryptionReady);
+    DEV_LOG('Migration Status:', migrationStatus);
+    DEV_LOG('All Done:', migrationStatus.allDone);
+    DEV_LOG('Running:', migrationStatus.running);
+    DEV_LOG('Error:', migrationStatus.error);
+    DEV_LOG('Collections:', migrationStatus.collections);
+    DEV_LOG('Total Processed:', migrationStatus.totalProcessed);
+    DEV_LOG('Total Updated:', migrationStatus.totalUpdated);
+    DEV_LOG('=====================================');
   };
 
   const handleTriggerCompletion = () => {
-    console.log('>>> Manually triggering migration completion event for testing');
+    DEV_LOG('>>> Manually triggering migration completion event for testing');
     window.dispatchEvent(new CustomEvent('encryptionMigrationCompleted', {
       detail: {
         userId: user?.uid,
@@ -40,7 +41,7 @@ export const MigrationVerification: React.FC = () => {
   };
 
   const handleTriggerError = () => {
-    console.log('>>> Manually triggering index error for testing');
+    DEV_LOG('>>> Manually triggering index error for testing');
     window.dispatchEvent(new CustomEvent('encryptionIndexError', {
       detail: {
         collection: 'trips',
@@ -52,7 +53,7 @@ export const MigrationVerification: React.FC = () => {
   };
 
   const handleReset = () => {
-    console.log('>>> Resetting migration status');
+    DEV_LOG('>>> Resetting migration status');
     migrationStatus.forceRestart();
   };
 

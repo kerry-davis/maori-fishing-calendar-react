@@ -2,6 +2,7 @@ import type { Trip, WeatherLog, FishCaught } from '../types';
 import { getOrCreateGuestSessionId } from './guestSessionService';
 import { saveToLocalStorage, getLocalStorageUsage } from '../utils/storageQuotaUtils';
 import { encryptGuestDataFields, decryptGuestDataFields } from '../utils/guestEncryptionUtils';
+import { DEV_LOG, DEV_WARN } from '../utils/loggingHelpers';
 
 const GUEST_DATA_KEY = 'guestDataRetention';
 const DATABASE_NAME = 'GuestDataDB';
@@ -39,7 +40,7 @@ class GuestDataRetentionService {
 
     this.dbPromise = new Promise((resolve, reject) => {
       if (typeof window === 'undefined' || !window.indexedDB) {
-        console.warn('[guestDataRetention] IndexedDB unavailable, falling back to localStorage');
+        DEV_WARN('[Guest Data Retention] IndexedDB unavailable, falling back to localStorage');
         resolve();
         return;
       }
@@ -47,14 +48,14 @@ class GuestDataRetentionService {
       const request = indexedDB.open(this.dbName, this.dbVersion);
 
       request.onerror = (event) => {
-        console.warn('[guestDataRetention] Failed to open IndexedDB, falling back to localStorage:', event);
+        DEV_WARN('[Guest Data Retention] Failed to open IndexedDB, falling back to localStorage:', event);
         // Use reject to indicate the initialization failed
         reject(request.error || new Error('IndexedDB initialization failed'));
       };
 
       request.onsuccess = (event) => {
         this.db = (event.target as IDBOpenDBRequest).result;
-        console.log('[guestDataRetention] IndexedDB initialized successfully');
+        DEV_LOG('[Guest Data Retention] IndexedDB initialized successfully');
         resolve();
       };
 
@@ -65,7 +66,7 @@ class GuestDataRetentionService {
           const store = db.createObjectStore(this.storeName, { keyPath: 'sessionId' });
           // Create an index for efficient lookups by lastModified date
           store.createIndex('lastModified', 'lastModified', { unique: false });
-          console.log('[guestDataRetention] Created object store with index:', this.storeName);
+          DEV_LOG('[Guest Data Retention] Created object store with index:', this.storeName);
         }
       };
     });
@@ -97,7 +98,7 @@ class GuestDataRetentionService {
       this.isStorageAvailableCache = true;
       return true;
     } catch (error) {
-      console.warn('[guestDataRetention] Storage unavailable:', error);
+      DEV_WARN('[Guest Data Retention] Storage unavailable:', error);
       this.isStorageAvailableCache = false;
       return false;
     }
@@ -140,11 +141,11 @@ class GuestDataRetentionService {
         // Wait for all operations to complete
         await Promise.all(promises);
 
-        console.log('[guestDataRetention] Data saved to IndexedDB');
+        DEV_LOG('[Guest Data Retention] Data saved to IndexedDB');
         return true;
       }
     } catch (error) {
-      console.warn('[guestDataRetention] IndexedDB save failed, falling back to localStorage:', error);
+      DEV_WARN('[Guest Data Retention] IndexedDB save failed, falling back to localStorage:', error);
     }
 
     // Fallback to localStorage with quota check
@@ -152,10 +153,10 @@ class GuestDataRetentionService {
       if (window.localStorage) {
         const saveResult = saveToLocalStorage(this.storageKey, state);
         if (saveResult.success) {
-          console.log('[guestDataRetention] Data saved to localStorage');
+          DEV_LOG('[Guest Data Retention] Data saved to localStorage');
           return true;
         } else {
-          console.warn('[guestDataRetention] localStorage quota exceeded or save failed:', saveResult.message);
+          DEV_WARN('[Guest Data Retention] localStorage quota exceeded or save failed:', saveResult.message);
           // Dispatch custom event for UI to handle quota exceeded situation
           window.dispatchEvent(new CustomEvent('localStorageQuotaExceeded', {
             detail: { message: saveResult.message, usage: getLocalStorageUsage() }
@@ -164,7 +165,7 @@ class GuestDataRetentionService {
         }
       }
     } catch (error) {
-      console.warn('[guestDataRetention] localStorage save failed:', error);
+      DEV_WARN('[Guest Data Retention] localStorage save failed:', error);
     }
 
     return false;
@@ -213,12 +214,12 @@ class GuestDataRetentionService {
             }
           }
 
-          console.log('[guestDataRetention] Data loaded from IndexedDB');
+          DEV_LOG('[Guest Data Retention] Data loaded from IndexedDB');
           return state;
         }
       }
     } catch (error) {
-      console.warn('[guestDataRetention] IndexedDB read failed, falling back to localStorage:', error);
+      DEV_WARN('[Guest Data Retention] IndexedDB read failed, falling back to localStorage:', error);
     }
 
     // Fallback to localStorage
@@ -228,7 +229,7 @@ class GuestDataRetentionService {
         if (raw) {
           const parsed = JSON.parse(raw) as GuestStorageState;
           if (parsed && typeof parsed === 'object') {
-            console.log('[guestDataRetention] Data loaded from localStorage');
+            DEV_LOG('[Guest Data Retention] Data loaded from localStorage');
             return {
               activeSessionId: parsed.activeSessionId ?? null,
               sessions: parsed.sessions ?? {},
@@ -238,7 +239,7 @@ class GuestDataRetentionService {
         }
       }
     } catch (error) {
-      console.warn('[guestDataRetention] localStorage read failed:', error);
+      DEV_WARN('[Guest Data Retention] localStorage read failed:', error);
     }
 
     return { activeSessionId: null, sessions: {}, sessionOrder: [] };
@@ -376,7 +377,7 @@ class GuestDataRetentionService {
         });
       }
     } catch (error) {
-      console.warn('[guestDataRetention] Failed to clear IndexedDB, clearing localStorage instead:', error);
+      DEV_WARN('[Guest Data Retention] Failed to clear IndexedDB, clearing localStorage instead:', error);
     }
 
     // Also clear localStorage
@@ -385,7 +386,7 @@ class GuestDataRetentionService {
         window.localStorage.removeItem(this.storageKey);
       }
     } catch (error) {
-      console.warn('[guestDataRetention] Failed to clear localStorage:', error);
+      DEV_WARN('[Guest Data Retention] Failed to clear localStorage:', error);
     }
   }
 
@@ -458,7 +459,7 @@ class GuestDataRetentionService {
    */
   async clearAllTemporaryStorage(): Promise<void> {
     await this.clearAllGuestData();
-    console.log('[guestDataRetention] Cleared all temporary guest data storage');
+    DEV_LOG('[Guest Data Retention] Cleared all temporary guest data storage');
   }
 
   /**

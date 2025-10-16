@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { persistenceInstrumentation } from '../../utils/persistenceInstrumentation';
+import { DEV_LOG, DEV_WARN } from '../../utils/loggingHelpers';
 
 export interface ModalWithCleanupProps {
   isOpen: boolean;
@@ -60,7 +61,7 @@ export const ModalWithCleanup: React.FC<ModalWithCleanupProps> = ({
 
   // Clean up modal state on logout/user context changes
   const cleanupModalState = useCallback(() => {
-    console.log('🧹 Cleaning up modal state for:', modalIdRef.current);
+    DEV_LOG('🧹 Cleaning up modal state for:', modalIdRef.current);
     
     try {
       // Clear any modal-related localStorage
@@ -75,17 +76,17 @@ export const ModalWithCleanup: React.FC<ModalWithCleanupProps> = ({
       modalKeys.forEach(key => {
         try {
           if (localStorage.getItem(key)) {
-            console.log(`Removing modal-related key: ${key}`);
+            DEV_LOG(`Removing modal-related key: ${key}`);
             localStorage.removeItem(key);
           }
         } catch (error) {
-          console.warn(`Failed to remove modal key ${key}:`, error);
+          DEV_WARN(`Failed to remove modal key ${key}:`, error);
         }
       });
 
       // Clear URL hash if it contains modal state
       if (window.location.hash && window.location.hash.includes('modal')) {
-        console.log('Clearing modal URL hash:', window.location.hash);
+        DEV_LOG('Clearing modal URL hash:', window.location.hash);
         window.history.replaceState(null, '', window.location.pathname);
       }
 
@@ -102,7 +103,7 @@ export const ModalWithCleanup: React.FC<ModalWithCleanupProps> = ({
         );
       }
     } catch (error) {
-      console.warn('Modal cleanup failed:', error);
+      DEV_WARN('Modal cleanup failed:', error);
     }
   }, []);
 
@@ -111,7 +112,7 @@ export const ModalWithCleanup: React.FC<ModalWithCleanupProps> = ({
     if (!cleanupOnLogout || typeof window === 'undefined') return;
 
     const handleUserContextChange = () => {
-      console.log('🔄 Modal detected user context change, cleaning up:', modalIdRef.current);
+      DEV_LOG('🔄 Modal detected user context change, cleaning up:', modalIdRef.current);
       cleanupModalState();
       
       // Close modal if open
@@ -127,7 +128,7 @@ export const ModalWithCleanup: React.FC<ModalWithCleanupProps> = ({
     };
 
     const handleLogoutEvent = (e: CustomEvent) => {
-      console.log('🔐 Modal detected logout event:', e.detail);
+      DEV_LOG('🔐 Modal detected logout event:', e.detail);
       cleanupModalState();
     };
 
@@ -150,7 +151,7 @@ export const ModalWithCleanup: React.FC<ModalWithCleanupProps> = ({
   // Handle escape key press
   const handleEscapeKey = useCallback((event: KeyboardEvent) => {
     if (event.key === 'Escape' && closeOnEscape && isOpen) {
-      console.log('Escape key pressed, closing modal:', modalIdRef.current);
+      DEV_LOG('Escape key pressed, closing modal:', modalIdRef.current);
       onClose();
     }
   }, [closeOnEscape, isOpen, onClose]);
@@ -162,7 +163,7 @@ export const ModalWithCleanup: React.FC<ModalWithCleanupProps> = ({
       event.target === backdropRef.current &&
       isOpen
     ) {
-      console.log('Backdrop clicked, closing modal:', modalIdRef.current);
+      DEV_LOG('Backdrop clicked, closing modal:', modalIdRef.current);
       onClose();
     }
   }, [closeOnBackdropClick, isOpen, onClose]);
@@ -170,7 +171,7 @@ export const ModalWithCleanup: React.FC<ModalWithCleanupProps> = ({
   // Focus management and tracking
   useEffect(() => {
     if (isOpen) {
-      console.log('Opening modal:', modalIdRef.current);
+      DEV_LOG('Opening modal:', modalIdRef.current);
       
       // Store the currently focused element
       previousActiveElement.current = document.activeElement as HTMLElement;
@@ -196,10 +197,10 @@ export const ModalWithCleanup: React.FC<ModalWithCleanupProps> = ({
         };
         localStorage.setItem(`modal.${modalIdRef.current}.state`, JSON.stringify(state));
       } catch (error) {
-        console.warn('Failed to persist modal state:', error);
+        DEV_WARN('Failed to persist modal state:', error);
       }
     } else {
-      console.log('Closing modal:', modalIdRef.current);
+      DEV_LOG('Closing modal:', modalIdRef.current);
       
       // Track modal close state
       trackModalState('closed');
@@ -217,7 +218,7 @@ export const ModalWithCleanup: React.FC<ModalWithCleanupProps> = ({
       try {
         localStorage.removeItem(`modal.${modalIdRef.current}.state`);
       } catch (error) {
-        console.warn('Failed to clear modal state:', error);
+        DEV_WARN('Failed to clear modal state:', error);
       }
     }
 
@@ -252,7 +253,7 @@ export const ModalWithCleanup: React.FC<ModalWithCleanupProps> = ({
           if (stored) {
             const state = JSON.parse(stored);
             if (!state.isOpen) {
-              console.warn('Modal state inconsistency detected, correcting');
+              DEV_WARN('Modal state inconsistency detected, correcting');
               const userId = localStorage.getItem('lastActiveUser') || 'guest';
               persistenceInstrumentation.registerArtifact(
                 'memory',
@@ -266,7 +267,7 @@ export const ModalWithCleanup: React.FC<ModalWithCleanupProps> = ({
             }
           }
         } catch (error) {
-          console.warn('Modal state verification failed:', error);
+          DEV_WARN('Modal state verification failed:', error);
         }
       }, 5000); // Check every 5 seconds
 
@@ -347,7 +348,7 @@ export const ModalHeaderWithCleanup: React.FC<ModalHeaderWithCleanupProps> = ({
 }) => {
   // Handle cleanup on header close action
   const handleClose = useCallback(() => {
-    console.log('Header close action triggered');
+    DEV_LOG('Header close action triggered');
     if (onClose) {
       onClose();
     }

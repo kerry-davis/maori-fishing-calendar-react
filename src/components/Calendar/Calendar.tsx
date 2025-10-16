@@ -5,6 +5,7 @@ import { CalendarGrid } from "./CalendarGrid";
 import { useAuth } from "../../contexts/AuthContext";
 import { useDatabaseService } from "../../contexts/DatabaseContext";
 import { databaseService } from "../../services/databaseService";
+import { DEV_LOG, PROD_ERROR } from '../../utils/loggingHelpers';
 
 interface CalendarProps {
   onDateSelect: (date: Date) => void;
@@ -29,12 +30,12 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect, refreshTrigger
   // Load trips for the current month with robust error handling
   const loadTripsForMonth = useCallback(async () => {
     // Load trips for both authenticated and guest users
-    console.log('Loading trips for month, user:', user ? 'authenticated' : 'guest');
+    DEV_LOG('Loading trips for month, user:', user ? 'authenticated' : 'guest');
 
     try {
       // Get trips from appropriate source (Firebase for authenticated, local for guest)
       const allTrips = await db.getAllTrips();
-      console.log(`Calendar: Found ${allTrips.length} trips`);
+      DEV_LOG(`Calendar: Found ${allTrips.length} trips`);
 
       // Filter trips for the current month
       const daysWithTripsSet = new Set<string>();
@@ -48,7 +49,7 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect, refreshTrigger
 
       setDaysWithTrips(daysWithTripsSet);
     } catch (error: any) {
-      console.error('Trip loading failed, trying local fallback:', error);
+      PROD_ERROR('Trip loading failed, trying local fallback:', error);
       try {
         // Fallback to local IndexedDB
         const localTrips = await databaseService.getAllTrips();
@@ -65,7 +66,7 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect, refreshTrigger
 
         setDaysWithTrips(daysWithTripsSet);
       } catch (localError) {
-        console.error('Local fallback also failed:', localError);
+        PROD_ERROR('Local fallback also failed:', localError);
         setDaysWithTrips(new Set());
       }
     }
@@ -86,7 +87,7 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect, refreshTrigger
   // Listen for force refresh events
   useEffect(() => {
     const handleForceRefresh = () => {
-      console.log('Calendar: Force refresh triggered');
+      DEV_LOG('Calendar: Force refresh triggered');
       loadTripsForMonth();
     };
 
@@ -98,10 +99,10 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect, refreshTrigger
   useEffect(() => {
     const handleUserDataReady = (event: Event) => {
       const customEvent = event as CustomEvent;
-      console.log('Calendar: User data ready event received', customEvent.detail);
-      console.log('Calendar: user context:', user ? user.email : 'none');
-      console.log('Calendar: current month/year:', `${currentMonth}/${currentYear}`);
-      console.log('Calendar: Refreshing trip indicators to show user-specific data');
+      DEV_LOG('Calendar: User data ready event received', customEvent.detail);
+      DEV_LOG('Calendar: user context:', user ? user.email : 'none');
+      DEV_LOG('Calendar: current month/year:', `${currentMonth}/${currentYear}`);
+      DEV_LOG('Calendar: Refreshing trip indicators to show user-specific data');
       loadTripsForMonth();
     };
 
@@ -113,10 +114,10 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect, refreshTrigger
   useEffect(() => {
     const handleAuthStateChanged = (event: Event) => {
       const customEvent = event as CustomEvent;
-      console.log('Calendar: Immediate auth state change detected', customEvent.detail);
-      console.log('Calendar: Triggering immediate indicator update');
-      console.log('Calendar: user context:', user ? user.email : 'none');
-      console.log('Calendar: current month/year:', `${currentMonth}/${currentYear}`);
+      DEV_LOG('Calendar: Immediate auth state change detected', customEvent.detail);
+      DEV_LOG('Calendar: Triggering immediate indicator update');
+      DEV_LOG('Calendar: user context:', user ? user.email : 'none');
+      DEV_LOG('Calendar: current month/year:', `${currentMonth}/${currentYear}`);
       
       // Trigger immediate refresh while data loads in background
       setImmediateRefresh(prev => prev + 1);
@@ -131,8 +132,8 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect, refreshTrigger
   useEffect(() => {
     const handleDatabaseDataReady = (event: Event) => {
       const customEvent = event as CustomEvent;
-      console.log('Calendar: Database data ready signal received', customEvent.detail);
-      console.log('Calendar: Performing final indicator refresh with actual data');
+      DEV_LOG('Calendar: Database data ready signal received', customEvent.detail);
+      DEV_LOG('Calendar: Performing final indicator refresh with actual data');
       
       // Perform final refresh with accurate data
       loadTripsForMonth();
@@ -145,7 +146,7 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect, refreshTrigger
   // React to immediate refresh state changes for immediate UI updates
   useEffect(() => {
     if (immediateRefresh > 0) {
-      console.log('Calendar: Performing immediate refresh for instant UI update');
+      DEV_LOG('Calendar: Performing immediate refresh for instant UI update');
       loadTripsForMonth();
     }
   }, [immediateRefresh, loadTripsForMonth]);
@@ -153,7 +154,7 @@ export const Calendar: React.FC<CalendarProps> = ({ onDateSelect, refreshTrigger
   // Reload trips when refreshTrigger changes (e.g., when new trip is created)
   useEffect(() => {
     if (refreshTrigger > 0) {
-      console.log('Calendar: Refreshing trip data due to refreshTrigger change');
+      DEV_LOG('Calendar: Refreshing trip data due to refreshTrigger change');
       loadTripsForMonth();
     }
   }, [loadTripsForMonth, refreshTrigger]);

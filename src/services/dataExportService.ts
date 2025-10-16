@@ -2,6 +2,7 @@ import type { FishCaught } from "../types";
 import { databaseService } from "./databaseService";
 import { firebaseDataService } from "./firebaseDataService";
 import JSZip from "jszip";
+import { DEV_LOG, PROD_ERROR } from '../utils/loggingHelpers';
 import Papa from "papaparse";
 import { auth, firestore } from "./firebase";
 import {
@@ -44,7 +45,7 @@ export class DataExportService {
    * Export all data as a ZIP file containing JSON data and photos
    */
   async exportDataAsZip(): Promise<Blob> {
-    console.log("Exporting data as a zip file...");
+    DEV_LOG("Exporting data as a zip file...");
 
     try {
       // Get all data from Firebase (primary) with fallback to IndexedDB
@@ -94,7 +95,7 @@ export class DataExportService {
               // Update fish record to reference photo filename
               fish.photo = filename;
             } catch (error) {
-              console.warn(
+              DEV_LOG(
                 `Failed to process photo for fish ${fish.id}:`,
                 error,
               );
@@ -111,10 +112,10 @@ export class DataExportService {
       // Generate ZIP blob
       const content = await zip.generateAsync({ type: "blob" });
 
-      console.log("Data export completed successfully");
+      DEV_LOG("Data export completed successfully");
       return content;
     } catch (error) {
-      console.error("Error during data export:", error);
+      PROD_ERROR("Error during data export:", error);
       throw new Error(
         `Failed to export data: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
@@ -125,7 +126,7 @@ export class DataExportService {
    * Export all data as CSV files in a ZIP archive
    */
   async exportDataAsCSV(): Promise<Blob> {
-    console.log("Exporting data as CSV...");
+    DEV_LOG("Exporting data as CSV...");
 
     try {
       // Get all data from Firebase (primary) with fallback to IndexedDB
@@ -182,7 +183,7 @@ export class DataExportService {
               // Set photo filename in CSV data
               (fishCopy as any).photo_filename = filename;
             } catch (error) {
-              console.warn(
+              DEV_LOG(
                 `Failed to process photo for fish ${fish.id}:`,
                 error,
               );
@@ -205,10 +206,10 @@ export class DataExportService {
       // Generate ZIP blob
       const content = await zip.generateAsync({ type: "blob" });
 
-      console.log("CSV export completed successfully");
+      DEV_LOG("CSV export completed successfully");
       return content;
     } catch (error) {
-      console.error("Error during CSV export:", error);
+      PROD_ERROR("Error during CSV export:", error);
       throw new Error(
         `Failed to export CSV data: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
@@ -335,7 +336,7 @@ export class DataExportService {
         throw new Error("No valid data files found in ZIP archive");
       }
     } catch (error) {
-      console.error("Error importing from ZIP:", error);
+      PROD_ERROR("Error importing from ZIP:", error);
       throw new Error(
         `Failed to import from ZIP file: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
@@ -374,7 +375,7 @@ export class DataExportService {
         });
 
         if (parsed.errors.length > 0) {
-          console.warn(`Errors parsing ${csvFiles[i]}:`, parsed.errors);
+          DEV_LOG(`Errors parsing ${csvFiles[i]}:`, parsed.errors);
         }
 
         data.indexedDB[storeNames[i] as keyof typeof data.indexedDB] =
@@ -469,7 +470,7 @@ export class DataExportService {
         warnings: []
       };
     } catch (error) {
-      console.error("Error importing from JSON:", error);
+      PROD_ERROR("Error importing from JSON:", error);
       throw new Error(
         `Failed to import from JSON file: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
@@ -497,16 +498,16 @@ export class DataExportService {
         : (firebaseDataService.isReady() && !(firebaseDataService as any).isGuest);
 
       if (useFirebase) {
-        console.log("Importing data to Firebase (authenticated user)...");
+        DEV_LOG("Importing data to Firebase (authenticated user)...");
         await this.importToFirebase(cleanData, onProgress, startTs);
       } else {
-        console.log("Importing data to local storage (guest mode)...");
+        DEV_LOG("Importing data to local storage (guest mode)...");
         await this.importToLocal(cleanData, onProgress, startTs);
       }
 
-      console.log(`Successfully imported data from "${filename}"`);
+      DEV_LOG(`Successfully imported data from "${filename}"`);
     } catch (error) {
-      console.error("Error processing import data:", error);
+      PROD_ERROR("Error processing import data:", error);
       throw new Error(
         `Could not import data from "${filename}": ${error instanceof Error ? error.message : "Unknown error"}`,
       );
@@ -519,7 +520,7 @@ export class DataExportService {
   private async importToFirebase(data: any, onProgress?: (p: import("../types").ImportProgress) => void, startTs?: number): Promise<void> {
     // Defensive: if not authenticated, route to local import instead
     if (!firebaseDataService.isAuthenticated?.()) {
-      console.warn("importToFirebase called without an authenticated user. Falling back to local import.");
+      DEV_LOG("importToFirebase called without an authenticated user. Falling back to local import.");
       await this.importToLocal(data, onProgress, startTs);
       return;
     }
@@ -548,7 +549,7 @@ export class DataExportService {
         );
       }
     } catch (e) {
-      console.warn("Failed to write gear types to Firestore userSettings during import:", e);
+      DEV_LOG("Failed to write gear types to Firestore userSettings during import:", e);
     }
 
     // If tacklebox items are present, mirror them into Firestore for authenticated users
@@ -588,7 +589,7 @@ export class DataExportService {
         }
       }
     } catch (e) {
-      console.warn("Failed to import tackle items into Firestore during import:", e);
+      DEV_LOG("Failed to import tackle items into Firestore during import:", e);
     }
 
     // Import database data to Firebase
@@ -769,7 +770,7 @@ export class DataExportService {
       const data = localStorage.getItem(key);
       return data ? JSON.parse(data) : fallback;
     } catch (error) {
-      console.warn(
+      DEV_LOG(
         `Failed to parse localStorage data for key "${key}":`,
         error,
       );

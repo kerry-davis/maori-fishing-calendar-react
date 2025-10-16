@@ -23,6 +23,7 @@ import {
   WeatherChart,
   PersonalBestsDisplay
 } from '../Charts';
+import { PROD_ERROR } from '../../utils/loggingHelpers';
 
 // Register Chart.js components
 ChartJS.register(
@@ -83,7 +84,7 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
         return;
       }
     } catch (err) {
-      console.error('Error loading analytics data:', err);
+      PROD_ERROR('Error loading analytics data:', err);
       setError('Failed to load analytics data. Please try again.');
     } finally {
       setIsLoading(false);

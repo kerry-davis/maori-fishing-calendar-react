@@ -1,14 +1,54 @@
 // NIWA Tide Service - Official NZ tide data from NIWA
 import type { TideForecast, TideCoverageStatus } from "./tideService";
+import { DEV_LOG, DEV_WARN, DEV_ERROR, PROD_WARN, PROD_SECURITY, TideLogging } from "../utils/loggingHelpers";
 
 const RAW_PROXY_URL = (import.meta.env.VITE_NIWA_PROXY_URL ?? "").trim();
+const NZ_TIMEZONE = "Pacific/Auckland";
+const nzDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: NZ_TIMEZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit"
+});
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
+const NIWA_DATUM = "LAT"; // Align heights with NIWA public site (LAT datum)
+
+function shiftNzDateString(baseDate: string, offsetDays: number): string {
+  const [year, month, day] = baseDate.split("-").map(Number);
+  const baseUtc = Date.UTC(year, month - 1, day);
+  const shiftedUtc = baseUtc + offsetDays * DAY_IN_MS;
+  return nzDateFormatter.format(new Date(shiftedUtc));
+}
+
+function getNzOffsetSeconds(referenceUtc: Date): number {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: NZ_TIMEZONE,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+  const parts = formatter.formatToParts(referenceUtc);
+  const valueFor = (type: Intl.DateTimeFormatPartTypes) => parts.find(part => part.type === type)?.value ?? "00";
+  const localUtcMs = Date.UTC(
+    Number(valueFor("year")),
+    Number(valueFor("month")) - 1,
+    Number(valueFor("day")),
+    Number(valueFor("hour")),
+    Number(valueFor("minute")),
+    Number(valueFor("second"))
+  );
+  return Math.round((localUtcMs - referenceUtc.getTime()) / 1000);
+}
 
 // ENFORCED: NIWA only works through proxy - no direct browser calls allowed
 export const NIWA_PROVIDER_ENABLED = RAW_PROXY_URL !== "";
 
 if (!NIWA_PROVIDER_ENABLED) {
-  console.warn("🚫 NIWA tide provider disabled: VITE_NIWA_PROXY_URL must be configured for proxy-only usage.");
-  console.info("ℹ️  Open-Meteo will be used as fallback tide provider.");
+  PROD_WARN('NIWA_PROXY_URL not configured - will use Open-Meteo as fallback');
 }
 
 // Only proxy URL is allowed - direct browser calls are explicitly prohibited
@@ -20,7 +60,7 @@ function buildNiwaRequestUrl(base: string, params: Record<string, string>): stri
   if (/^https?:\/\//i.test(base)) {
     const url = new URL(base);
     if (url.hostname === "api.niwa.co.nz") {
-      console.error("🚫 SECURITY ERROR: Direct NIWA API calls are prohibited");
+      PROD_SECURITY('Direct NIWA API calls attempted - proxy required');
       throw new Error("Direct NIWA API calls not allowed - use proxy instead");
     }
     query.forEach((value, key) => {
@@ -39,22 +79,35 @@ interface NIWATideValues {
 }
 
 interface NIWAResponse {
-  values: NIWATideValues[];
+  values?: NIWATideValues[];
+  error?: string;
+  status?: string;
+  details?: string;
+  timestamp?: string;
+  errorType?: string;
+  parseError?: string;
+  responseKeys?: string[];
+  _proxyMetadata?: {
+    timestamp: string;
+    dataPoints: number;
+    source: string;
+  };
 }
 
 export class NwaTideProvider {
   supportsLocation(lat: number, lon: number): boolean {
     // ENFORCED: NIWA provider only works through proxy
     if (!NIWA_PROVIDER_ENABLED) {
-      console.log(`🚫 NIWA provider disabled (proxy not configured) - using Open-Meteo fallback`);
+      TideLogging.dev.providerFallback('NIWA', 'Open-Meteo', 'proxy not configured');
       return false;
     }
     
     // NIWA covers New Zealand waters approximately - generous marine bounds
     const inBounds = lat >= -55 && lat <= -25 && lon >= 165 && lon <= 185;
-    console.log(`🌊 NIWA location check: ${lat}, ${lon} -> ${inBounds ? 'IN_BOUNDS' : 'OUT_OF_BOUNDS'}`);
-    console.log(`   Bounds验证: lat[${lat}] >= -55? ${lat >= -55}, <= -25? ${lat <= -25}`);
-    console.log(`   Bounds验证: lon[${lon}] >= 165? ${lon >= 165}, <= 185? ${lon <= 185}`);
+    DEV_LOG(`🌊 NIWA location check: ${lat}, ${lon} -> ${inBounds ? 'IN_BOUNDS' : 'OUT_OF_BOUNDS'}`);
+    // Detailed bounds validation only in development
+    DEV_LOG(`   Bounds验证: lat[${lat}] >= -55? ${lat >= -55}, <= -25? ${lat <= -25}`);
+    DEV_LOG(`   Bounds验证: lon[${lon}] >= 165? ${lon >= 165}, <= 185? ${lon <= 185}`);
     return inBounds;
   }
 
@@ -63,23 +116,23 @@ export class NwaTideProvider {
       throw new Error("NIWA tide provider disabled: configure VITE_NIWA_PROXY_URL to enable official NZ tides.");
     }
 
-    const targetDate = date.toISOString().split('T')[0];
-    const tomorrowDate = new Date(date.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const targetDateNz = nzDateFormatter.format(date);
+    const startDateNz = shiftNzDateString(targetDateNz, -3);
+    const endDateNz = shiftNzDateString(targetDateNz, 2);
 
     const params: Record<string, string> = {
       lat: lat.toString(),
       long: lon.toString(),
-      datum: 'MSL',
-      startDate: targetDate,
-      endDate: tomorrowDate
+      datum: NIWA_DATUM,
+      startDate: startDateNz,
+      endDate: endDateNz
     };
 
     // Never send API key from client - proxy will handle it server-side
     // Direct API calls without proxy are not supported for security reasons
     const url = buildNiwaRequestUrl(NIWA_API_BASE, params);
 
-    console.log(`🌊 Fetching NIWA tide data via proxy: ${lat}, ${lon}`);
-    console.log(`📡 Proxy URL: PROXY: ${url}`);
+    DEV_LOG(`🌊 Fetching NIWA tide data via proxy: ${lat}, ${lon}`);
     
     try {
       const response = await fetch(url, {
@@ -90,13 +143,47 @@ export class NwaTideProvider {
 
       if (!response.ok) {
         // ENFORCED: Only proxy calls allowed - if proxy fails, NIWA is disabled
-        console.warn(`⚠️ NIWA proxy unavailable (${response.status}), switching to Open-Meteo`);
+        TideLogging.dev.providerFallback('NIWA', 'Open-Meteo', `proxy error ${response.status}`);
         throw new Error(`NIWA proxy unavailable. Open-Meteo will provide tide data instead.`);
       }
 
-      const data: NIWAResponse = await response.json();
-      console.log(`✅ NIWA data received via proxy: ${data.values?.length || 0} tide points`);
-      return processTideData(data, targetDate);
+      let data: NIWAResponse;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        TideLogging.dev.providerFallback('NIWA', 'Open-Meteo', 'response parsing failed');
+        DEV_ERROR(`Parse error: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
+        throw new Error(`NIWA proxy returned invalid response. Open-Meteo will provide tide data instead.`);
+      }
+
+      // Handle proxy error responses gracefully
+      if (data.error) {
+        DEV_WARN(`NIWA proxy returned error: ${data.error}`);
+        let errorMsg = 'NIWA service temporary unavailable. Open-Meteo will provide tide data instead.';
+        
+        // Provide more specific error messages based on proxy error type
+        if (data.status === 'missing_values' || data.status === 'invalid_structure') {
+          errorMsg = 'NIWA service data format issue. Open-Meteo will provide tide data instead.';
+        } else if (data.status === 'authentication_error') {
+          errorMsg = 'NIWA service authentication issue. Open-Meteo will provide tide data instead.';
+        } else if (data.status === 'parse_error') {
+          errorMsg = 'NIWA service data processing issue. Open-Meteo will provide tide data instead.';
+        }
+        
+        throw new Error(errorMsg);
+      }
+
+      // Extract actual data from proxy response (ignore metadata)
+      const niwaData = data._proxyMetadata ? {
+        values: data.values,
+        // Copy other relevant NIWA data fields if they exist
+        ...Object.fromEntries(
+          Object.entries(data).filter(([key]) => key !== '_proxyMetadata')
+        )
+      } : data;
+
+      DEV_LOG(`✅ NIWA data received via proxy: ${niwaData.values?.length || 0} tide points`);
+      return processTideData(niwaData, targetDateNz);
 
     } catch (error) {
       if (error instanceof Error) {
@@ -124,7 +211,7 @@ export class NwaTideProvider {
       const params: Record<string, string> = {
         lat: lat.toString(),
         long: lon.toString(),
-        datum: 'MSL',
+        datum: NIWA_DATUM,
         startDate: todayStr,
         endDate: todayStr
       };
@@ -140,7 +227,7 @@ export class NwaTideProvider {
 
       if (!response.ok) {
         // ENFORCED: Only proxy calls allowed - if proxy fails, NIWA is disabled
-        console.warn(`⚠️ NIWA proxy unavailable (${response.status}), Open-Meteo will be used`);
+        DEV_WARN(`NIWA coverage check proxy unavailable (${response.status})`);
         return {
           available: false,
           checkedAt: new Date().toISOString(),
@@ -148,19 +235,56 @@ export class NwaTideProvider {
         };
       }
 
-      const data: NIWAResponse = await response.json();
+      let data: NIWAResponse;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        DEV_WARN('NIWA coverage check response parsing failed');
+        return {
+          available: false,
+          checkedAt: new Date().toISOString(),
+          message: 'NIWA proxy response invalid - Open-Meteo will provide tide data'
+        };
+      }
+
+      // Handle proxy error responses gracefully in coverage check
+      if (data.error) {
+        let message = 'NIWA service temporary unavailable';
+        
+        if (data.status === 'missing_values' || data.status === 'invalid_structure') {
+          message = 'NIWA service data format issue';
+        } else if (data.status === 'authentication_error') {
+          message = 'NIWA service authentication issue';
+        } else if (data.status === 'parse_error') {
+          message = 'NIWA service data processing issue';
+        }
+        
+        return {
+          available: false,
+          checkedAt: new Date().toISOString(),
+          message: `${message} - Open-Meteo will provide tide data`
+        };
+      }
+
+      // Extract actual data from proxy response (ignore metadata)
+      const niwaData = data._proxyMetadata ? {
+        values: data.values,
+        ...Object.fromEntries(
+          Object.entries(data).filter(([key]) => key !== '_proxyMetadata')
+        )
+      } : data;
       
       return {
-        available: !!(data.values && data.values.length > 0),
+        available: !!(niwaData.values && niwaData.values.length > 0),
         checkedAt: new Date().toISOString(),
         timezone: 'Pacific/Auckland',
         units: 'm',
-        message: data.values && data.values.length > 0 
+        message: niwaData.values && niwaData.values.length > 0 
           ? 'NIWA official NZ tide data available' 
           : 'NIWA tide data not available for this location'
       };
 
-    } catch (error) {
+    } catch {
       return {
         available: false,
         checkedAt: new Date().toISOString(),
@@ -175,30 +299,50 @@ function processTideData(data: NIWAResponse, targetDate: string): TideForecast {
     throw new Error('NIWA API: No tide data available for location');
   }
 
-  // Filter for target date (UTC timestamps) and convert to our format
-  const targetDateUTC = targetDate;
-  
-  console.log(`🔍 NIWA Processing: Looking for date ${targetDateUTC} in ${data.values.length} data points`);
+  // Filter for target date - convert UTC timestamps to NZ time before filtering
+  DEV_LOG(`🔍 NIWA Processing: Looking for date ${targetDate} in ${data.values.length} data points`);
   const firstDate = data.values[0]?.time?.split('T')[0];
   const lastDate = data.values[data.values.length-1]?.time?.split('T')[0];
-  console.log(`🔍 NIWA Date range: ${firstDate} to ${lastDate}`);
+  DEV_LOG(`🔍 NIWA Date range: ${firstDate} to ${lastDate} (UTC)`);
+
+  const [targetYear, targetMonth, targetDay] = targetDate.split('-').map(Number);
+  const targetReferenceUtc = new Date(Date.UTC(targetYear, targetMonth - 1, targetDay, 12, 0, 0));
+  const nzOffsetSeconds = getNzOffsetSeconds(targetReferenceUtc);
+
+  const targetDateValues = data.values.filter((point, index) => {
+    const utcDate = new Date(point.time);
+    const nzDateString = nzDateFormatter.format(utcDate);
+    const isTarget = nzDateString === targetDate;
+
+    if (index < 3 || isTarget) {
+      DEV_LOG(`🔧 UTC: ${point.time} -> NZ: ${nzDateString} (target: ${targetDate})`);
+    }
+
+    return isTarget;
+  });
+
+  DEV_LOG(`🔍 NIWA UTC->NZ conversion: ${targetDateValues.length} points for NZ date ${targetDate}`);
   
-  const seriesForDate = data.values
-    .filter(point => point.time.startsWith(targetDateUTC))
+  const seriesForDate = targetDateValues
     .map(point => ({
       time: point.time,
       height: Math.round(point.value * 100) / 100
     }));
-
-  // Find extrema (high/low tides) for target date by detecting local maxima and minima
-  const targetDateValues = data.values.filter(point => point.time.startsWith(targetDateUTC));
-  
-  console.log(`🔍 NIWA Filtered: ${targetDateValues.length} points for ${targetDateUTC}`);
   const extremaForDate: Array<{
     type: 'high' | 'low';
     time: string;
     height: number;
   }> = [];
+
+  if (targetDateValues.length >= 2) {
+    const first = targetDateValues[0];
+    const second = targetDateValues[1];
+    extremaForDate.push({
+      type: first.value <= second.value ? 'low' : 'high',
+      time: first.time,
+      height: Math.round(first.value * 100) / 100
+    });
+  }
 
   // Detect local maxima and minima in the tide data
   for (let i = 1; i < targetDateValues.length - 1; i++) {
@@ -222,6 +366,16 @@ function processTideData(data: NIWAResponse, targetDate: string): TideForecast {
         height: Math.round(current.value * 100) / 100
       });
     }
+  }
+
+  if (targetDateValues.length >= 2) {
+    const last = targetDateValues[targetDateValues.length - 1];
+    const prev = targetDateValues[targetDateValues.length - 2];
+    extremaForDate.push({
+      type: last.value >= prev.value ? 'high' : 'low',
+      time: last.time,
+      height: Math.round(last.value * 100) / 100
+    });
   }
 
   // Remove duplicates and sort by time
@@ -251,7 +405,7 @@ function processTideData(data: NIWAResponse, targetDate: string): TideForecast {
         { type: 'high' as const, time: maxPoint.time, height: maxHeight },
         { type: 'low' as const, time: minPoint.time, height: minHeight }
       ];
-      console.log('🔧 NIWA: Generated extrema from min/max (insufficient points for local detection)');
+      DEV_LOG('🔧 NIWA: Generated extrema from min/max (insufficient points for local detection)');
     }
   }
   
@@ -271,7 +425,7 @@ function processTideData(data: NIWAResponse, targetDate: string): TideForecast {
     minHeight: Math.round(minHeight * 100) / 100,
     maxHeight: Math.round(maxHeight * 100) / 100,
     series: seriesForDate,
-    utcOffsetSeconds: 43200 // NZST offset (12 hours)
+    utcOffsetSeconds: nzOffsetSeconds
   };
 }
 

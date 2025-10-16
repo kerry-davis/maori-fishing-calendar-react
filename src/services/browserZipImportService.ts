@@ -13,6 +13,7 @@ import { databaseService } from "./databaseService";
 import { photoCacheService } from "./photoCacheService";
 import { auth, firestore } from "./firebase";
 import { collection, doc, getDocs, query, serverTimestamp, setDoc, where, writeBatch } from "firebase/firestore";
+import { DEV_LOG, DEV_WARN, PROD_ERROR } from "../utils/loggingHelpers";
 
 // Dynamically import JSZip to avoid bundling it if not needed
 let JSZip: any = null;
@@ -546,7 +547,7 @@ export class BrowserZipImportService {
         };
         trips.push(trip);
       } catch (error) {
-        console.warn('Failed to parse CSV row:', row, error);
+        DEV_WARN('Failed to parse CSV row:', row, error);
       }
     });
 
@@ -576,10 +577,10 @@ export class BrowserZipImportService {
     };
 
     try {
-      console.log('Starting legacy data import...');
+      DEV_LOG('Starting legacy data import...');
 
       // Clear existing data first (as requested)
-  console.log('Clearing existing data before import...');
+  DEV_LOG('Clearing existing data before import...');
   await this.clearExistingData(isAuthenticated, strategy);
 
   // Use all data from the zip file (no duplicate checking)
@@ -587,7 +588,7 @@ export class BrowserZipImportService {
       const weatherLogsToImport = legacyData.weatherLogs;
       const fishCatchesToImport = legacyData.fishCatches;
 
-      console.log(`Import summary: ${tripsToImport.length} trips, ${weatherLogsToImport.length} weather logs, ${fishCatchesToImport.length} fish catches`);
+      DEV_LOG(`Import summary: ${tripsToImport.length} trips, ${weatherLogsToImport.length} weather logs, ${fishCatchesToImport.length} fish catches`);
 
       // Persist tacklebox and gear types before records so UI reads correct values after import
       try {
@@ -645,12 +646,12 @@ export class BrowserZipImportService {
           }
         }
       } catch (e) {
-        console.warn('Failed to persist gear types or tacklebox during legacy import:', e);
+        DEV_WARN('Failed to persist gear types or tacklebox during legacy import:', e);
       }
 
       if (isAuthenticated) {
         // Authenticated user - store in Firebase
-        console.log('Importing to Firebase (authenticated user)...');
+        DEV_LOG('Importing to Firebase (authenticated user)...');
 
         // Import trips first (ALWAYS upsert to preserve legacy IDs and associations)
         for (const trip of tripsToImport) {
@@ -708,7 +709,7 @@ export class BrowserZipImportService {
         }
       } else {
         // Guest user - store locally
-        console.log('Importing to local storage (guest user)...');
+        DEV_LOG('Importing to local storage (guest user)...');
 
         // Import trips first
         for (const trip of tripsToImport) {
@@ -777,11 +778,11 @@ export class BrowserZipImportService {
         result.warnings.push(`✅ Successfully attached ${photosAttached} photo(s) to fish catches. Photos are now visible in the app.`);
       }
 
-      console.log('Legacy data import completed:', result);
+      DEV_LOG('Legacy data import completed:', result);
       return result;
 
     } catch (error) {
-      console.error('Legacy data import failed:', error);
+      PROD_ERROR('Legacy data import failed:', error);
       result.success = false;
       result.errors.push(`Import failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
       return result;

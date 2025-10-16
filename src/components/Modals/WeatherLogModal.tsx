@@ -3,6 +3,7 @@ import { Button } from "../UI";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "./Modal";
 import { useDatabaseService } from "../../contexts/DatabaseContext";
 import type { WeatherLog } from "../../types";
+import { PROD_ERROR } from '../../utils/loggingHelpers';
 
 export interface WeatherLogModalProps {
   isOpen: boolean;
@@ -55,7 +56,7 @@ export const WeatherLogModal: React.FC<WeatherLogModalProps> = ({
         setError('Weather log not found');
       }
     } catch (err) {
-      console.error('Error loading weather log:', err);
+      PROD_ERROR('Error loading weather log:', err);
       setError('Failed to load weather data');
     } finally {
       setIsLoading(false);
@@ -147,7 +148,7 @@ export const WeatherLogModal: React.FC<WeatherLogModalProps> = ({
       if (onWeatherLogged) onWeatherLogged(savedData);
       onClose();
     } catch (err) {
-      console.error(`Error ${isEditing ? 'updating' : 'creating'} weather log:`, err);
+      PROD_ERROR(`Error ${isEditing ? 'updating' : 'creating'} weather log:`, err);
       setError(`Failed to ${isEditing ? 'update' : 'save'} weather log. Please try again.`);
     } finally {
       setIsSubmitting(false);
