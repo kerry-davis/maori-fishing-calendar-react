@@ -15,6 +15,7 @@ import { firebaseDataService } from './firebaseDataService';
 import { photoEncryptionService } from './photoEncryptionService';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from './firebase';
+import { DEV_LOG, DEV_WARN, PROD_ERROR } from '../utils/loggingHelpers';
 
 interface MigrationProgress {
   totalPhotos: number;
@@ -86,7 +87,7 @@ class PhotoMigrationService {
     try {
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.progress));
     } catch (error) {
-      console.warn('[Photo Migration] Failed to save progress:', error);
+      DEV_WARN('[Photo Migration] Failed to save progress:', error);
     }
   }
 
@@ -118,7 +119,7 @@ class PhotoMigrationService {
 
       return unencryptedPhotos;
     } catch (error) {
-      console.error('[Photo Migration] Detection failed:', error);
+      PROD_ERROR('[Photo Migration] Detection failed:', error);
       throw error;
     }
   }
@@ -189,7 +190,7 @@ class PhotoMigrationService {
 
     // Start background migration loop without awaiting it so callers see isRunning=true
     this.runMigrationLoop(photosToMigrate).catch(err => {
-      console.error('[Photo Migration] Background migration failed:', err);
+      PROD_ERROR('[Photo Migration] Background migration failed:', err);
       this.progress.status = 'failed';
       this.progress.lastError = err instanceof Error ? err.message : String(err);
       this.saveProgress();
@@ -295,7 +296,7 @@ class PhotoMigrationService {
     for (const photoId of batch.photoIds) {
       // Check if we've been running too long
       if (Date.now() - startTime > this.MAX_PROCESSING_TIME) {
-        console.log(`[Photo Migration] Batch ${batch.batchId} timed out after ${this.MAX_PROCESSING_TIME}ms`);
+        DEV_LOG(`[Photo Migration] Batch ${batch.batchId} timed out after ${this.MAX_PROCESSING_TIME}ms`);
         break;
       }
 
@@ -348,13 +349,13 @@ class PhotoMigrationService {
       // Get the fish record
       const fish = await firebaseDataService.getFishCaughtById(fishId);
       if (!fish) {
-        console.warn(`[Photo Migration] Fish ${fishId} not found`);
+        DEV_WARN(`[Photo Migration] Fish ${fishId} not found`);
         return { success: false, error: 'Fish not found' };
       }
 
       // Check if already migrated
       if (fish.encryptedMetadata) {
-        console.log(`[Photo Migration] Photo ${fishId} already migrated`);
+        DEV_LOG(`[Photo Migration] Photo ${fishId} already migrated`);
         return { success: true };
       }
 
@@ -385,7 +386,7 @@ class PhotoMigrationService {
       }
 
       if (!photoData) {
-        console.warn(`[Photo Migration] No photo data found for fish ${fishId}`);
+        DEV_WARN(`[Photo Migration] No photo data found for fish ${fishId}`);
         return { success: false, error: 'No photo data' };
       }
 
@@ -426,12 +427,12 @@ class PhotoMigrationService {
         photo: undefined
       });
 
-      console.log(`[Photo Migration] Successfully migrated photo ${fishId}`);
+      DEV_LOG(`[Photo Migration] Successfully migrated photo ${fishId}`);
       return { success: true };
 
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`[Photo Migration] Failed to migrate photo ${fishId}:`, message);
+      PROD_ERROR(`[Photo Migration] Failed to migrate photo ${fishId}:`, message);
       return { success: false, error: message };
     }
   }
@@ -496,9 +497,9 @@ class PhotoMigrationService {
     if (this.progress.status === 'completed') {
       // Clear progress after successful completion
       localStorage.removeItem(this.STORAGE_KEY);
-      console.log(`[Photo Migration] Migration completed successfully. Migrated ${this.progress.successfulPhotos.length} photos.`);
+      DEV_LOG(`[Photo Migration] Migration completed successfully. Migrated ${this.progress.successfulPhotos.length} photos.`);
     } else {
-      console.warn(`[Photo Migration] Migration completed with errors. ${this.progress.failedPhotos.length} photos failed.`);
+      DEV_WARN(`[Photo Migration] Migration completed with errors. ${this.progress.failedPhotos.length} photos failed.`);
     }
   }
 

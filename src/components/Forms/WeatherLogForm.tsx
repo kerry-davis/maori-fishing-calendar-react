@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { WeatherLog, FormValidation } from '../../types';
+import { PROD_ERROR } from '../../utils/loggingHelpers';
 
 export interface WeatherLogFormProps {
   tripId: number;
@@ -109,7 +110,7 @@ export const WeatherLogForm: React.FC<WeatherLogFormProps> = ({
     try {
       await onSave(formData);
     } catch (error) {
-      console.error('Error saving weather log:', error);
+      PROD_ERROR('Error saving weather log:', error);
     } finally {
       setIsSaving(false);
     }

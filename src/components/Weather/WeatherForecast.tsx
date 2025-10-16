@@ -19,12 +19,14 @@ interface WeatherForecastProps {
   date: Date;
   className?: string;
   onWeatherLoad?: (weather: WeatherData | null) => void;
+  showTideLabel?: boolean;
 }
 
 export const WeatherForecast: React.FC<WeatherForecastProps> = ({
   date,
   className = '',
-  onWeatherLoad
+  onWeatherLoad,
+  showTideLabel = true,
 }) => {
   const { userLocation } = useLocationContext();
   const [weather, setWeather] = useState<WeatherData | null>(null);
@@ -97,6 +99,7 @@ export const WeatherForecast: React.FC<WeatherForecastProps> = ({
         title="Tide Forecast"
         titleClassName="font-semibold text-sm mb-1"
         bodyClassName="text-sm"
+        showShortLabel={showTideLabel}
       />
     </div>
   );

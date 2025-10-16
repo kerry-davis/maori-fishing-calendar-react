@@ -5,6 +5,7 @@ import {
   type TideCoverageStatus 
 } from "./tideService";
 import type { UserLocation } from "../types";
+import { DEV_LOG } from '../utils/loggingHelpers';
 
 export interface TideProvider {
   readonly name: string;
@@ -84,22 +85,22 @@ export class SimpleTideProviderFactory {
 
     for (const provider of providers) {
       try {
-        console.log(`Attempting tide fetch with ${provider.name}`);
+        DEV_LOG(`Attempting tide fetch with ${provider.name}`);
         const forecast = await provider.fetchForecast(lat, lon, date);
         
         // Validate forecast data
         if (this.validateForecast(forecast)) {
-          console.log(`${provider.name} SUCCESS! Using data from ${provider.name}`);
+          DEV_LOG(`${provider.name} SUCCESS! Using data from ${provider.name}`);
           return {
             forecast,
             provider,
             fallbackUsed: provider.priority > 1
           };
         } else {
-          console.warn(`${provider.name} returned invalid data, trying next provider`);
+          DEV_LOG(`${provider.name} returned invalid data, trying next provider`);
         }
       } catch (error) {
-        console.warn(`${provider.name} failed:`, error);
+        DEV_LOG(`${provider.name} failed:`, error);
         lastError = error as Error;
         continue;
       }
@@ -156,7 +157,7 @@ export async function fetchTideForLocation(
   );
 
   if (result.fallbackUsed) {
-    console.log(`Using fallback provider: ${result.provider.name}`);
+    DEV_LOG(`Using fallback provider: ${result.provider.name}`);
   }
 
   return result.forecast;

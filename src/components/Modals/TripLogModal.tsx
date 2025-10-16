@@ -8,6 +8,7 @@ import { FishCatchModal } from "./FishCatchModal";
 import ConfirmationDialog from "../UI/ConfirmationDialog";
 import type { Trip, WeatherLog, FishCaught, DateModalProps } from "../../types";
 import { TideSummary } from "../Tide/TideSummary";
+import { DEV_LOG, PROD_ERROR } from '../../utils/loggingHelpers';
 
 export interface TripLogModalProps extends DateModalProps {
   onEditTrip?: (tripId: number) => void;
@@ -74,12 +75,12 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
 
     try {
       const dateStr = formatDateForDB(selectedDate);
-      console.log('Loading trips for date:', dateStr);
+      DEV_LOG('Loading trips for date:', dateStr);
       const tripsData = await db.getTripsByDate(dateStr);
-      console.log('Loaded trips data:', tripsData);
+      DEV_LOG('Loaded trips data:', tripsData);
       setTrips(tripsData);
     } catch (err) {
-      console.error("Error loading trips:", err);
+      PROD_ERROR("Error loading trips:", err);
       setError("Failed to load trips. Please try again.");
     } finally {
       setIsLoading(false);
@@ -129,7 +130,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
       setPhotoPreviews(previews);
 
     } catch (err) {
-      console.error("Error loading fish catches:", err);
+      PROD_ERROR("Error loading fish catches:", err);
       // Don't set error state for fish catches as it's not critical
     }
   }, [isOpen, selectedDate, db]);
@@ -160,7 +161,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
 
       setWeatherLogs(relevantWeatherLogs);
     } catch (err) {
-      console.error("Error loading weather logs:", err);
+      PROD_ERROR("Error loading weather logs:", err);
       // Don't set error state for weather logs as it's not critical
     }
   }, [isOpen, selectedDate, db]);
@@ -203,29 +204,29 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
 
   // Handle trip deletion - show confirmation first
   const handleDeleteTrip = useCallback(async (tripId: number, firebaseDocId?: string) => {
-    console.log('handleDeleteTrip called with tripId:', tripId, 'firebaseDocId:', firebaseDocId);
+    DEV_LOG('handleDeleteTrip called with tripId:', tripId, 'firebaseDocId:', firebaseDocId);
     setDeleteTarget({ type: 'trip', id: tripId.toString(), tripId, firebaseDocId });
     setShowDeleteConfirm(true);
   }, []);
 
   // Execute trip deletion after confirmation
   const executeTripDeletion = useCallback(async (tripId: number, firebaseDocId?: string) => {
-    console.log('Executing trip deletion with tripId:', tripId, 'firebaseDocId:', firebaseDocId);
+    DEV_LOG('Executing trip deletion with tripId:', tripId, 'firebaseDocId:', firebaseDocId);
 
     try {
       await db.deleteTrip(tripId, firebaseDocId);
-      console.log('Deletion completed, reloading trips...');
+      DEV_LOG('Deletion completed, reloading trips...');
       // Reload trips after deletion
       await loadTrips();
-      console.log('Trips reloaded successfully');
+      DEV_LOG('Trips reloaded successfully');
 
       // Notify parent component that a trip was deleted (for calendar refresh)
       if (onTripDeleted) {
-        console.log('TripLogModal: Calling onTripDeleted callback');
+        DEV_LOG('TripLogModal: Calling onTripDeleted callback');
         onTripDeleted();
       }
     } catch (err) {
-      console.error("Error deleting trip:", err);
+      PROD_ERROR("Error deleting trip:", err);
       setError("Failed to delete trip. Please try again.");
     }
   }, [db, loadTrips, onTripDeleted]);
@@ -320,9 +321,9 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
       // On successful deletion, update the UI by filtering the state
       setFishCatches(prevCatches => prevCatches.filter(fish => fish.id.toString() !== fishId.toString()));
 
-      console.log('[Delete] Fish deletion successful.');
+      DEV_LOG('[Delete] Fish deletion successful.');
     } catch (err) {
-      console.error("Error deleting fish catch:", err);
+      PROD_ERROR("Error deleting fish catch:", err);
       setError("Failed to delete fish catch. Please try again.");
       // If the deletion fails, reload the data to ensure UI consistency
       loadFishCatches();
@@ -358,9 +359,9 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
       // On successful deletion, update the UI by filtering the state
       setWeatherLogs(prevLogs => prevLogs.filter(log => log.id.toString() !== weatherId.toString()));
 
-      console.log('[Delete] Weather deletion successful.');
+      DEV_LOG('[Delete] Weather deletion successful.');
     } catch (err) {
-      console.error("Error deleting weather log:", err);
+      PROD_ERROR("Error deleting weather log:", err);
       setError("Failed to delete weather log. Please try again.");
       // If the deletion fails, reload the data to ensure UI consistency
       loadWeatherLogs();
@@ -384,7 +385,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
   }, [deleteTarget, executeWeatherDeletion, executeFishDeletion, executeTripDeletion]);
 
   const handleCancelDelete = useCallback(() => {
-    console.log('[Delete Debug] User cancelled deletion in custom modal');
+    DEV_LOG('[Delete Debug] User cancelled deletion in custom modal');
     setShowDeleteConfirm(false);
     setDeleteTarget(null);
   }, []);
@@ -394,7 +395,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
   // Add error boundary for debugging
   useEffect(() => {
     const handleError = (event: ErrorEvent) => {
-      console.error('[TripLogModal Debug] JavaScript error caught:', event.error);
+      PROD_ERROR('[TripLogModal Debug] JavaScript error caught:', event.error);
     };
 
     window.addEventListener('error', handleError);
@@ -598,7 +599,7 @@ const TripCard: React.FC<TripCardProps> = ({
     const parts: string[] = [];
 
     // Debug logging
-    console.log('Weather log data:', {
+    DEV_LOG('Weather log data:', {
       windCondition: log.windCondition,
       windDirection: log.windDirection,
       airTemp: log.airTemp,
@@ -611,15 +612,15 @@ const TripCard: React.FC<TripCardProps> = ({
 
     if (windCondition && windDirection) {
       parts.push(`Wind: ${windCondition} ${windDirection}`);
-      console.log('Displaying wind with both condition and direction:', windCondition, windDirection);
+      DEV_LOG('Displaying wind with both condition and direction:', windCondition, windDirection);
     } else if (windCondition) {
       parts.push(`Wind: ${windCondition}`);
-      console.log('Displaying wind condition only:', windCondition);
+      DEV_LOG('Displaying wind condition only:', windCondition);
     } else if (windDirection) {
       parts.push(`Wind: ${windDirection}`);
-      console.log('Displaying wind direction only:', windDirection);
+      DEV_LOG('Displaying wind direction only:', windDirection);
     } else {
-      console.log('No wind information to display');
+      DEV_LOG('No wind information to display');
     }
 
     // Only show temperatures if they were provided
@@ -636,7 +637,7 @@ const TripCard: React.FC<TripCardProps> = ({
     }
 
     const result = parts.join(" • ");
-    console.log('Final weather display result:', result);
+    DEV_LOG('Final weather display result:', result);
     return result;
   };
 
@@ -663,7 +664,7 @@ const TripCard: React.FC<TripCardProps> = ({
           </Button>
           <Button
             onClick={() => {
-              console.log('Delete button clicked for trip:', trip.id, 'firebaseDocId:', trip.firebaseDocId);
+              DEV_LOG('Delete button clicked for trip:', trip.id, 'firebaseDocId:', trip.firebaseDocId);
               onDelete(trip.firebaseDocId);
             }}
             variant="secondary"
@@ -685,6 +686,8 @@ const TripCard: React.FC<TripCardProps> = ({
         retryButtonClassName="mt-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
         loadingMessage="Loading tide forecast…"
         emptyMessage="Tide data unavailable."
+        showShortLabel={false}
+        instanceId="trip-modal"
       />
 
       <div className="grid grid-cols-2 gap-4 text-sm">
@@ -747,9 +750,9 @@ const TripCard: React.FC<TripCardProps> = ({
                         </Button>
                         <Button
                           onClick={(e) => {
-                            console.log('[UI Debug] Weather delete button clicked, calling onDeleteWeather with ID:', log.id);
-                            console.log('[UI Debug] Button element:', e.currentTarget);
-                            console.log('[UI Debug] Button is disabled?', e.currentTarget.disabled);
+                            DEV_LOG('[UI Debug] Weather delete button clicked, calling onDeleteWeather with ID:', log.id);
+                            DEV_LOG('[UI Debug] Button element:', e.currentTarget);
+                            DEV_LOG('[UI Debug] Button is disabled?', e.currentTarget.disabled);
                             onDeleteWeather(log.id);
                           }}
                           variant="secondary"
@@ -839,9 +842,9 @@ const TripCard: React.FC<TripCardProps> = ({
                         </Button>
                         <Button
                           onClick={(e) => {
-                            console.log('[UI Debug] Fish delete button clicked, calling onDeleteFish with ID:', fish.id);
-                            console.log('[UI Debug] Button element:', e.currentTarget);
-                            console.log('[UI Debug] Button is disabled?', e.currentTarget.disabled);
+                            DEV_LOG('[UI Debug] Fish delete button clicked, calling onDeleteFish with ID:', fish.id);
+                            DEV_LOG('[UI Debug] Button element:', e.currentTarget);
+                            DEV_LOG('[UI Debug] Button is disabled?', e.currentTarget.disabled);
                             onDeleteFish(fish.id);
                           }}
                           variant="secondary"

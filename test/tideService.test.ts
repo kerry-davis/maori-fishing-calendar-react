@@ -2,7 +2,6 @@ import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   fetchTideForecast,
-  clearTideCache,
   checkTideCoverage,
   getUtcDateFromTideTime,
   addDays,
@@ -20,7 +19,6 @@ const mockResponse = (data: unknown, ok = true, status = 200) => {
 
 describe("tideService", () => {
   beforeEach(() => {
-    clearTideCache();
     vi.restoreAllMocks();
   });
 
@@ -280,6 +278,64 @@ describe("tideService", () => {
     const unavailable = await checkTideCoverage(40.7128, -74.006);
     expect(unavailable.available).toBe(false);
     expect(unavailable.message).toBeTruthy();
+  });
+
+  it("handles NIWA proxy error responses gracefully", async () => {
+    // Test proxy error response
+    const proxyErrorResponse = mockResponse({
+      error: 'NIWA API returned unexpected format',
+      status: 'invalid_format',
+      details: 'Non-JSON response received',
+      timestamp: new Date().toISOString()
+    }, true, 502);
+
+    globalThis.fetch = vi.fn().mockResolvedValue(proxyErrorResponse) as unknown as typeof fetch;
+    
+    await expect(
+      fetchTideForecast(-36.8485, 174.7633, new Date("2024-10-10"))
+    ).rejects.toThrow('NIWA service temporary unavailable');
+  });
+
+  it("handles NIWA proxy parsing failures gracefully", async () => {
+    // Test non-JSON response that causes parsing to fail
+    const nonJsonResponse = {
+      ok: true,
+      status: 200,
+      text: vi.fn().mockResolvedValue("This is not JSON"),
+      json: vi.fn().mockRejectedValue(new Error("Unexpected token"))
+    } as unknown as Response;
+
+    globalThis.fetch = vi.fn().mockResolvedValue(nonJsonResponse) as unknown as typeof fetch;
+    
+    await expect(
+      fetchTideForecast(-36.8485, 174.7633, new Date("2024-10-10"))
+    ).rejects.toThrow('NIWA proxy returned invalid response');
+  });
+
+  it("filters proxy metadata from NIWA responses", async () => {
+    const niwaResponseWithMetadata = {
+      values: [
+        { time: "2024-10-10T00:00", value: 0.2 },
+        { time: "2024-10-10T01:00", value: 0.5 }
+      ],
+      _proxyMetadata: {
+        timestamp: new Date().toISOString(),
+        dataPoints: 2,
+        source: 'niwa-api-proxy'
+      }
+    };
+
+    const fetchMock = vi.fn().mockResolvedValue(mockResponse(niwaResponseWithMetadata));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const targetDate = new Date(Date.UTC(2024, 9, 10, 12, 0, 0));
+    const forecast = await fetchTideForecast(-36.8485, 174.7633, targetDate);
+
+    expect(forecast.series).toHaveLength(2);
+    expect(forecast.series[0].time).toBe("2024-10-10T00:00");
+    expect(forecast.series[0].height).toBe(0.2);
+    // Proxy metadata should not be included in the processed data
+    expect(forecast).not.toHaveProperty('_proxyMetadata');
   });
 
   it("converts tide times to UTC using provided offsets", () => {

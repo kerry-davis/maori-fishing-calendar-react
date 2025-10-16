@@ -1,5 +1,6 @@
 import type { Trip, WeatherLog, FishCaught, DatabaseError } from "../types";
 import { DB_CONFIG } from "../types";
+import { DEV_LOG, DEV_ERROR, PROD_ERROR, PROD_WARN } from "../utils/loggingHelpers";
 
 /**
  * IndexedDB Service for the Māori Fishing Calendar
@@ -25,7 +26,7 @@ export class DatabaseService {
         request.onupgradeneeded = (event) => {
           const db = (event.target as IDBOpenDBRequest).result;
           const transaction = (event.target as IDBOpenDBRequest).transaction!;
-          console.log("Upgrading database schema...");
+          DEV_LOG("Upgrading database schema...");
           // ...existing code...
           // Trips store (no changes needed)
           if (!db.objectStoreNames.contains(DB_CONFIG.STORES.TRIPS)) {
@@ -34,14 +35,14 @@ export class DatabaseService {
               autoIncrement: true,
             });
             tripsStore.createIndex("date", "date", { unique: false });
-            console.log(`'${DB_CONFIG.STORES.TRIPS}' object store created.`);
+            DEV_LOG(`'${DB_CONFIG.STORES.TRIPS}' object store created.`);
           }
           // ...existing code...
           // Non-destructive migration for weather_logs
           if (db.objectStoreNames.contains(DB_CONFIG.STORES.WEATHER_LOGS)) {
               const store = transaction.objectStore(DB_CONFIG.STORES.WEATHER_LOGS);
               if (store.autoIncrement) {
-                  console.log('Migrating weather_logs store...');
+                  DEV_LOG('Migrating weather_logs store...');
                   const data: WeatherLog[] = [];
                   store.openCursor().onsuccess = (e) => {
                       const cursor = (e.target as IDBRequest<IDBCursorWithValue>).result;
@@ -56,21 +57,21 @@ export class DatabaseService {
                               const newItem = { ...item, id: `${item.tripId}-${Date.now()}` };
                               newStore.add(newItem);
                           });
-                          console.log('weather_logs store migration complete.');
+                          DEV_LOG('weather_logs store migration complete.');
                       }
                   };
               }
           } else {
               const newStore = db.createObjectStore(DB_CONFIG.STORES.WEATHER_LOGS, { keyPath: 'id' });
               newStore.createIndex('tripId', 'tripId', { unique: false });
-              console.log(`'${DB_CONFIG.STORES.WEATHER_LOGS}' object store created.`);
+              DEV_LOG(`'${DB_CONFIG.STORES.WEATHER_LOGS}' object store created.`);
           }
           // ...existing code...
           // Non-destructive migration for fish_caught
           if (db.objectStoreNames.contains(DB_CONFIG.STORES.FISH_CAUGHT)) {
               const store = transaction.objectStore(DB_CONFIG.STORES.FISH_CAUGHT);
               if (store.autoIncrement) {
-                  console.log('Migrating fish_caught store...');
+                  DEV_LOG('Migrating fish_caught store...');
                   const data: FishCaught[] = [];
                   store.openCursor().onsuccess = (e) => {
                       const cursor = (e.target as IDBRequest<IDBCursorWithValue>).result;
@@ -85,38 +86,38 @@ export class DatabaseService {
                               const newItem = { ...item, id: `${item.tripId}-${Date.now()}` };
                               newStore.add(newItem);
                           });
-                          console.log('fish_caught store migration complete.');
+                          DEV_LOG('fish_caught store migration complete.');
                       }
                   };
               }
           } else {
               const newStore = db.createObjectStore(DB_CONFIG.STORES.FISH_CAUGHT, { keyPath: 'id' });
               newStore.createIndex('tripId', 'tripId', { unique: false });
-              console.log(`'${DB_CONFIG.STORES.FISH_CAUGHT}' object store created.`);
+              DEV_LOG(`'${DB_CONFIG.STORES.FISH_CAUGHT}' object store created.`);
           }
         };
 
         request.onsuccess = (event) => {
           this.db = (event.target as IDBOpenDBRequest).result;
           this.isInitialized = true;
-          console.log("Database initialized successfully.");
+          DEV_LOG("Database initialized successfully.");
           resolve();
         };
 
         request.onerror = (event) => {
           const error = (event.target as IDBOpenDBRequest).error;
-          console.error("Database initialization error:", error);
+          PROD_ERROR("Database initialization error:", error);
           // If error is a version error, attempt recovery
           if (!triedRecovery && error?.name === "VersionError") {
             triedRecovery = true;
-            console.warn("IndexedDB version mismatch detected. Attempting recovery by deleting database...");
+            PROD_WARN("IndexedDB version mismatch detected. Attempting recovery by deleting database...");
             const deleteRequest = indexedDB.deleteDatabase(DB_CONFIG.NAME);
             deleteRequest.onsuccess = () => {
-              console.log("Database deleted successfully. Retrying initialization...");
+              DEV_LOG("Database deleted successfully. Retrying initialization...");
               openDb();
             };
             deleteRequest.onerror = (e) => {
-              console.error("Failed to delete database during recovery:", (e.target as IDBOpenDBRequest).error);
+              PROD_ERROR("Failed to delete database during recovery:", (e.target as IDBOpenDBRequest).error);
               reject(
                 this.createDatabaseError(
                   "connection",
@@ -178,7 +179,7 @@ export class DatabaseService {
 
       request.onsuccess = () => {
         const id = request.result as number;
-        console.log("Trip created successfully with ID:", id);
+        DEV_LOG("Trip created successfully with ID:", id);
         resolve(id);
       };
 
@@ -187,7 +188,7 @@ export class DatabaseService {
           "transaction",
           `Failed to create trip: ${request.error?.message}`,
         );
-        console.error("Error creating trip:", error);
+        DEV_ERROR("Error creating trip:", error);
         reject(error);
       };
 
@@ -301,7 +302,7 @@ export class DatabaseService {
       const request = store.put(trip);
 
       request.onsuccess = () => {
-        console.log("Trip updated successfully:", trip.id);
+        DEV_LOG("Trip updated successfully:", trip.id);
         resolve();
       };
 
@@ -332,7 +333,7 @@ export class DatabaseService {
       );
 
       transaction.oncomplete = () => {
-        console.log("Trip and all associated data deleted successfully.");
+        DEV_LOG("Trip and all associated data deleted successfully.");
         resolve();
       };
 
@@ -398,7 +399,7 @@ export class DatabaseService {
       const request = store.add(weatherLogWithId);
 
       request.onsuccess = () => {
-        console.log("Weather log created successfully with ID:", newId);
+        DEV_LOG("Weather log created successfully with ID:", newId);
         resolve(newId);
       };
 
@@ -512,7 +513,7 @@ export class DatabaseService {
       const request = store.put(weatherLog);
 
       request.onsuccess = () => {
-        console.log("Weather log updated successfully:", weatherLog.id);
+        DEV_LOG("Weather log updated successfully:", weatherLog.id);
         resolve();
       };
 
@@ -541,7 +542,7 @@ export class DatabaseService {
       const request = store.delete(id);
 
       request.onsuccess = () => {
-        console.log("Weather log deleted successfully:", id);
+        DEV_LOG("Weather log deleted successfully:", id);
         resolve();
       };
 
@@ -575,7 +576,7 @@ export class DatabaseService {
       const request = store.add(fishCaughtWithId);
 
       request.onsuccess = () => {
-        console.log("Fish caught record created successfully with ID:", newId);
+        DEV_LOG("Fish caught record created successfully with ID:", newId);
         resolve(newId);
       };
 
@@ -689,7 +690,7 @@ export class DatabaseService {
       const request = store.put(fishCaught);
 
       request.onsuccess = () => {
-        console.log("Fish caught record updated successfully:", fishCaught.id);
+        DEV_LOG("Fish caught record updated successfully:", fishCaught.id);
         resolve();
       };
 
@@ -718,7 +719,7 @@ export class DatabaseService {
       const request = store.delete(id);
 
       request.onsuccess = () => {
-        console.log("Fish caught record deleted successfully:", id);
+        DEV_LOG("Fish caught record deleted successfully:", id);
         resolve();
       };
 
@@ -776,7 +777,7 @@ export class DatabaseService {
       );
 
       transaction.oncomplete = () => {
-        console.log("All data cleared successfully.");
+        DEV_LOG("All data cleared successfully.");
         resolve();
       };
 
@@ -804,7 +805,7 @@ export class DatabaseService {
       this.db = null;
       this.isInitialized = false;
       this.initPromise = null;
-      console.log("Database connection closed.");
+      DEV_LOG("Database connection closed.");
     }
   }
 

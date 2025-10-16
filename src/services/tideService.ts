@@ -49,7 +49,7 @@ function formatDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-function addDays(source: Date, amount: number): Date {
+export function addDays(source: Date, amount: number): Date {
   return new Date(Date.UTC(
     source.getUTCFullYear(),
     source.getUTCMonth(),

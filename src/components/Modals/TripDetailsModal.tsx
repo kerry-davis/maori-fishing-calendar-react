@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { firebaseDataService } from '../../services/firebaseDataService';
 import { databaseService } from '../../services/databaseService';
 import type { Trip, TripModalProps, FormValidation } from '../../types';
+import { DEV_LOG, PROD_ERROR } from '../../utils/loggingHelpers';
 
 /**
  * TripDetailsModal component for creating and editing trips
@@ -83,13 +84,13 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
 
       // If not found locally and user is authenticated, try Firebase as fallback
       if (!trip && user) {
-        console.log('Trip not found in local storage, trying Firebase...');
+        DEV_LOG('Trip not found in local storage, trying Firebase...');
         trip = await firebaseDataService.getTripById(id);
       }
 
       // Additional Firebase fallback for authenticated users
       if (!trip && user) {
-        console.log('Trip not found via ID mapping, trying direct Firebase lookup...');
+        DEV_LOG('Trip not found via ID mapping, trying direct Firebase lookup...');
 
         // First, try to get all trips and find the one with matching ID
         const allTrips = await firebaseDataService.getAllTrips();
@@ -100,13 +101,13 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
 
         // If still not found, try the new Firebase ID lookup method
         if (!trip) {
-          console.log('Searching for trip with ID:', id);
+          DEV_LOG('Searching for trip with ID:', id);
           // Try to find the Firebase document ID by searching through all trips
           const allFirebaseTrips = await firebaseDataService.getAllTrips();
           const matchingTrip = allFirebaseTrips.find(t => t.id === id);
 
           if (matchingTrip && matchingTrip.firebaseDocId) {
-            console.log('Found trip via search, trying direct Firebase lookup with doc ID:', matchingTrip.firebaseDocId);
+            DEV_LOG('Found trip via search, trying direct Firebase lookup with doc ID:', matchingTrip.firebaseDocId);
             trip = await firebaseDataService.getTripByFirebaseId(matchingTrip.firebaseDocId);
           }
         }
@@ -121,13 +122,13 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
           companions: trip.companions,
           notes: trip.notes
         });
-        console.log('Trip loaded successfully for editing:', trip.id);
+        DEV_LOG('Trip loaded successfully for editing:', trip.id);
       } else {
-        console.error('Trip not found in either local storage or Firebase:', id);
+        PROD_ERROR('Trip not found in either local storage or Firebase:', id);
         setError('Trip not found');
       }
     } catch (err) {
-      console.error('Error loading trip:', err);
+      PROD_ERROR('Error loading trip:', err);
       setError('Failed to load trip data');
     } finally {
       setIsLoading(false);
@@ -206,14 +207,14 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
 
           if (existingTrip && existingTrip.firebaseDocId) {
             // Use the direct Firebase document ID if available
-            console.log('Using direct Firebase document ID for update:', existingTrip.firebaseDocId);
+            DEV_LOG('Using direct Firebase document ID for update:', existingTrip.firebaseDocId);
             await firebaseDataService.updateTripWithFirebaseId(existingTrip.firebaseDocId, { id: tripId, ...formData });
           } else {
             // Fall back to the regular update method
             await firebaseDataService.updateTrip({ id: tripId, ...formData });
           }
         } catch (firebaseError) {
-          console.warn('Firebase update failed, but local update succeeded:', firebaseError);
+          DEV_LOG('Firebase update failed, but local update succeeded:', firebaseError);
         }
       } else {
         // Create new trip
@@ -228,7 +229,7 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
         onClose();
       }
     } catch (err) {
-      console.error('Error saving trip:', err);
+      PROD_ERROR('Error saving trip:', err);
       setError('Failed to save trip. Please try again.');
     } finally {
       setIsSaving(false);

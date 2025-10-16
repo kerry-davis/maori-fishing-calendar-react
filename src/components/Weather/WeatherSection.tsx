@@ -23,6 +23,7 @@ export const WeatherSection: React.FC<WeatherSectionProps> = ({
       <WeatherForecast 
         date={date}
         className="text-sm"
+        showTideLabel={false}
       />
     </div>
   );

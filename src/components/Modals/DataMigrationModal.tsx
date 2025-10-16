@@ -6,6 +6,7 @@ import { Button, ProgressBar } from '../UI';
 import { useAuth } from '../../contexts/AuthContext';
 import { browserZipImportService } from '../../services/browserZipImportService';
 import type { ZipImportResult } from '../../services/browserZipImportService';
+import { DEV_LOG, PROD_ERROR } from '../../utils/loggingHelpers';
 
 export interface DataMigrationModalProps {
   isOpen: boolean;
@@ -42,7 +43,7 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
   const checkMigrationStatus = useCallback(async () => {
     if (!user) return;
 
-    console.log('DataMigrationModal: checkMigrationStatus called for user:', user.uid);
+    DEV_LOG('DataMigrationModal: checkMigrationStatus called for user:', user.uid);
     setIsChecking(true);
     setError(null);
 
@@ -52,11 +53,11 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
         db.hasCompletedMigration()
       ]);
 
-      console.log('DataMigrationModal: Migration status - hasData:', hasData, 'completed:', completed);
+      DEV_LOG('DataMigrationModal: Migration status - hasData:', hasData, 'completed:', completed);
       setHasLocalData(hasData);
       setHasCompletedMigration(completed);
     } catch (err) {
-      console.error('DataMigrationModal: Error checking migration status:', err);
+      PROD_ERROR('DataMigrationModal: Error checking migration status:', err);
       setError('Failed to check migration status');
     } finally {
       setIsChecking(false);
@@ -64,7 +65,7 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
   }, [user, db]);
 
   useEffect(() => {
-    console.log('DataMigrationModal: isOpen changed to:', isOpen, 'user:', user);
+    DEV_LOG('DataMigrationModal: isOpen changed to:', isOpen, 'user:', user);
 
     if (isOpen && !initializedRef.current) {
       // Only initialize once when modal opens
@@ -73,17 +74,17 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
       // Check if this modal was opened for zip import
       const isForZipImport = sessionStorage.getItem('dataMigrationForZipImport') === 'true';
       if (isForZipImport) {
-        console.log('DataMigrationModal: Opened for zip import');
+        DEV_LOG('DataMigrationModal: Opened for zip import');
         setShowZipImport(true);
         sessionStorage.removeItem('dataMigrationForZipImport'); // Clear the flag
       }
 
       if (user) {
-        console.log('DataMigrationModal: Starting migration status check for authenticated user');
+        DEV_LOG('DataMigrationModal: Starting migration status check for authenticated user');
         checkMigrationStatus();
       } else {
         // Guest mode - no need to check migration status
-        console.log('DataMigrationModal: Guest mode - skipping migration status check');
+        DEV_LOG('DataMigrationModal: Guest mode - skipping migration status check');
         setIsChecking(false);
         setHasLocalData(false);
         setHasCompletedMigration(false);
@@ -107,9 +108,9 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
       // Notify parent component
       onMigrationComplete?.();
 
-      console.log('Migration completed successfully:', results);
+      DEV_LOG('Migration completed successfully:', results);
     } catch (err) {
-      console.error('Migration failed:', err);
+      PROD_ERROR('Migration failed:', err);
       setError(err instanceof Error ? err.message : 'Migration failed');
     } finally {
       setIsMigrating(false);
@@ -153,8 +154,8 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
     try {
       // Check if user is authenticated
       const isAuthenticated = user !== null;
-      console.log('Zip import - User authenticated:', isAuthenticated);
-      console.log('Processing file:', selectedFile.name);
+      DEV_LOG('Zip import - User authenticated:', isAuthenticated);
+      DEV_LOG('Processing file:', selectedFile.name);
 
   const results = await browserZipImportService.processZipFile(selectedFile, isAuthenticated, { strategy: importStrategy }, (p) => setZipProgress(p));
       setZipImportResults(results);
@@ -164,7 +165,7 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
         localStorage.setItem(`migrationComplete_${user.uid}`, 'true');
       }
     } catch (err) {
-      console.error('Zip import failed:', err);
+      PROD_ERROR('Zip import failed:', err);
       setError(err instanceof Error ? err.message : 'Zip import failed');
     } finally {
       setIsZipImporting(false);
@@ -382,7 +383,7 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
                 )}
 
                 {(() => {
-                  console.log('📊 Compression stats received:', zipImportResults.compressionStats);
+                  DEV_LOG('📊 Compression stats received:', zipImportResults.compressionStats);
                   return zipImportResults.compressionStats && zipImportResults.compressionStats.imagesProcessed > 0 ? (
                     <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--border-color)' }}>
                       <h5 className="text-sm font-medium mb-2" style={{ color: 'var(--primary-text)' }}>Image Compression:</h5>

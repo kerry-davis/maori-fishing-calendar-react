@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { Modal, ModalHeader, ModalBody } from "./Modal";
 import type { Trip, FishCaught, ModalProps } from "../../types";
 import { databaseService } from "../../services/databaseService";
+import { PROD_ERROR } from '../../utils/loggingHelpers';
 
 interface SearchResult {
   type: "trip" | "fish";
@@ -67,7 +68,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
       setTrips(tripsData);
       setFishCaught(fishData);
     } catch (err) {
-      console.error("Error loading search data:", err);
+      PROD_ERROR("Error loading search data:", err);
       setError("Failed to load data for search");
     } finally {
       setLoading(false);
