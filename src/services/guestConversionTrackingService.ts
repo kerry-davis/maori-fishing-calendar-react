@@ -1,6 +1,7 @@
 /**
  * Analytics for guest-to-authenticated conversion tracking
  */
+import { DEV_LOG } from '../utils/loggingHelpers';
 
 export interface GuestConversionAnalytics {
   guestSessions: number;
@@ -33,7 +34,7 @@ class GuestConversionTrackingService {
       
       this.saveAnalytics(analytics);
     } catch (error) {
-      console.warn('[analytics] Failed to record guest session:', error);
+      DEV_LOG('[analytics] Failed to record guest session:', error);
     }
   }
   
@@ -57,9 +58,9 @@ class GuestConversionTrackingService {
       }
       
       this.saveAnalytics(analytics);
-      console.log(`[analytics] Conversion recorded for user ${userId}`, analytics);
+      DEV_LOG(`[analytics] Conversion recorded for user ${userId}`, analytics);
     } catch (error) {
-      console.warn('[analytics] Failed to record conversion:', error);
+      DEV_LOG('[analytics] Failed to record conversion:', error);
     }
   }
   
@@ -73,7 +74,7 @@ class GuestConversionTrackingService {
         return JSON.parse(stored);
       }
     } catch (error) {
-      console.warn('[analytics] Failed to load analytics:', error);
+      DEV_LOG('[analytics] Failed to load analytics:', error);
     }
     
     // Return default analytics object
@@ -97,7 +98,7 @@ class GuestConversionTrackingService {
     try {
       localStorage.setItem(this.ANALYTICS_KEY, JSON.stringify(analytics));
     } catch (error) {
-      console.warn('[analytics] Failed to save analytics:', error);
+      DEV_LOG('[analytics] Failed to save analytics:', error);
     }
   }
   
@@ -108,7 +109,7 @@ class GuestConversionTrackingService {
     try {
       localStorage.removeItem(this.ANALYTICS_KEY);
     } catch (error) {
-      console.warn('[analytics] Failed to reset analytics:', error);
+      DEV_LOG('[analytics] Failed to reset analytics:', error);
     }
   }
   

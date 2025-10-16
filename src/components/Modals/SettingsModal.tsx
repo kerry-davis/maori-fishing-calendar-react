@@ -9,6 +9,7 @@ import { firebaseDataService } from '../../services/firebaseDataService';
 import { databaseService } from '../../services/databaseService';
 import type { ImportProgress } from '../../types';
 import { useLocationContext } from '../../contexts/LocationContext';
+import { DEV_LOG, PROD_ERROR } from '../../utils/loggingHelpers';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -48,7 +49,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       const filename = `fishing-calendar-data-${timestamp}.zip`;
       dataExportService.downloadBlob(blob, filename);
     } catch (error) {
-      console.error('Export error:', error);
+      PROD_ERROR('Export error:', error);
       setExportError(error instanceof Error ? error.message : 'Failed to export data');
     } finally {
       setIsExportingJSON(false);
@@ -72,7 +73,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       const filename = `fishing-calendar-csv-${timestamp}.zip`;
       dataExportService.downloadBlob(blob, filename);
     } catch (error) {
-      console.error('CSV export error:', error);
+      PROD_ERROR('CSV export error:', error);
       setExportError(error instanceof Error ? error.message : 'Failed to export CSV data');
     } finally {
       setIsExportingCSV(false);
@@ -113,7 +114,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       setShowImportConfirm(false);
       setPendingImportFile(null);
     } catch (error) {
-      console.error('Import error:', error);
+      PROD_ERROR('Import error:', error);
       setImportError(error instanceof Error ? error.message : 'Failed to import data');
     } finally {
       setIsImporting(false);
@@ -193,7 +194,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       setImportSuccess('All data has been deleted. The page will reload.');
       setTimeout(() => window.location.reload(), 1500);
     } catch (e) {
-      console.error('Failed to delete all data:', e);
+      PROD_ERROR('Failed to delete all data:', e);
       setImportError(e instanceof Error ? e.message : 'Failed to delete all data');
     } finally {
       setIsDeletingAll(false);
@@ -203,7 +204,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
   // Explicit debug to confirm rendering state if users report it not opening
   if (isOpen) {
-    try { console.debug('[SettingsModal] rendering open'); } catch (e) { /* ignore errors */ }
+    try { DEV_LOG('[SettingsModal] rendering open'); } catch (e) { /* ignore errors */ }
   }
 
   return (

@@ -1,5 +1,6 @@
 // Marea Tide Service - Global tide predictions API
 import type { TideForecast, TideCoverageStatus } from "./tideService";
+import { DEV_LOG } from '../utils/loggingHelpers';
 
 const MAREA_API_BASE = "https://api.marea.ooo/v2";
 const MARES_API_ENDPOINT = "/tides";
@@ -62,7 +63,7 @@ export class MareaTideProvider {
     url.searchParams.set('duration', '2880'); // 2 days (48 hours * 60 minutes)
     url.searchParams.set('interval', '60'); // 60-minute intervals
     
-    console.log(`Fetching tide data from Marea for coords: ${lat}, ${lon}`);
+    DEV_LOG(`Fetching tide data from Marea for coords: ${lat}, ${lon}`);
     
     try {
       // Add API key as query parameter to avoid CORS header issues

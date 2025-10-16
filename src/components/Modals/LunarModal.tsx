@@ -18,6 +18,7 @@ import {
 import type { BiteTime, UserLocation } from "../../types";
 import { BITE_QUALITY_COLORS } from "../../types";
 import { WeatherSection } from "../Weather/WeatherSection";
+import { DEV_LOG, PROD_ERROR } from '../../utils/loggingHelpers';
 
 export interface LunarModalProps {
   isOpen: boolean;
@@ -93,20 +94,20 @@ export const LunarModal: React.FC<LunarModalProps> = ({
         const dateStr = currentDate.toLocaleDateString("en-CA");
         const hasTrips = allTrips.some((trip) => trip.date === dateStr);
 
-        console.log(
+        DEV_LOG(
           `Checking trips for date ${dateStr}: found ${allTrips.length} total trips`,
         );
-        console.log(
+        DEV_LOG(
           "Trip dates:",
           allTrips.map((trip) => trip.date),
         );
-        console.log(`${hasTrips ? "Has" : "No"} trips for this date`);
+        DEV_LOG(`${hasTrips ? "Has" : "No"} trips for this date`);
 
         if (isMounted) {
           setHasTripsForDate(hasTrips);
         }
       } catch (error) {
-        console.error("Error checking trips for date:", error);
+        PROD_ERROR("Error checking trips for date:", error);
         if (isMounted) {
           setHasTripsForDate(false);
         }
@@ -152,7 +153,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
         userLocation.lon,
       );
     } catch (error) {
-      console.error("Error calculating bite times:", error);
+      PROD_ERROR("Error calculating bite times:", error);
       return null;
     }
   }, [currentDate, userLocation]);
@@ -164,7 +165,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
     try {
       return getSunMoonTimes(currentDate, userLocation);
     } catch (error) {
-      console.error("Error calculating sun/moon times:", error);
+      PROD_ERROR("Error calculating sun/moon times:", error);
       return null;
     }
   }, [currentDate, userLocation]);
@@ -188,7 +189,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
     try {
       await requestLocation();
     } catch (error) {
-      console.error("Location request failed:", error);
+      PROD_ERROR("Location request failed:", error);
       // Error handling could be improved with user feedback
     } finally {
       setIsRequestingLocation(false);
@@ -282,7 +283,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
           setShowSuggestions(suggestions.length > 0);
           setSelectedSuggestionIndex(-1);
         } catch (error) {
-          console.error("Location suggestions error:", error);
+          PROD_ERROR("Location suggestions error:", error);
           setLocationSuggestions([]);
           setShowSuggestions(false);
         } finally {
