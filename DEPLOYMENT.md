@@ -99,7 +99,42 @@ dist/
 
 ## 🌐 Deployment Options
 
-### Static Hosting Services
+### Cloudflare Pages (Primary)
+
+The project is configured to deploy to Cloudflare Pages via GitHub Actions.
+
+#### Prerequisites
+- GitHub repository
+- Cloudflare account with Pages enabled
+- Set up the following GitHub Actions secrets:
+  - `CLOUDFLARE_API_TOKEN`: Your Cloudflare API token
+  - `CLOUDFLARE_ACCOUNT_ID`: Your Cloudflare Account ID
+  - `CLOUDFLARE_PROJECT_NAME`: Your Cloudflare Pages project name
+  - All Firebase configuration secrets (VITE_FIREBASE_*)
+  - `NIWA_API_KEY`: NIWA API key for tide data (server-side only)
+
+#### Automatic Deployment
+Deployments are handled automatically by `.github/workflows/deploy-cloudflare-pages.yml`:
+- **Preview Deployments**: Created automatically for all pull requests
+- **Production Deployments**: Created when pushing to main branch
+
+#### Manual Deployment (if needed)
+```bash
+# Install Wrangler CLI
+npm install -g @cloudflare/wrangler
+
+# Build the project
+npm run build
+
+# Deploy
+wrangler pages deploy dist --project-name your-project-name
+```
+
+#### Configuration Files
+- `functions/api/niwa-tides.ts`: Cloudflare Pages Function for NIWA tide API proxy
+- `public/_redirects`: SPA routing configuration for Cloudflare Pages
+
+### Alternative Static Hosting Services
 
 #### Netlify
 ```bash
@@ -111,15 +146,6 @@ dist
 
 # Redirects for SPA (create _redirects file)
 echo "/*    /index.html   200" > dist/_redirects
-```
-
-#### Vercel
-```bash
-# Install Vercel CLI
-npm i -g vercel
-
-# Deploy
-vercel --prod
 ```
 
 #### GitHub Pages
