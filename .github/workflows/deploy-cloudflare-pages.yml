@@ -20,6 +20,9 @@ jobs:
         run: npm ci
 
       - name: Build project
+        # Note: NIWA_API_KEY is intentionally excluded from the build environment.
+        # It is injected only into Cloudflare Pages Functions via wrangler.toml,
+        # keeping the API key server-side only and away from client-side code.
         run: npm run build
         env:
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
