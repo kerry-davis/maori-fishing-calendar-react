@@ -9,8 +9,7 @@ const logError = (msg: string, err?: any) => {
   else console.error(`[NIWA-PROXY] ❌ ${msg}`);
 };
 
-export default async function handler(request: Request, context: any) {
-  const env = context.env || {};
+export async function onRequest({ request, env }: { request: Request; env: any }) {
 
   // Create response with CORS headers
   const createResponse = (status: number, data: any) => {

@@ -109,9 +109,13 @@ The project is configured to deploy to Cloudflare Pages via GitHub Actions.
 - Set up the following GitHub Actions secrets:
   - `CLOUDFLARE_API_TOKEN`: Your Cloudflare API token
   - `CLOUDFLARE_ACCOUNT_ID`: Your Cloudflare Account ID
-  - `CLOUDFLARE_PROJECT_NAME`: Your Cloudflare Pages project name
-  - All Firebase configuration secrets (VITE_FIREBASE_*)
-  - `NIWA_API_KEY`: NIWA API key for tide data (server-side only)
+  - `CLOUDFLARE_PAGES_PROJECT`: Your Cloudflare Pages project name
+  - `VITE_FIREBASE_API_KEY`: Firebase API key
+  - `VITE_FIREBASE_AUTH_DOMAIN`: Firebase auth domain
+  - `VITE_FIREBASE_PROJECT_ID`: Firebase project ID
+  - `VITE_FIREBASE_STORAGE_BUCKET`: Firebase storage bucket
+  - `VITE_FIREBASE_MESSAGING_SENDER_ID`: Firebase messaging sender ID
+  - `VITE_FIREBASE_APP_ID`: Firebase app ID
 
 #### Automatic Deployment
 Deployments are handled automatically by `.github/workflows/deploy-cloudflare-pages.yml`:
