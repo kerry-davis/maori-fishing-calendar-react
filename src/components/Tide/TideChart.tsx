@@ -112,7 +112,7 @@ export const TideChart: React.FC<TideChartProps> = ({
         },
         ticks: {
           maxRotation: 0,
-          color: "var(--muted-text, #64748b)",
+          color: "#9ca3af",
           font: {
             size: 11,
           },
@@ -125,7 +125,7 @@ export const TideChart: React.FC<TideChartProps> = ({
         },
         ticks: {
           maxTicksLimit: 4,
-          color: "var(--muted-text, #64748b)",
+          color: "#9ca3af",
           font: {
             size: 11,
           },

@@ -17,7 +17,7 @@ export const WeatherSection: React.FC<WeatherSectionProps> = ({
 }) => {
   return (
     <div className={`border-t dark:border-gray-700 pt-4 mb-4 ${className}`}>
-      <h4 className="font-semibold text-lg mb-3 text-gray-900 dark:text-gray-100">
+      <h4 className="form-label text-lg mb-3">
         Weather Forecast
       </h4>
       <WeatherForecast 
