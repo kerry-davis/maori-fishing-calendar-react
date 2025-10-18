@@ -1,0 +1,65 @@
+name: Cleanup extra GitHub environments # validator refresh
+
+on:
+  workflow_dispatch:
+    inputs:
+      keep:
+        description: "Comma-separated list of environments to keep (default: Production,Preview)"
+        required: false
+
+permissions:
+  deployments: write
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete non-canonical environments
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            const core = require('@actions/core');
+
+            const keepInput = core.getInput('keep') || 'Production,Preview';
+            const keep = new Set(keepInput.split(',').map((s) => s.trim()));
+
+            core.info(`Will keep environments: ${Array.from(keep).join(', ')}`);
+
+            try {
+              const envs = await github.request('GET /repos/{owner}/{repo}/environments', {
+                owner,
+                repo,
+                headers: { 'X-GitHub-Api-Version': '2022-11-28' },
+              });
+
+              const environments = envs.data.environments || [];
+              if (!environments.length) {
+                core.info('No environments found');
+                return;
+              }
+
+              for (const env of environments) {
+                if (keep.has(env.name)) {
+                  core.info(`Keeping environment: ${env.name}`);
+                  continue;
+                }
+
+                core.info(`Deleting environment: ${env.name}`);
+                try {
+                  await github.request('DELETE /repos/{owner}/{repo}/environments/{environment_name}', {
+                    owner,
+                    repo,
+                    environment_name: env.name,
+                    headers: { 'X-GitHub-Api-Version': '2022-11-28' },
+                  });
+                  core.info(`✅ Deleted: ${env.name}`);
+                } catch (error) {
+                  core.warning(`Failed to delete ${env.name}: ${error.message}`);
+                }
+              }
+            } catch (error) {
+              core.setFailed(`Environment cleanup failed: ${error.message}`);
+            }

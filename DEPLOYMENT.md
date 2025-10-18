@@ -99,7 +99,50 @@ dist/
 
 ## 🌐 Deployment Options
 
-### Static Hosting Services
+### Cloudflare Pages (Primary)
+
+The project is configured to deploy to Cloudflare Pages via GitHub Actions.
+
+#### Prerequisites
+- GitHub repository
+- Cloudflare account with Pages enabled
+- Set up the following GitHub Actions secrets:
+  - **Cloudflare Deployment**
+    - `CLOUDFLARE_API_TOKEN`: Your Cloudflare API token
+    - `CLOUDFLARE_ACCOUNT_ID`: Your Cloudflare Account ID
+    - `CLOUDFLARE_PAGES_PROJECT`: Your Cloudflare Pages project name
+  - **Firebase Configuration (Client-side)**
+    - `VITE_FIREBASE_API_KEY`: Firebase API key
+    - `VITE_FIREBASE_AUTH_DOMAIN`: Firebase auth domain
+    - `VITE_FIREBASE_PROJECT_ID`: Firebase project ID
+    - `VITE_FIREBASE_STORAGE_BUCKET`: Firebase storage bucket
+    - `VITE_FIREBASE_MESSAGING_SENDER_ID`: Firebase messaging sender ID
+    - `VITE_FIREBASE_APP_ID`: Firebase app ID
+  - **NIWA API Configuration (Server-side only)**
+    - `NIWA_API_KEY`: NIWA API key for tide data (injected only into Cloudflare Pages Functions, not available to client code)
+
+#### Automatic Deployment
+Deployments are handled automatically by `.github/workflows/deploy-cloudflare-pages.yml`:
+- **Preview Deployments**: Created automatically for all pull requests
+- **Production Deployments**: Created when pushing to main branch
+
+#### Manual Deployment (if needed)
+```bash
+# Install Wrangler CLI
+npm install -g @cloudflare/wrangler
+
+# Build the project
+npm run build
+
+# Deploy
+wrangler pages deploy dist --project-name your-project-name
+```
+
+#### Configuration Files
+- `functions/api/niwa-tides.ts`: Cloudflare Pages Function for NIWA tide API proxy
+- `public/_redirects`: SPA routing configuration for Cloudflare Pages
+
+### Alternative Static Hosting Services
 
 #### Netlify
 ```bash
@@ -111,15 +154,6 @@ dist
 
 # Redirects for SPA (create _redirects file)
 echo "/*    /index.html   200" > dist/_redirects
-```
-
-#### Vercel
-```bash
-# Install Vercel CLI
-npm i -g vercel
-
-# Deploy
-vercel --prod
 ```
 
 #### GitHub Pages

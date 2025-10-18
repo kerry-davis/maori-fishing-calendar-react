@@ -1,0 +1,3 @@
+# Local Cloudflare Pages Functions secrets
+# Copy to .dev.vars (never commit your real key)
+NIWA_API_KEY=your_niwa_api_key_here
