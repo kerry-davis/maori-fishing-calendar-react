@@ -1,8 +1,12 @@
 name: Deploy to Cloudflare Pages
 
+concurrency:
+  group: deploy-pages-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
-    branches: [main, ops/migrate-to-cloudflare-pages]
+    branches: [main]
   pull_request:
     branches: [main]
 
