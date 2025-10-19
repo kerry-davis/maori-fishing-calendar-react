@@ -99,7 +99,60 @@ dist/
 
 ## 🌐 Deployment Options
 
-### Static Hosting Services
+### Cloudflare Pages (Primary)
+
+The project is configured to deploy to Cloudflare Pages via GitHub Actions.
+
+#### Prerequisites
+- GitHub repository
+- Cloudflare account with Pages enabled
+- Set up the following GitHub Actions secrets:
+  - **Cloudflare Deployment**
+    - `CLOUDFLARE_API_TOKEN`: Your Cloudflare API token
+    - `CLOUDFLARE_ACCOUNT_ID`: Your Cloudflare Account ID
+    - `CLOUDFLARE_PAGES_PROJECT`: Your Cloudflare Pages project name
+  - **Firebase Configuration (Client-side)**
+    - `VITE_FIREBASE_API_KEY`: Firebase API key
+    - `VITE_FIREBASE_AUTH_DOMAIN`: Firebase auth domain
+    - `VITE_FIREBASE_PROJECT_ID`: Firebase project ID
+    - `VITE_FIREBASE_STORAGE_BUCKET`: Firebase storage bucket
+    - `VITE_FIREBASE_MESSAGING_SENDER_ID`: Firebase messaging sender ID
+    - `VITE_FIREBASE_APP_ID`: Firebase app ID
+- Configure in Cloudflare Pages project (not GitHub secrets):
+  - `NIWA_API_KEY`: Used only by Pages Functions at runtime
+
+#### Automatic Deployment
+Deployments are handled automatically by `.github/workflows/deploy-cloudflare-pages.yml`:
+- **Preview Deployments**: Created automatically for pull requests
+- **Production Deployments**: Created when pushing to `main`
+- Concurrency prevents duplicate runs on the same ref
+
+#### Environments: Production vs Preview
+- **Production**: Root domain `https://maori-fishing-calendar-react.pages.dev` (and any custom domains). Updated only from the `main` branch.
+- **Preview**: Ephemeral hash subdomains like `https://<hash>.maori-fishing-calendar-react.pages.dev` for each PR.
+- Ensure `NIWA_API_KEY` is configured in Cloudflare Pages → Project → Settings → Environment variables for BOTH environments (Preview and Production).
+- The app must call the proxy via `VITE_NIWA_PROXY_URL=/api/niwa-tides` (set in the workflow build env); direct browser calls to `api.niwa.co.nz` are blocked.
+
+Quick test URLs:
+- Preview example: `https://<hash>.maori-fishing-calendar-react.pages.dev/api/niwa-tides?lat=-36.8485&lng=174.7633&numberOfDays=1`
+- Production: `https://maori-fishing-calendar-react.pages.dev/api/niwa-tides?lat=-36.8485&lng=174.7633&numberOfDays=1`
+
+#### Manual Deployment (if needed)
+ ```bash
+ # Build the project
+ npm run build
+
+ # Deploy via Wrangler (requires CLOUDFLARE_API_TOKEN in environment)
+ # Functions are auto-detected from the repository "functions/" directory
+ npx wrangler pages deploy dist --project-name maori-fishing-calendar-react
+ ```
+
+#### Configuration Files
+- `wrangler.toml`: `pages_build_output_dir = "dist"`, `compatibility_date` pinned
+- `functions/api/niwa-tides.ts`: Cloudflare Pages Function for NIWA tide API proxy
+- `public/_redirects`: SPA routing configuration for Cloudflare Pages
+
+### Alternative Static Hosting Services
 
 #### Netlify
 ```bash
@@ -111,15 +164,6 @@ dist
 
 # Redirects for SPA (create _redirects file)
 echo "/*    /index.html   200" > dist/_redirects
-```
-
-#### Vercel
-```bash
-# Install Vercel CLI
-npm i -g vercel
-
-# Deploy
-vercel --prod
 ```
 
 #### GitHub Pages

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:cf": "wrangler pages dev --port 8788 --ip 127.0.0.1",
     "build": "tsc -b && vite build",
     "build:prod": "./scripts/build-production.sh",
     "build:skip-types": "vite build --config vite.config.production.ts",
@@ -53,6 +54,7 @@
     "typescript-eslint": "^8.39.1",
     "vite": "^7.1.2",
     "vite-plugin-pwa": "^1.0.3",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "wrangler": "^4.43.0"
   }
 }
