@@ -52,15 +52,17 @@ jobs:
           name: build
           path: dist
 
-      - name: Deploy to Cloudflare Pages (Preview)
-        uses: cloudflare/pages-action@v1
+      - name: Deploy to Cloudflare Pages (Preview via Wrangler)
+        uses: cloudflare/wrangler-action@v3
         with:
-          wranglerVersion: '3'
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: ${{ secrets.CLOUDFLARE_PAGES_PROJECT }}
-          directory: dist
-          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          command: >-
+            pages deploy dist
+            --project-name ${{ secrets.CLOUDFLARE_PAGES_PROJECT }}
+            --branch ${{ github.head_ref }}
+            --commit-hash ${{ github.sha }}
+            --functions functions
 
   deploy-production:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -77,12 +79,14 @@ jobs:
           name: build
           path: dist
 
-      - name: Deploy to Cloudflare Pages (Production)
-        uses: cloudflare/pages-action@v1
+      - name: Deploy to Cloudflare Pages (Production via Wrangler)
+        uses: cloudflare/wrangler-action@v3
         with:
-          wranglerVersion: '3'
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: ${{ secrets.CLOUDFLARE_PAGES_PROJECT }}
-          directory: dist
-          branch: main
+          command: >-
+            pages deploy dist
+            --project-name ${{ secrets.CLOUDFLARE_PAGES_PROJECT }}
+            --branch main
+            --commit-hash ${{ github.sha }}
+            --functions functions
