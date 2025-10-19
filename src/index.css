@@ -2,7 +2,8 @@
 
 /* CSS Variables for Theme System */
 :root {
-  /* Light theme variables */
+    /* Light theme variables */
+    --axis-label-color: #64748b;
   --primary-background: #ffffff;
   --secondary-background: #f9fafb;
   --tertiary-background: #f3f4f6;
@@ -59,41 +60,42 @@ body {
 /* Dark theme variables - support both body.dark-theme and html.dark */
 body.dark-theme,
 html.dark body {
-  --primary-background: #111827 !important;
-  --secondary-background: #1f2937 !important;
-  --tertiary-background: #374151 !important;
-  --primary-text: #f9fafb !important;
-  --secondary-text: #d1d5db !important;
-  --tertiary-text: #9ca3af !important;
-  --accent-color: #34d399 !important;
-  --accent-hover: #10b981 !important;
-  --border-color: #374151 !important;
-  --border-focus: #4b5563 !important;
-  --card-background: #1f2937 !important;
-  --card-border: #374151 !important;
-  --button-primary: #34d399 !important;
-  --button-primary-hover: #10b981 !important;
-  --button-secondary: #6b7280 !important;
-  --button-secondary-hover: #9ca3af !important;
-  --input-background: #374151 !important;
-  --input-border: #4b5563 !important;
-  --input-focus: #34d399 !important;
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3) !important;
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3) !important;
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3) !important;
-  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.3), 0 8px 10px -6px rgb(0 0 0 / 0.3) !important;
-  /* Fishing quality colors - same for both themes */
-  --quality-excellent: #10b981 !important;
-  --quality-good: #3b82f6 !important;
-  --quality-average: #f59e0b !important;
-  --quality-poor: #ef4444 !important;
-  /* Error and success colors - dark theme */
-  --error-background: #7f1d1d !important;
-  --error-border: #991b1b !important;
-  --error-text: #fca5a5 !important;
-  --success-background: #14532d !important;
-  --success-border: #166534 !important;
-  --success-text: #86efac !important;
+    --primary-background: #111827 !important;
+    --secondary-background: #1f2937 !important;
+    --tertiary-background: #374151 !important;
+    --primary-text: #f9fafb !important;
+    --secondary-text: #d1d5db !important;
+    --tertiary-text: #9ca3af !important;
+    --accent-color: #34d399 !important;
+    --accent-hover: #10b981 !important;
+    --border-color: #374151 !important;
+    --border-focus: #4b5563 !important;
+    --card-background: #1f2937 !important;
+    --card-border: #374151 !important;
+    --button-primary: #34d399 !important;
+    --button-primary-hover: #10b981 !important;
+    --button-secondary: #6b7280 !important;
+    --button-secondary-hover: #9ca3af !important;
+    --input-background: #374151 !important;
+    --input-border: #4b5563 !important;
+    --input-focus: #34d399 !important;
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3) !important;
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3) !important;
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3) !important;
+    --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.3), 0 8px 10px -6px rgb(0 0 0 / 0.3) !important;
+    /* Fishing quality colors - same for both themes */
+    --quality-excellent: #10b981 !important;
+    --quality-good: #3b82f6 !important;
+    --quality-average: #f59e0b !important;
+    --quality-poor: #ef4444 !important;
+    /* Error and success colors - dark theme */
+    --error-background: #7f1d1d !important;
+    --error-border: #991b1b !important;
+    --error-text: #fca5a5 !important;
+    --success-background: #14532d !important;
+    --success-border: #166534 !important;
+    --success-text: #86efac !important;
+    --axis-label-color: #e0e7ef !important;
 }
 
 /* Ensure body element always uses CSS variables with highest specificity */
@@ -123,7 +125,7 @@ body {
     }
     h2 {
         color: var(--primary-text) !important;
-        font-weight: 600;
+        --axis-label-color: #f3f4fa !important;
         letter-spacing: -0.025em;
     }
 }

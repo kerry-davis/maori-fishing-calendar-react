@@ -100,6 +100,8 @@ export const WeatherForecast: React.FC<WeatherForecastProps> = ({
         titleClassName="font-semibold text-sm mb-1"
         bodyClassName="text-sm"
         showShortLabel={showTideLabel}
+        axisColor="rgba(255, 255, 255, 0.92)"
+        gridColor="rgba(255, 255, 255, 0.12)"
       />
     </div>
   );

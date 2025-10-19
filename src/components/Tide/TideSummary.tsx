@@ -26,6 +26,8 @@ interface TideSummaryProps {
   showProviderInfo?: boolean;
   showShortLabel?: boolean;
   instanceId?: string;
+  axisColor?: string;
+  gridColor?: string;
 }
 
 export const TideSummary: React.FC<TideSummaryProps> = ({
@@ -40,6 +42,8 @@ export const TideSummary: React.FC<TideSummaryProps> = ({
   showProviderInfo = true,
   showShortLabel = true,
   instanceId,
+  axisColor,
+  gridColor,
 }) => {
   const effectiveShowShortLabel = instanceId === "trip-modal" ? false : showShortLabel;
   const { tide, loading, error, refetch, providerUsed } = useTideData(date);
@@ -114,6 +118,8 @@ export const TideSummary: React.FC<TideSummaryProps> = ({
                   units={tide.units}
                   timezone={tide.timezone}
                   utcOffsetSeconds={tide.utcOffsetSeconds}
+                  axisColor={axisColor}
+                  gridColor={gridColor}
                 />
               </div>
             )}

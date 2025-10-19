@@ -335,6 +335,8 @@ export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
               retryButtonClassName="mt-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
               loadingMessage="Loading tide forecast…"
               emptyMessage="Tide data unavailable."
+              axisColor="rgba(255, 255, 255, 0.92)"
+              gridColor="rgba(255, 255, 255, 0.12)"
             />
 
             <button
