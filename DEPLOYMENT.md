@@ -118,8 +118,8 @@ The project is configured to deploy to Cloudflare Pages via GitHub Actions.
     - `VITE_FIREBASE_STORAGE_BUCKET`: Firebase storage bucket
     - `VITE_FIREBASE_MESSAGING_SENDER_ID`: Firebase messaging sender ID
     - `VITE_FIREBASE_APP_ID`: Firebase app ID
-  - **NIWA API Configuration (Server-side only)**
-    - `NIWA_API_KEY`: NIWA API key for tide data (injected only into Cloudflare Pages Functions, not available to client code)
+  - **NIWA API Configuration (GitHub secrets)**
+    - `NIWA_API_KEY`: NIWA API key for tide data (included in build environment from GitHub secrets)
 
 #### Automatic Deployment
 Deployments are handled automatically by `.github/workflows/deploy-cloudflare-pages.yml`:
@@ -127,16 +127,13 @@ Deployments are handled automatically by `.github/workflows/deploy-cloudflare-pa
 - **Production Deployments**: Created when pushing to main branch
 
 #### Manual Deployment (if needed)
-```bash
-# Install Wrangler CLI
-npm install -g @cloudflare/wrangler
+ ```bash
+ # Build the project
+ npm run build
 
-# Build the project
-npm run build
-
-# Deploy
-wrangler pages deploy dist --project-name your-project-name
-```
+ # Deploy via Wrangler (requires CLOUDFLARE_API_TOKEN in environment)
+ npx wrangler pages deploy dist --project-name maori-fishing-calendar-react
+ ```
 
 #### Configuration Files
 - `functions/api/niwa-tides.ts`: Cloudflare Pages Function for NIWA tide API proxy

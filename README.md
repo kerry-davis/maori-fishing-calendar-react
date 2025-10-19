@@ -188,12 +188,34 @@ Add new tests colocated in `src/test/`. Prefer fast, deterministic tests; mock F
 
 ---
 ## 10. Deployment
-See `DEPLOYMENT.md` & `DEPLOYMENT_CHECKLIST.md`.
-High-level:
-1. Ensure secrets configured (Firebase vars + `VITE_KEY_PEPPER`).
-2. `npm run build:prod`
-3. Deploy `dist/` to static hosting (Firebase Hosting / Netlify / Vercel).
-4. Verify PWA install & service worker update path.
+
+### 10.1 Cloudflare Pages (Primary Deployment)
+The application is configured for deployment to Cloudflare Pages via GitHub Actions. This is the recommended deployment method.
+
+#### Quick Setup:
+1. **Create Cloudflare Pages project** (manual setup, no Git integration)
+2. **Add GitHub secrets** (see DEPLOYMENT.md for complete list)
+3. **Push to branch** → Automatic deployment!
+
+#### Live URL:
+`https://maori-fishing-calendar-react.pages.dev`
+
+#### GitHub Actions Workflow:
+- **File**: `.github/workflows/deploy-cloudflare-pages.yml`
+- **Triggers**: Push to main/ops/migrate-to-cloudflare-pages branches
+- **Features**: Preview deployments for PRs, production deployments for main
+
+#### Manual Deployment (if needed):
+```bash
+# Build locally
+npm run build
+
+# Deploy via Wrangler (requires CLOUDFLARE_API_TOKEN)
+npx wrangler pages deploy dist --project-name maori-fishing-calendar-react
+```
+
+### 10.2 Alternative Deployment Options
+See `DEPLOYMENT.md` for other hosting options (Netlify, GitHub Pages, traditional servers).
 
 ### 10.1 Firebase Storage CORS (for encrypted photos)
 If you use Firebase Storage for photo binary data, configure CORS to allow your app origins. Example `cors.json` used in this repo:
@@ -205,7 +227,7 @@ If you use Firebase Storage for photo binary data, configure CORS to allow your 
       "http://localhost:5173",
       "https://maori-fishing-calendar-react.web.app",
       "https://maori-fishing-calendar-react.firebaseapp.com",
-      "https://maori-fishing-calendar-react.vercel.app"
+      "https://maori-fishing-calendar-react.pages.dev"
     ],
     "method": ["GET", "HEAD", "OPTIONS", "POST", "PUT", "DELETE"],
     "responseHeader": ["*"],
