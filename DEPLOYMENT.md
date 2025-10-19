@@ -127,6 +127,16 @@ Deployments are handled automatically by `.github/workflows/deploy-cloudflare-pa
 - **Production Deployments**: Created when pushing to `main`
 - Concurrency prevents duplicate runs on the same ref
 
+#### Environments: Production vs Preview
+- **Production**: Root domain `https://maori-fishing-calendar-react.pages.dev` (and any custom domains). Updated only from the `main` branch.
+- **Preview**: Ephemeral hash subdomains like `https://<hash>.maori-fishing-calendar-react.pages.dev` for each PR.
+- Ensure `NIWA_API_KEY` is configured in Cloudflare Pages → Project → Settings → Environment variables for BOTH environments (Preview and Production).
+- The app must call the proxy via `VITE_NIWA_PROXY_URL=/api/niwa-tides` (set in the workflow build env); direct browser calls to `api.niwa.co.nz` are blocked.
+
+Quick test URLs:
+- Preview example: `https://<hash>.maori-fishing-calendar-react.pages.dev/api/niwa-tides?lat=-36.8485&lng=174.7633&numberOfDays=1`
+- Production: `https://maori-fishing-calendar-react.pages.dev/api/niwa-tides?lat=-36.8485&lng=174.7633&numberOfDays=1`
+
 #### Manual Deployment (if needed)
  ```bash
  # Build the project
