@@ -9,7 +9,12 @@ const logError = (msg: string, err?: any) => {
   else console.error(`[NIWA-PROXY] ❌ ${msg}`);
 };
 
-export async function onRequest({ request, env }: { request: Request; env: any }) {
+// Environment interface for Cloudflare Pages Functions
+interface Env {
+  NIWA_API_KEY: string;
+}
+
+export async function onRequest({ request, env }: { request: Request; env: Env }) {
 
   // Create response with CORS headers
   const createResponse = (status: number, data: any) => {
@@ -99,12 +104,41 @@ export async function onRequest({ request, env }: { request: Request; env: any }
     if (!niwaResponse.ok) {
       logError(`NIWA API error: ${niwaResponse.status} ${niwaResponse.statusText}`);
       logError(`Error details: ${rawBody}`);
-      
-      // Sanitize error details for client consumption
-      const sanitizedErrorDetails = rawBody.length > 500 
-        ? rawBody.substring(0, 500) + '...' 
+
+      const sanitizedErrorDetails = rawBody.length > 500
+        ? rawBody.substring(0, 500) + '...'
         : rawBody;
-      
+
+      const trimmed = rawBody.trim();
+      const lower = trimmed.toLowerCase();
+
+      // Special-case authentication errors to preserve numeric status in payload
+      if (niwaResponse.status === 401 || lower.includes('unauthorized')) {
+        return createResponse(niwaResponse.status, {
+          error: `NIWA API error: ${niwaResponse.statusText}`,
+          status: niwaResponse.status,
+          errorType: 'authentication_error',
+          details: sanitizedErrorDetails,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // Non-JSON error bodies: classify and return invalid_format status string
+      if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+        let errorType: string = 'unknown';
+        if (lower.includes('html')) errorType = 'html_response';
+        else if (lower.includes('error')) errorType = 'plain_text_error';
+
+        return createResponse(niwaResponse.status, {
+          error: `NIWA API error: ${niwaResponse.statusText}`,
+          status: 'invalid_format',
+          errorType,
+          details: sanitizedErrorDetails,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // Default: non-OK JSON body, keep numeric status field
       return createResponse(niwaResponse.status, {
         error: `NIWA API error: ${niwaResponse.statusText}`,
         status: niwaResponse.status,
