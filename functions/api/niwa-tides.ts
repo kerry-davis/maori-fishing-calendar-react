@@ -51,13 +51,6 @@ export async function onRequest({ request, env }: { request: Request; env: any }
   try {
     const NIWA_API_BASE = 'https://api.niwa.co.nz/tides/data';
 
-    // For now, return a message that NIWA integration needs alternative setup
-    // Since Cloudflare Pages Functions aren't available in this project
-    return createResponse(500, {
-      error: 'NIWA API not available in this environment',
-      message: 'Please use Open-Meteo as fallback or configure alternative API access'
-    });
-
     // Parse query parameters from request URL
     const url = new URL(request.url);
     const params = new URLSearchParams(url.search);
@@ -81,9 +74,16 @@ export async function onRequest({ request, env }: { request: Request; env: any }
     }
     
     // Add API key to parameters (override if provided)
-    niwaUrl.searchParams.set('apikey', NIWA_API_KEY);
+    if (!env.NIWA_API_KEY) {
+      logError('NIWA_API_KEY environment variable not configured');
+      return createResponse(500, {
+        error: 'API configuration error',
+        message: 'NIWA API key not configured'
+      });
+    }
+    niwaUrl.searchParams.set('apikey', env.NIWA_API_KEY);
 
-    logRequest(`Proxying NIWA request to: ${niwaUrl.toString().replace(NIWA_API_KEY, '***')}`);
+    logRequest(`Proxying NIWA request to: ${niwaUrl.toString().replace(env.NIWA_API_KEY, '***')}`);
 
     // Make request to NIWA API
     const niwaResponse = await fetch(niwaUrl.toString(), {
@@ -150,15 +150,18 @@ export async function onRequest({ request, env }: { request: Request; env: any }
     let data;
     try {
       data = JSON.parse(rawBody);
-    } catch (parseError) {
+    } catch (parseError: unknown) {
       logError('Failed to parse NIWA JSON response');
-      logError(`Parse error: ${parseError instanceof Error ? parseError.message : 'Unknown parsing error'}`);
+      const errorMessage = parseError instanceof Error
+        ? parseError.message
+        : 'Unknown parsing error';
+      logError(`Parse error: ${errorMessage}`);
       logError(`Raw response (first 300 chars): ${rawBody.substring(0, 300)}`);
-      
+
       return createResponse(502, {
         error: 'Failed to parse NIWA API response',
         status: 'parse_error',
-        parseError: parseError instanceof Error ? parseError.message : 'Unknown parsing error',
+        parseError: errorMessage,
         details: rawBody.length > 300 ? rawBody.substring(0, 300) + '...' : rawBody,
         timestamp: new Date().toISOString()
       });
