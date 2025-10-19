@@ -1,18 +1,16 @@
-name: Promote Vercel to GitHub Production
+name: Promote Vercel to GitHub Production (disabled)
 
 on:
-  push:
-    branches: [ "main" ]
   workflow_dispatch:
     inputs:
       sha:
-        description: "Commit SHA to mirror (optional; defaults to current)"
+        description: "Commit SHA to mirror (manual only)"
         required: false
       env_exact:
-        description: "Exact Vercel environment name to mirror (e.g., 'Production – maori-fishing-calendar-react')"
+        description: "Exact Vercel environment name (manual only)"
         required: false
       env_contains:
-        description: "Substring that the Vercel environment name should contain (e.g., 'maori-fishing-calendar-react')"
+        description: "Substring the Vercel env should contain (manual only)"
         required: false
 
 permissions:

@@ -1,15 +1,13 @@
-name: Promote Vercel to GitHub Preview
+name: Promote Vercel to GitHub Preview (disabled)
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
   workflow_dispatch:
     inputs:
       sha:
-        description: "Commit SHA to mirror (optional; defaults to PR head)"
+        description: "Commit SHA to mirror (optional; manual run only)"
         required: false
       env_contains:
-        description: "Substring to match in Vercel environment (e.g., 'Preview')"
+        description: "Substring to match in Vercel environment (manual run only)"
         required: false
 
 permissions:
