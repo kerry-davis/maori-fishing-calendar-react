@@ -112,7 +112,11 @@ export const TideChart: React.FC<TideChartProps> = ({
         },
         ticks: {
           maxRotation: 0,
-          color: "var(--muted-text, #64748b)",
+          color: () => {
+            const isDark = document.documentElement.classList.contains('dark') ||
+                          document.body.classList.contains('dark-theme');
+            return isDark ? '#e0e7ef' : '#64748b';
+          },
           font: {
             size: 11,
           },
@@ -125,7 +129,11 @@ export const TideChart: React.FC<TideChartProps> = ({
         },
         ticks: {
           maxTicksLimit: 4,
-          color: "var(--muted-text, #64748b)",
+          color: () => {
+            const isDark = document.documentElement.classList.contains('dark') ||
+                          document.body.classList.contains('dark-theme');
+            return isDark ? '#e0e7ef' : '#64748b';
+          },
           font: {
             size: 11,
           },
