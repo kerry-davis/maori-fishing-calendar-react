@@ -59,12 +59,19 @@ Use this checklist to ensure a successful deployment of the React version of the
 
 ## 🌐 Deployment
 
-### Server Configuration
-- [ ] HTTPS enabled (required for PWA)
-- [ ] Proper MIME types configured
-- [ ] Compression enabled (gzip/brotli)
-- [ ] Cache headers set for static assets
-- [ ] SPA routing configured (fallback to index.html)
+### Cloudflare Pages Configuration
+ - [ ] Cloudflare Pages project created (manual setup, no Git integration)
+ - [ ] Project name: `maori-fishing-calendar-react`
+ - [ ] Build command: `npm run build`
+ - [ ] Build output directory: `dist`
+ - [ ] GitHub Actions secrets configured (CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_PAGES_PROJECT)
+
+### Alternative Server Configuration
+ - [ ] HTTPS enabled (required for PWA)
+ - [ ] Proper MIME types configured
+ - [ ] Compression enabled (gzip/brotli)
+ - [ ] Cache headers set for static assets
+ - [ ] SPA routing configured (fallback to index.html)
 
 ### File Upload
 - [ ] All files from `dist/` directory uploaded
@@ -81,11 +88,12 @@ Use this checklist to ensure a successful deployment of the React version of the
 ## ✅ Post-Deployment
 
 ### Functionality Verification
-- [ ] App loads at production URL
-- [ ] No console errors
-- [ ] All features work as expected
-- [ ] PWA install prompt appears
-- [ ] Service worker registers
+ - [ ] App loads at Cloudflare Pages URL: `https://maori-fishing-calendar-react.pages.dev`
+ - [ ] No console errors
+ - [ ] All features work as expected
+ - [ ] PWA install prompt appears
+ - [ ] Service worker registers
+ - [ ] NIWA tide data loads correctly (check browser network tab)
 
 ### Performance Testing
 - [ ] Lighthouse PWA score > 90
