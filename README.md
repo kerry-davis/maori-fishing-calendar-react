@@ -203,7 +203,11 @@ The application is configured for deployment to Cloudflare Pages via GitHub Acti
 #### GitHub Actions Workflow:
 - **File**: `.github/workflows/deploy-cloudflare-pages.yml`
 - **Triggers**: Pull requests (preview) and push to `main` (production)
-- **Features**: Concurrency to avoid duplicate runs, Pages Functions auto-detection
+- **Features**: Concurrency to avoid duplicate runs, Pages Functions via Wrangler deploy
+
+Environments:
+- Production URL: `https://maori-fishing-calendar-react.pages.dev` (updated from `main`)
+- Preview URLs: `https://<hash>.maori-fishing-calendar-react.pages.dev` (per PR)
 
 #### Manual Deployment (if needed):
 ```bash
