@@ -118,13 +118,14 @@ The project is configured to deploy to Cloudflare Pages via GitHub Actions.
     - `VITE_FIREBASE_STORAGE_BUCKET`: Firebase storage bucket
     - `VITE_FIREBASE_MESSAGING_SENDER_ID`: Firebase messaging sender ID
     - `VITE_FIREBASE_APP_ID`: Firebase app ID
-  - **NIWA API Configuration (GitHub secrets)**
-    - `NIWA_API_KEY`: NIWA API key for tide data (included in build environment from GitHub secrets)
+- Configure in Cloudflare Pages project (not GitHub secrets):
+  - `NIWA_API_KEY`: Used only by Pages Functions at runtime
 
 #### Automatic Deployment
 Deployments are handled automatically by `.github/workflows/deploy-cloudflare-pages.yml`:
-- **Preview Deployments**: Created automatically for all pull requests
-- **Production Deployments**: Created when pushing to main branch
+- **Preview Deployments**: Created automatically for pull requests
+- **Production Deployments**: Created when pushing to `main`
+- Concurrency prevents duplicate runs on the same ref
 
 #### Manual Deployment (if needed)
  ```bash
@@ -132,10 +133,12 @@ Deployments are handled automatically by `.github/workflows/deploy-cloudflare-pa
  npm run build
 
  # Deploy via Wrangler (requires CLOUDFLARE_API_TOKEN in environment)
+ # Functions are auto-detected from the repository "functions/" directory
  npx wrangler pages deploy dist --project-name maori-fishing-calendar-react
  ```
 
 #### Configuration Files
+- `wrangler.toml`: `pages_build_output_dir = "dist"`, `compatibility_date` pinned
 - `functions/api/niwa-tides.ts`: Cloudflare Pages Function for NIWA tide API proxy
 - `public/_redirects`: SPA routing configuration for Cloudflare Pages
 

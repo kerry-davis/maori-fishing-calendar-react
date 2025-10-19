@@ -202,8 +202,8 @@ The application is configured for deployment to Cloudflare Pages via GitHub Acti
 
 #### GitHub Actions Workflow:
 - **File**: `.github/workflows/deploy-cloudflare-pages.yml`
-- **Triggers**: Push to main/ops/migrate-to-cloudflare-pages branches
-- **Features**: Preview deployments for PRs, production deployments for main
+- **Triggers**: Pull requests (preview) and push to `main` (production)
+- **Features**: Concurrency to avoid duplicate runs, Pages Functions auto-detection
 
 #### Manual Deployment (if needed):
 ```bash
