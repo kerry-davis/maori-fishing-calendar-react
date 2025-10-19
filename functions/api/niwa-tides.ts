@@ -90,12 +90,13 @@ export async function onRequest({ request, env }: { request: Request; env: Env }
 
     logRequest(`Proxying NIWA request to: ${niwaUrl.toString().replace(env.NIWA_API_KEY, '***')}`);
 
-    // Make request to NIWA API
+    // Make request to NIWA API (send API key in header as well for compatibility)
     const niwaResponse = await fetch(niwaUrl.toString(), {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
-        'User-Agent': 'Maori-Fishing-Calendar-Proxy/1.0'
+        'User-Agent': 'Maori-Fishing-Calendar-Proxy/1.0',
+        'x-apikey': env.NIWA_API_KEY
       }
     });
 
