@@ -50,14 +50,13 @@ export async function onRequest({ request, env }: { request: Request; env: any }
 
   try {
     const NIWA_API_BASE = 'https://api.niwa.co.nz/tides/data';
-    // NIWA_API_KEY is server-side only, injected by Cloudflare Pages Functions runtime.
-    // This key is never exposed to client code and remains secure on the server.
-    const NIWA_API_KEY = env.NIWA_API_KEY;
 
-    if (!NIWA_API_KEY) {
-      logError('NIWA API key not configured');
-      return createResponse(500, { error: 'NIWA API key not configured' });
-    }
+    // For now, return a message that NIWA integration needs alternative setup
+    // Since Cloudflare Pages Functions aren't available in this project
+    return createResponse(500, {
+      error: 'NIWA API not available in this environment',
+      message: 'Please use Open-Meteo as fallback or configure alternative API access'
+    });
 
     // Parse query parameters from request URL
     const url = new URL(request.url);
