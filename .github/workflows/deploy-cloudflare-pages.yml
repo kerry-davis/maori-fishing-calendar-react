@@ -2,7 +2,7 @@ name: Deploy to Cloudflare Pages
 
 on:
   push:
-    branches: [main]
+    branches: [main, ops/migrate-to-cloudflare-pages]
   pull_request:
     branches: [main]
 
