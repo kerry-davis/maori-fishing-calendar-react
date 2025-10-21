@@ -41,7 +41,7 @@ jobs:
           path: dist
           retention-days: 1
 
-  deploy-preview:
+  deploy-staging:
     if: github.event_name == 'pull_request'
     needs: build
     runs-on: ubuntu-latest
@@ -57,16 +57,18 @@ jobs:
           name: build
           path: dist
 
-      - name: Deploy to Cloudflare Pages (Preview via Wrangler)
+      - name: Deploy to Cloudflare Pages (Staging via Wrangler)
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: >-
             pages deploy dist
-            --project-name ${{ secrets.CLOUDFLARE_PAGES_PROJECT }}
+            --project-name ${{ secrets.CLOUDFLARE_PAGES_STAGING_PROJECT }}
             --branch ${{ github.head_ref }}
             --commit-hash ${{ github.sha }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
   deploy-production:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -93,3 +95,5 @@ jobs:
             --project-name ${{ secrets.CLOUDFLARE_PAGES_PROJECT }}
             --branch main
             --commit-hash ${{ github.sha }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
