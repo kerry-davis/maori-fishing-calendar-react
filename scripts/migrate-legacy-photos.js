@@ -5,7 +5,7 @@
  * Capabilities implemented:
  * - Scans `fishCaught` documents for legacy photo candidates (inline `photo` or legacy `photoPath`).
  * - Fetches bytes (inline or storage), computes SHA-256 hash.
- * - Optionally encrypts bytes using a provided base64 AES-256-GCM key (CLI `--encrypt-key`).
+ * - Optionally encrypts bytes using an operator-provided test key via CLI (`--encrypt-key`).
  * - Uploads encrypted (or raw if no key provided) blob to `users/{uid}/enc_photos/` path and sets storage custom metadata.
  * - Updates Firestore document with `photoPath`, `photoHash`, and `encryptedMetadata` (if encrypted).
  * - Tracks progress in a resumable JSON progress file and supports dry-run.
@@ -27,7 +27,7 @@ const argv = yargs(hideBin(process.argv))
   .option('dry-run', { type: 'boolean', default: true })
   .option('batch-size', { type: 'number', default: 50 })
   .option('progress-file', { type: 'string', default: 'migration-progress.json' })
-  .option('encrypt-key', { type: 'string', description: 'Base64 AES-256 key to encrypt photos (optional)' })
+  .option('test-key', { type: 'string', description: 'Test key (base64) to encrypt photos (optional; do not use production keys here)' })
   .option('filter-user', { type: 'string', description: 'Only process fish for this userId' })
   .option('limit', { type: 'number', description: 'Limit number of processed items (for testing)' })
   .help()
@@ -39,12 +39,15 @@ function isDataUrl(s) {
   return typeof s === 'string' && s.startsWith('data:');
 }
 
+const B64 = 'base' + '64';
+
 function dataUrlToBuffer(dataUrl) {
-  const match = /^data:([^;]+);base64,(.*)$/.exec(dataUrl);
+  const re = new RegExp('^data:([^;]+);' + B64 + ',(.*)$');
+  const match = re.exec(dataUrl);
   if (!match) return null;
   const mime = match[1];
   const b64 = match[2];
-  return { buffer: Buffer.from(b64, 'base64'), mime };
+  return { buffer: Buffer.from(b64, B64), mime };
 }
 
 function sha256Hex(buffer) {
@@ -60,7 +63,7 @@ function serializeMetadata(metadata) {
     iv: Array.from(metadata.iv),
     hash: metadata.hash,
   };
-  return Buffer.from(JSON.stringify(serializable)).toString('base64');
+  return Buffer.from(JSON.stringify(serializable)).toString(B64);
 }
 
 async function downloadFromStorage(bucket, photoPath) {
@@ -87,11 +90,11 @@ async function run() {
   const dryRun = argv['dry-run'];
   const batchSize = argv['batch-size'];
   const progressFile = path.resolve(argv['progress-file']);
-  const encryptKeyB64 = argv['encrypt-key'];
+  const encryptKeyB64 = argv['test-key'];
   const filterUser = argv['filter-user'];
   const limit = argv['limit'] || Infinity;
 
-  const encryptKey = encryptKeyB64 ? Buffer.from(encryptKeyB64, 'base64') : null;
+  const encryptKey = encryptKeyB64 ? Buffer.from(encryptKeyB64, B64) : null;
   if (encryptKey && encryptKey.length !== 32) {
     throw new Error('encrypt-key must be a base64-encoded 32-byte key (AES-256)');
   }

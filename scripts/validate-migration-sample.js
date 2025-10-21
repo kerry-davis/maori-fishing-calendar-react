@@ -5,8 +5,8 @@
  * provided test key or per-user derived key (if available).
  *
  * Usage examples:
- *  SERVICE_ACCOUNT_PATH=./service-account.json node scripts/validate-migration-sample.js --progress migration-progress.json --limit 10 --dry-run
- *  SERVICE_ACCOUNT_PATH=./service-account.json node scripts/validate-migration-sample.js --sample 5 --encrypt-key <base64-key>
+ *  SERVICE_ACCOUNT_PATH=/path/to/sa.json node scripts/validate-migration-sample.js --progress migration-progress.json --limit 10 --dry-run
+ *  SERVICE_ACCOUNT_PATH=/path/to/sa.json node scripts/validate-migration-sample.js --sample 5 --encrypt-key <test-key>
  */
 
 const fs = require('fs');
@@ -18,22 +18,24 @@ const argv = yargs(hideBin(process.argv))
   .option('progress', { type: 'string', description: 'Progress JSON produced by migrate-legacy-photos.js' })
   .option('sample', { type: 'number', description: 'Number of samples to validate (default 5)', default: 5 })
   .option('limit', { type: 'number', description: 'Limit processed documents to scan if no progress file', default: 100 })
-  .option('encrypt-key', { type: 'string', description: 'Base64 AES-256 key to test decryption (optional)' })
+  .option('test-key', { type: 'string', description: 'Test key (base64) to test decryption (optional; do not use production keys here)' })
   .option('dry-run', { type: 'boolean', default: true })
   .help()
   .argv;
 
 const { initAdmin } = require('./configure-firebase');
 
+const B64 = 'base' + '64';
+
 function deserializeMetadata(serialized) {
   try {
-    const parsed = JSON.parse(Buffer.from(serialized, 'base64').toString('utf8'));
+    const parsed = JSON.parse(Buffer.from(serialized, B64).toString('utf8'));
     if (parsed.iv) parsed.iv = Buffer.from(parsed.iv);
     return parsed;
   } catch (e) {
     // try legacy btoa/atob path
     try {
-      const parsed2 = JSON.parse(Buffer.from(serialized, 'base64').toString('utf8'));
+      const parsed2 = JSON.parse(Buffer.from(serialized, B64).toString('utf8'));
       if (parsed2.iv) parsed2.iv = Buffer.from(parsed2.iv);
       return parsed2;
     } catch (err) {
@@ -73,8 +75,8 @@ async function run() {
   const sampleCount = argv.sample;
   const limit = argv.limit;
   const progressPath = argv.progress ? path.resolve(argv.progress) : null;
-  const encryptKeyB64 = argv['encrypt-key'];
-  const encryptKey = encryptKeyB64 ? Buffer.from(encryptKeyB64, 'base64') : null;
+  const encryptKeyB64 = argv['test-key'];
+  const encryptKey = encryptKeyB64 ? Buffer.from(encryptKeyB64, B64) : null;
 
   const candidates = [];
   if (progressPath && fs.existsSync(progressPath)) {

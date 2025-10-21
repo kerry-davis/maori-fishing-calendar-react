@@ -6,9 +6,7 @@ concurrency:
 
 on:
   push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+    branches-ignore: [main]
 
 jobs:
   build:
@@ -41,12 +39,11 @@ jobs:
           path: dist
           retention-days: 1
 
-  deploy-preview:
-    if: github.event_name == 'pull_request'
+  deploy-staging:
+    if: github.event_name == 'push' && github.ref != 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
     permissions:
-      pull-requests: write
       deployments: write
       contents: read
     steps:
@@ -57,16 +54,33 @@ jobs:
           name: build
           path: dist
 
-      - name: Deploy to Cloudflare Pages (Preview via Wrangler)
+      - name: Set staging project name
+        id: project-name
+        env:
+          CF_PAGES_STAGING_PROJECT: ${{ secrets.CLOUDFLARE_PAGES_STAGING_PROJECT }}
+          CF_PAGES_PROJECT: ${{ secrets.CLOUDFLARE_PAGES_PROJECT }}
+        run: |
+          # Determine project name with fallback logic
+          PROJECT_NAME="maori-fishing-calendar-staging"
+          # Prefer explicitly provided staging project, fallback to default project
+          if [ -n "$CF_PAGES_STAGING_PROJECT" ]; then
+            PROJECT_NAME="$CF_PAGES_STAGING_PROJECT"
+          elif [ -n "$CF_PAGES_PROJECT" ]; then
+            PROJECT_NAME="$CF_PAGES_PROJECT"
+          fi
+          echo "project-name=$PROJECT_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to Cloudflare Pages (Staging via Wrangler)
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: >-
             pages deploy dist
-            --project-name ${{ secrets.CLOUDFLARE_PAGES_PROJECT }}
-            --branch ${{ github.head_ref }}
+            --project-name ${{ steps.project-name.outputs.project-name }}
+            --branch main
             --commit-hash ${{ github.sha }}
+        # CLOUDFLARE_API_TOKEN is already provided in the 'with' parameters
 
   deploy-production:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -83,6 +97,18 @@ jobs:
           name: build
           path: dist
 
+      - name: Set production project name
+        id: prod-project-name
+        env:
+          CF_PAGES_PROJECT: ${{ secrets.CLOUDFLARE_PAGES_PROJECT }}
+        run: |
+          # Determine project name with fallback logic
+          PROJECT_NAME="maori-fishing-calendar"
+          if [ -n "$CF_PAGES_PROJECT" ]; then
+            PROJECT_NAME="$CF_PAGES_PROJECT"
+          fi
+          echo "project-name=$PROJECT_NAME" >> "$GITHUB_OUTPUT"
+
       - name: Deploy to Cloudflare Pages (Production via Wrangler)
         uses: cloudflare/wrangler-action@v3
         with:
@@ -90,6 +116,7 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: >-
             pages deploy dist
-            --project-name ${{ secrets.CLOUDFLARE_PAGES_PROJECT }}
+            --project-name ${{ steps.prod-project-name.outputs.project-name }}
             --branch main
             --commit-hash ${{ github.sha }}
+        # CLOUDFLARE_API_TOKEN is already provided in the 'with' parameters

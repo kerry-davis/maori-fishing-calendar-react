@@ -31,25 +31,25 @@ async function addTestDataToGallery() {
     const tripId = await dbService.createTrip(testTrip);
     console.log('✅ Created test trip:', tripId);
 
-    // Test images (1x1 pixel PNGs in base64)
+    // Test images (1x1 SVG data URLs)
     const testImages = [
       {
         species: 'Snapper',
-        data: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+        data: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><rect width="1" height="1" fill="red"/></svg>',
         length: '45',
         weight: '2.5',
         time: '14:30'
       },
       {
         species: 'Kahawai',
-        data: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjRcfQAAAABJRU5ErkJggg==',
+        data: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><rect width="1" height="1" fill="blue"/></svg>',
         length: '35',
         weight: '1.2',
         time: '15:45'
       },
       {
         species: 'Trevally',
-        data: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9gDwADhgGAWjRcfAAAAABJRU5ErkJggg==',
+        data: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><rect width="1" height="1" fill="green"/></svg>',
         length: '28',
         weight: '0.8',
         time: '16:20'

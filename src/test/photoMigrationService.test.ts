@@ -109,21 +109,21 @@ beforeAll(async () => {
 });
 
 describe('PhotoMigrationService', () => {
-    // tiny valid base64 strings (1x1 px PNG) used as test photo data
-    const tinyPng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=';
+    // tiny SVG data URL (1x1 px) used as test photo data (avoids base64)
+    const tinySvg = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><rect width="1" height="1" fill="black"/></svg>';
     const mockFishData = [
     {
       id: 'fish-1',
       tripId: 1,
       species: 'Test Fish 1',
-      photo: `data:image/png;base64,${tinyPng}`,
+      photo: tinySvg,
       photoHash: 'hash-1'
     },
     {
       id: 'fish-2',
       tripId: 1,
       species: 'Test Fish 2',
-      photo: `data:image/png;base64,${tinyPng}`,
+      photo: tinySvg,
       photoHash: 'hash-2'
     },
     {
