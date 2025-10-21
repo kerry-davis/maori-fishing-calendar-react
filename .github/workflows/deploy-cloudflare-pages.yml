@@ -6,7 +6,7 @@ concurrency:
 
 on:
   push:
-    branches: [main]
+    branches: ['**']
   pull_request:
     types: [opened, synchronize, reopened]
 
@@ -42,7 +42,7 @@ jobs:
           retention-days: 1
 
   deploy-staging:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref != 'refs/heads/main')
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -65,7 +65,7 @@ jobs:
           command: >-
             pages deploy dist
             --project-name ${{ secrets.CLOUDFLARE_PAGES_STAGING_PROJECT }}
-            --branch ${{ github.head_ref }}
+            --branch ${{ github.ref_name }}
             --commit-hash ${{ github.sha }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
