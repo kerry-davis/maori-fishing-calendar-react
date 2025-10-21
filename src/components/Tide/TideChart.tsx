@@ -22,6 +22,8 @@ interface TideChartProps {
   timezone?: string;
   utcOffsetSeconds?: number;
   className?: string;
+  axisColor?: string;
+  gridColor?: string;
 }
 
 const PRIMARY_STROKE = "rgba(100, 149, 237, 0.85)"; // cornflower blue
@@ -35,6 +37,8 @@ export const TideChart: React.FC<TideChartProps> = ({
   timezone,
   utcOffsetSeconds = 0,
   className = "",
+  axisColor,
+  gridColor,
 }) => {
   const timeFormatter = useMemo(() => {
     const options: Intl.DateTimeFormatOptions = {
@@ -113,6 +117,7 @@ export const TideChart: React.FC<TideChartProps> = ({
         ticks: {
           maxRotation: 0,
           color: () => {
+            if (axisColor) return axisColor;
             const isDark = document.documentElement.classList.contains('dark') ||
                           document.body.classList.contains('dark-theme');
             return isDark ? '#e0e7ef' : '#64748b';
@@ -125,11 +130,12 @@ export const TideChart: React.FC<TideChartProps> = ({
       y: {
         display: true,
         grid: {
-          color: GRID_COLOR,
+          color: gridColor || GRID_COLOR,
         },
         ticks: {
           maxTicksLimit: 4,
           color: () => {
+            if (axisColor) return axisColor;
             const isDark = document.documentElement.classList.contains('dark') ||
                           document.body.classList.contains('dark-theme');
             return isDark ? '#e0e7ef' : '#64748b';
