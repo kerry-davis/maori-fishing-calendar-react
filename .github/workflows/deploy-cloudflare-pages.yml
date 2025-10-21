@@ -78,7 +78,7 @@ jobs:
           command: >-
             pages deploy dist
             --project-name ${{ steps.project-name.outputs.project-name }}
-            --branch ${{ github.ref_name }}
+            --branch main
             --commit-hash ${{ github.sha }}
         # CLOUDFLARE_API_TOKEN is already provided in the 'with' parameters
 
