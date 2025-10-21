@@ -30,11 +30,11 @@ async function addTestPhotos() {
     const tripId = await databaseService.createTrip(testTrip);
     console.log(`✅ Created test trip with ID: ${tripId}`);
 
-    // Create some test base64 images (small 1x1 pixel images in different colors)
+    // Create some test SVG images (small 1x1 pixel images in different colors)
     const testImages = [
       {
         name: 'red-pixel',
-        data: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+        data: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><rect width="1" height="1" fill="red"/></svg>',
         species: 'Snapper',
         length: '45',
         weight: '2.5',
@@ -42,7 +42,7 @@ async function addTestPhotos() {
       },
       {
         name: 'blue-pixel',
-        data: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjRcfQAAAABJRU5ErkJggg==',
+        data: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><rect width="1" height="1" fill="blue"/></svg>',
         species: 'Kahawai',
         length: '35',
         weight: '1.2',
@@ -50,7 +50,7 @@ async function addTestPhotos() {
       },
       {
         name: 'green-pixel',
-        data: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9gDwADhgGAWjRcfAAAAABJRU5ErkJggg==',
+        data: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><rect width="1" height="1" fill="green"/></svg>',
         species: 'Trevally',
         length: '28',
         weight: '0.8',
@@ -58,8 +58,8 @@ async function addTestPhotos() {
       }
     ];
 
-    // Also create some raw base64 data (without data URL prefix) to test the conversion
-    const rawBase64Data = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+    // Also create some raw base64 data (without data URL prefix) to test the conversion (short, non-sensitive)
+    const rawBase64Data = Buffer.from('test').toString('base64');
 
     console.log('📸 Adding test fish catches with photos...');
 

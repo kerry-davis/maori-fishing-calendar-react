@@ -1,20 +1,21 @@
 describe('Multi-Account Data Integrity Tests', () => {
+  const TEST_PASSWORD = (Cypress as any)?.env?.('TEST_PASSWORD') ?? 'test-password';
   const users = {
     user1: {
       email: 'fishing-user1@example.com',
-      password: 'Test123456!',
+      password: TEST_PASSWORD,
       uid: 'test-user-1-uid',
       displayName: 'Fisher One'
     },
     user2: {
       email: 'fishing-user2@example.com', 
-      password: 'Test123456!',
+      password: TEST_PASSWORD,
       uid: 'test-user-2-uid',
       displayName: 'Fisher Two'
     },
     user3: {
       email: 'fishing-user3@example.com',
-      password: 'Test123456!', 
+      password: TEST_PASSWORD, 
       uid: 'test-user-3-uid',
       displayName: 'Fisher Three'
     }
