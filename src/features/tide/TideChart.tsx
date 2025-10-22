@@ -150,7 +150,7 @@ export const TideChart: React.FC<TideChartProps> = ({
         },
       },
     },
-  }), [units]);
+  }), [units, axisColor, gridColor]);
 
   return (
     <div className={`w-full h-32 sm:h-36 ${className}`}>

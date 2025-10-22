@@ -326,18 +326,29 @@ export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
               </div>
             )}
 
-            <TideSummary
-              date={userLocation ? tideDate : null}
-              className="mt-3"
-              title={<span style={{ color: 'var(--tertiary-text)' }}>Tide Forecast</span>}
-              titleClassName="text-xs uppercase tracking-wide mb-1"
-              bodyClassName="text-xs space-y-1"
-              retryButtonClassName="mt-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
-              loadingMessage="Loading tide forecast…"
-              emptyMessage="Tide data unavailable."
-              axisColor="rgba(255, 255, 255, 0.92)"
-              gridColor="rgba(255, 255, 255, 0.12)"
-            />
+            {(() => {
+              const isDark = typeof document !== 'undefined' && (
+                document.documentElement.classList.contains('dark') ||
+                document.body.classList.contains('dark-theme')
+              );
+              const axisColor = isDark ? 'rgba(255, 255, 255, 0.92)' : undefined;
+              const gridColor = isDark ? 'rgba(255, 255, 255, 0.12)' : undefined;
+
+              return (
+                <TideSummary
+                  date={userLocation ? tideDate : null}
+                  className="mt-3"
+                  title={<span style={{ color: 'var(--tertiary-text)' }}>Tide Forecast</span>}
+                  titleClassName="text-xs uppercase tracking-wide mb-1"
+                  bodyClassName="text-xs space-y-1"
+                  retryButtonClassName="mt-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                  loadingMessage="Loading tide forecast…"
+                  emptyMessage="Tide data unavailable."
+                  axisColor={axisColor}
+                  gridColor={gridColor}
+                />
+              );
+            })()}
 
             <button
               onClick={() => setLocation(null)}
