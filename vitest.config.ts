@@ -3,6 +3,13 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@app': '/src/app',
+      '@shared': '/src/shared',
+      '@features': '/src/features'
+    }
+  },
   plugins: [
     react(),
     VitePWA({
@@ -17,7 +24,7 @@ export default defineConfig({
   ],
   test: {
     environment: 'jsdom',
-    setupFiles: ['./src/test/setup.ts'],
+    setupFiles: ['./src/shared/__tests__/setup.ts'],
     globals: true,
     coverage: {
       provider: 'v8',

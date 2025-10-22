@@ -6,6 +6,13 @@ import { VitePWA } from 'vite-plugin-pwa'
 export default defineConfig({
   // ENFORCED: No development proxy attempts - only production serverless allowed
   // This ensures NIWA API keys are never exposed to browser and only server-side calls are made
+  resolve: {
+    alias: {
+      '@app': '/src/app',
+      '@shared': '/src/shared',
+      '@features': '/src/features'
+    }
+  },
   plugins: [
     react(),
     VitePWA({
