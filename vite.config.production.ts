@@ -5,6 +5,13 @@ import { VitePWA } from 'vite-plugin-pwa'
 // Production build configuration that skips TypeScript checking
 // Use this for deployment when TypeScript errors need to be resolved separately
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@app': '/src/app',
+      '@shared': '/src/shared',
+      '@features': '/src/features'
+    }
+  },
   plugins: [
     react(),
     VitePWA({
@@ -86,14 +93,10 @@ export default defineConfig({
           }
         ]
       },
-      devOptions: {
-        enabled: true
-      }
     })
   ],
   build: {
     // Optimize for production
-    minify: 'terser',
     sourcemap: false,
     rollupOptions: {
       output: {

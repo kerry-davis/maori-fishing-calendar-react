@@ -245,3 +245,43 @@ export async function onRequest({ request, env }: { request: Request; env: Env }
     });
   }
 }
+
+// Compatibility wrapper for Node-style tests that expect an Express-like handler(req, res)
+// This default export is used ONLY in unit tests under src/features/tide/__tests__
+export default async function handler(req: any, res: any) {
+  try {
+    const method = req?.method || 'GET';
+    const headersObj: Record<string, string> = {};
+    const headers = req?.headers || {};
+    for (const k of Object.keys(headers)) headersObj[k] = headers[k];
+
+    const urlBase = 'https://example.com/api/niwa-tides';
+    const query = req?.query || {};
+    const url = new URL(urlBase);
+    Object.entries(query).forEach(([k, v]) => {
+      if (v != null) url.searchParams.set(k, String(v));
+    });
+
+    const request = new Request(url.toString(), { method, headers: headersObj });
+    const env: Env = { NIWA_API_KEY: (process.env.NIWA_API_KEY || '') as string } as Env;
+
+    const response = await onRequest({ request, env });
+
+    // Mirror response to mocked res
+    res.status(response.status);
+    response.headers.forEach((value, key) => {
+      res.setHeader(key, value);
+    });
+
+    const text = await response.text();
+    try {
+      const json = text ? JSON.parse(text) : {};
+      res.json(json);
+    } catch {
+      res.json({ raw: text });
+    }
+    return res.end();
+  } catch (e) {
+    res.status(500).json({ error: 'Internal server error', message: e instanceof Error ? e.message : String(e) }).end();
+  }
+}

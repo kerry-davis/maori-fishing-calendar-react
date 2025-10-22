@@ -10,4 +10,4 @@ a new set of tasks have been provided .tasks/[branch name][increment number].md 
 do not stop until complete.
 
 3. planner
-tasks complete. please review the code that was completed in these files  .tasks/[branch name].[files][increment number].md and provide feedback. 
+tasks complete. please review the code that was completed in these files  .tasks/[branch name].[files][increment number].md and provide feedback.
