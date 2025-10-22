@@ -93,16 +93,27 @@ export const WeatherForecast: React.FC<WeatherForecastProps> = ({
         </button>
       )}
 
-      <TideSummary
-        date={date}
-        className="mt-4"
-        title="Tide Forecast"
-        titleClassName="font-semibold text-sm mb-1"
-        bodyClassName="text-sm"
-        showShortLabel={showTideLabel}
-        axisColor="rgba(255, 255, 255, 0.92)"
-        gridColor="rgba(255, 255, 255, 0.12)"
-      />
+      {(() => {
+        const isDark = typeof document !== 'undefined' && (
+          document.documentElement.classList.contains('dark') ||
+          document.body.classList.contains('dark-theme')
+        );
+        const axisColor = isDark ? 'rgba(255, 255, 255, 0.92)' : undefined;
+        const gridColor = isDark ? 'rgba(255, 255, 255, 0.12)' : undefined;
+
+        return (
+          <TideSummary
+            date={date}
+            className="mt-4"
+            title="Tide Forecast"
+            titleClassName="font-semibold text-sm mb-1"
+            bodyClassName="text-sm"
+            showShortLabel={showTideLabel}
+            axisColor={axisColor}
+            gridColor={gridColor}
+          />
+        );
+      })()}
     </div>
   );
 };
