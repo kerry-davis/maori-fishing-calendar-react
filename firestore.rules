@@ -53,9 +53,13 @@ service cloud.firestore {
       allow create: if isAuthenticated() &&
         request.auth.uid == userId && request.resource.data.userId == userId;
 
-      // Update/Delete requires ownership and consistent userId in payload
-      allow update, delete: if isAuthenticated() &&
+      // Update requires ownership and consistent userId in payload
+      allow update: if isAuthenticated() &&
         request.auth.uid == userId && request.resource.data.userId == userId;
+
+      // Delete requires ownership; validate against existing document (resource), not request.resource
+      allow delete: if isAuthenticated() &&
+        request.auth.uid == userId && resource.data.userId == userId;
     }
 
     // Gear types collection - users can only access their own gear types
