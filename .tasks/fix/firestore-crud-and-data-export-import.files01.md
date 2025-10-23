@@ -4,3 +4,4 @@
 - src/shared/services/browserZipImportService.ts
 - src/features/modals/SettingsModal.tsx
 - .tasks/fix/firestore-crud-and-data-export-import01.md
+ - firestore.rules
