@@ -5,3 +5,4 @@
 - src/features/modals/SettingsModal.tsx
 - .tasks/fix/firestore-crud-and-data-export-import01.md
  - firestore.rules
+ - firestore.rules (updated twice for delete semantics)

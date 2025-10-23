@@ -1875,6 +1875,12 @@ export class FirebaseDataService {
     const collectionPlans: Array<{ name: string; refs: DocumentReference[] }> = [];
 
     for (const coll of collectionsToWipe) {
+      if (coll === 'userSettings') {
+        // userSettings is keyed by userId; avoid querying (which can be blocked by rules)
+        const userSettingsRef = doc(firestore, 'userSettings', this.userId);
+        collectionPlans.push({ name: coll, refs: [userSettingsRef] });
+        continue;
+      }
       const q = query(collection(firestore, coll), where('userId', '==', this.userId));
       const snapshot = await getDocs(q);
       const refs = snapshot.docs.map(d => d.ref);

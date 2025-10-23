@@ -13,8 +13,8 @@ service cloud.firestore {
     // Trips collection - users can only access their own trips
     match /trips/{document} {
       allow create: if isOwnerRequest();
-      // Allow listing (queries) for authenticated users; doc-level get guarded below
-      allow list: if isAuthenticated();
+      // Allow listing only for documents owned by the requester
+      allow list: if isAuthenticated() && resource.data.userId == request.auth.uid;
       // Per-document permissions
       allow get, update, delete: if isOwnerResource();
     }
@@ -22,21 +22,21 @@ service cloud.firestore {
     // Weather logs collection - users can only access their own weather logs
     match /weatherLogs/{document} {
       allow create: if isOwnerRequest();
-      allow list: if isAuthenticated();
+      allow list: if isAuthenticated() && resource.data.userId == request.auth.uid;
       allow get, update, delete: if isOwnerResource();
     }
 
     // Fish caught collection - users can only access their own fish records
     match /fishCaught/{document} {
       allow create: if isOwnerRequest();
-      allow list: if isAuthenticated();
+      allow list: if isAuthenticated() && resource.data.userId == request.auth.uid;
       allow get, update, delete: if isOwnerResource();
     }
 
     // Tackle items collection - users can only access their own tackle box
     match /tackleItems/{document} {
       allow create: if isOwnerRequest();
-      allow list: if isAuthenticated();
+      allow list: if isAuthenticated() && resource.data.userId == request.auth.uid;
       allow get, update, delete: if isOwnerResource();
     }
 
@@ -55,7 +55,7 @@ service cloud.firestore {
     // Gear types collection - users can only access their own gear types
     match /gearTypes/{document} {
       allow create: if isOwnerRequest();
-      allow list: if isAuthenticated();
+      allow list: if isAuthenticated() && resource.data.userId == request.auth.uid;
       allow get, update, delete: if isOwnerResource();
     }
 
