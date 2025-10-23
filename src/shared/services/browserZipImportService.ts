@@ -191,7 +191,7 @@ export class BrowserZipImportService {
   const strategy: ImportStrategy = options?.strategy ?? 'wipe';
   performance.mark('import-start');
   onProgress?.({ phase: 'importing', current: 0, total: 1, percent: 0, message: 'Writing data…' });
-  const importResult = await this.importLegacyData(extractResult.data, isAuthenticated, strategy);
+  const importResult = await this.importLegacyData(extractResult.data, isAuthenticated, strategy, onProgress);
   performance.mark('import-end');
 
       result.success = importResult.success;
@@ -559,7 +559,7 @@ export class BrowserZipImportService {
    * @param legacyData - The legacy data to import
    * @param isAuthenticated - Whether the user is authenticated
    */
-  private async importLegacyData(legacyData: LegacyDataStructure, isAuthenticated: boolean, strategy: ImportStrategy): Promise<ZipImportResult> {
+  private async importLegacyData(legacyData: LegacyDataStructure, isAuthenticated: boolean, strategy: ImportStrategy, onProgress?: (p: ImportProgress) => void): Promise<ZipImportResult> {
     const result: ZipImportResult = {
       success: true,
       tripsImported: 0,
@@ -650,6 +650,15 @@ export class BrowserZipImportService {
         DEV_WARN('Failed to persist gear types or tacklebox during legacy import:', e);
       }
 
+      // Compute totals for progress reporting across trips, weather logs, and fish catches
+      const totalUnits = (tripsToImport?.length || 0) + (weatherLogsToImport?.length || 0) + (fishCatchesToImport?.length || 0);
+      let doneUnits = 0;
+      const tick = (phase: string, message: string) => {
+        const current = Math.min(++doneUnits, totalUnits || 1);
+        const percent = totalUnits > 0 ? Math.round((current / totalUnits) * 100) : 100;
+        onProgress?.({ phase, current, total: totalUnits || 1, percent, message });
+      };
+
       if (isAuthenticated) {
         // Authenticated user - store in Firebase
         DEV_LOG('Importing to Firebase (authenticated user)...');
@@ -668,6 +677,7 @@ export class BrowserZipImportService {
             }
             await firebaseDataService.upsertTripFromImport(trip as any);
             result.tripsImported++;
+            tick('importing', `Writing trips… (${result.tripsImported}/${tripsToImport.length})`);
           } catch (error) {
             result.errors.push(`Failed to import trip: ${error instanceof Error ? error.message : 'Unknown error'}`);
           }
@@ -678,6 +688,7 @@ export class BrowserZipImportService {
           try {
             await firebaseDataService.upsertWeatherLogFromImport(weatherLog as any);
             result.weatherLogsImported++;
+            tick('importing', `Writing weather… (${result.weatherLogsImported}/${weatherLogsToImport.length})`);
           } catch (error) {
             result.errors.push(`Failed to import weather log: ${error instanceof Error ? error.message : 'Unknown error'}`);
           }
@@ -704,6 +715,7 @@ export class BrowserZipImportService {
 
             await firebaseDataService.upsertFishCaughtFromImport(fishCatch as any);
             result.fishCatchesImported++;
+            tick('importing', `Writing fish… (${result.fishCatchesImported}/${fishCatchesToImport.length})`);
           } catch (error) {
             result.errors.push(`Failed to import fish catch: ${error instanceof Error ? error.message : 'Unknown error'}`);
           }
@@ -727,6 +739,7 @@ export class BrowserZipImportService {
 
             await databaseService.createTrip(trip);
             result.tripsImported++;
+            tick('importing', `Writing trips… (${result.tripsImported}/${tripsToImport.length})`);
           } catch (error) {
             result.errors.push(`Failed to import trip: ${error instanceof Error ? error.message : 'Unknown error'}`);
           }
@@ -737,6 +750,7 @@ export class BrowserZipImportService {
           try {
             await databaseService.createWeatherLog(weatherLog);
             result.weatherLogsImported++;
+            tick('importing', `Writing weather… (${result.weatherLogsImported}/${weatherLogsToImport.length})`);
           } catch (error) {
             result.errors.push(`Failed to import weather log: ${error instanceof Error ? error.message : 'Unknown error'}`);
           }
@@ -763,6 +777,7 @@ export class BrowserZipImportService {
 
             await databaseService.createFishCaught(fishCatch);
             result.fishCatchesImported++;
+            tick('importing', `Writing fish… (${result.fishCatchesImported}/${fishCatchesToImport.length})`);
           } catch (error) {
             result.errors.push(`Failed to import fish catch: ${error instanceof Error ? error.message : 'Unknown error'}`);
           }

@@ -109,6 +109,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         stats = await dataExportService.importData(file, (p) => setImportProgress(p));
       }
       setImportStats(stats);
+      // Notify app layers to refresh views after import
+      try {
+        window.dispatchEvent(new CustomEvent('databaseDataReady', { detail: { source: 'Import', timestamp: Date.now() } }));
+        window.dispatchEvent(new CustomEvent('userDataReady', { detail: { userId: user?.uid ?? null, isGuest: !user, source: 'Import', timestamp: Date.now() } }));
+      } catch {}
       const seconds = Math.max(0, Math.round((stats.durationMs || 0) / 1000));
       setImportSuccess(`Successfully imported data from "${file.name}" in ${seconds}s.`);
       setShowImportConfirm(false);

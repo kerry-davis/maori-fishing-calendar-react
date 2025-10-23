@@ -95,23 +95,26 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
       objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
       objectUrlsRef.current = [];
 
-      // Get all fish catches - the Firebase service will handle filtering by user
-      const allFishCatches = await db.getAllFishCaught();
-
-      // Filter fish catches for trips that exist on the selected date
       const dateStr = formatDateForDB(selectedDate);
       const tripsOnDate = await db.getTripsByDate(dateStr);
 
-      // Get fish catches only for trips on the selected date
-      const relevantFishCatches = allFishCatches.filter((fish: FishCaught) =>
-        tripsOnDate.some((trip: Trip) => trip.id === fish.tripId)
+      // Fetch catches per trip to avoid filtering pitfalls and missing items
+      const perTrip = await Promise.all(
+        tripsOnDate.map((trip: Trip) => db.getFishCaughtByTripId(trip.id))
       );
+      const relevantFishCatches: FishCaught[] = ([] as FishCaught[]).concat(...perTrip);
 
-      setFishCatches(relevantFishCatches);
+      // Guard against non-array gear fields
+      const sanitized = relevantFishCatches.map((f) => ({
+        ...f,
+        gear: Array.isArray(f.gear) ? f.gear : (f.gear ? [String(f.gear)] : [])
+      }));
+
+      setFishCatches(sanitized);
 
       // Generate photo previews (including decryption)
       const previews: Record<string, string> = {};
-      for (const fish of relevantFishCatches) {
+      for (const fish of sanitized) {
         // Only render preview if photo, photoUrl, or photoPath exists
         if (!fish.photo && !fish.photoUrl && !fish.photoPath) {
           continue;

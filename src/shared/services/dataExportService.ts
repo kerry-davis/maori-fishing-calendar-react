@@ -22,6 +22,35 @@ import {
  * Maintains compatibility with existing vanilla JS data formats
  */
 export class DataExportService {
+  // Lightweight async pool to limit concurrency
+  private async runWithConcurrency<T>(items: T[], limit: number, worker: (item: T, index: number) => Promise<void>): Promise<void> {
+    const queue = items.map((item, index) => ({ item, index }));
+    const runners: Promise<void>[] = [];
+    const runNext = async (): Promise<void> => {
+      const next = queue.shift();
+      if (!next) return;
+      try {
+        await worker(next.item, next.index);
+      } finally {
+        await runNext();
+      }
+    };
+    const size = Math.max(1, Math.min(limit, queue.length || limit));
+    for (let i = 0; i < size; i++) {
+      runners.push(runNext());
+    }
+    await Promise.all(runners);
+  }
+
+  private arrayBufferToBase64(buffer: ArrayBuffer): string {
+    let binary = '';
+    const bytes = new Uint8Array(buffer);
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  }
+
   // class body
   // Utility to emit progress with ETA based on start time and completed units
   private emitProgress(
@@ -76,32 +105,61 @@ export class DataExportService {
       const zip = new JSZip();
       const photosFolder = zip.folder("photos");
 
-      // Add photos to ZIP if they exist
+      // Add photos to ZIP if they exist (supports inline, Storage-backed, and encrypted photos)
       if (fishCaught && photosFolder) {
-        fishCaught.forEach((fish, index) => {
-          if (fish.photo && fish.photo.startsWith("data:image")) {
-            try {
-              // Extract base64 data and determine file extension
-              const [header, base64Data] = fish.photo.split(",");
+        const concurrency = 4;
+        await this.runWithConcurrency(fishCaught, concurrency, async (fish, index) => {
+          try {
+            // 1) Inline data URL
+            if (fish.photo && typeof fish.photo === 'string' && fish.photo.startsWith('data:image')) {
+              const [header, base64Data] = fish.photo.split(',');
               const mimeMatch = header.match(/data:image\/([^;]+)/);
-              const extension = mimeMatch ? mimeMatch[1] : "jpg";
-
-              // Create filename
+              const extension = mimeMatch ? mimeMatch[1] : 'jpg';
               const filename = `fish_${fish.id || index}_${Date.now()}.${extension}`;
-
-              // Add photo to ZIP
               photosFolder.file(filename, base64Data, { base64: true });
-
-              // Update fish record to reference photo filename
-              fish.photo = filename;
-            } catch (error) {
-              DEV_LOG(
-                `Failed to process photo for fish ${fish.id}:`,
-                error,
-              );
-              // Remove invalid photo data
-              delete fish.photo;
+              (fish as any).photo = filename;
+              return;
             }
+
+            // 2) Storage-backed (possibly encrypted)
+            const path = (fish as any).photoPath as string | undefined;
+            const encryptedMetadata = (fish as any).encryptedMetadata as string | undefined;
+            if (path) {
+              try {
+                const res = await firebaseDataService.getDecryptedPhoto(path, encryptedMetadata);
+                if (res && res.data) {
+                  const base64 = this.arrayBufferToBase64(res.data);
+                  const mime = res.mimeType || 'image/jpeg';
+                  const extension = mime.split('/')[1] || 'jpg';
+                  const filename = `fish_${fish.id || index}_${Date.now()}.${extension}`;
+                  photosFolder.file(filename, base64, { base64: true });
+                  (fish as any).photo = filename;
+                  return;
+                }
+              } catch (e) {
+                // fall through to photoUrl fetch
+              }
+            }
+
+            // 3) Public URL fallback
+            const url = (fish as any).photoUrl as string | undefined;
+            if (url) {
+              try {
+                const resp = await fetch(url);
+                if (resp.ok) {
+                  const buf = await resp.arrayBuffer();
+                  const contentType = resp.headers.get('content-type') || 'image/jpeg';
+                  const base64 = this.arrayBufferToBase64(buf);
+                  const extension = contentType.split('/')[1] || 'jpg';
+                  const filename = `fish_${fish.id || index}_${Date.now()}.${extension}`;
+                  photosFolder.file(filename, base64, { base64: true });
+                  (fish as any).photo = filename;
+                  return;
+                }
+              } catch {/* ignore */}
+            }
+          } catch (error) {
+            DEV_LOG(`Failed to process photo for fish ${fish.id}:`, error);
           }
         });
       }
@@ -152,55 +210,73 @@ export class DataExportService {
         zip.file("weather.csv", weatherCsv);
       }
 
-      // Export fish caught as CSV (with photo handling)
+      // Export fish caught as CSV (with photo handling from inline, Storage, or URL)
       if (fishCaught.length > 0) {
-        const fishDataForCsv = fishCaught.map((fish, index) => {
-          const fishCopy = { ...fish };
+        // Preprocess photos with limited concurrency
+        const concurrency = 4;
+        const processed: any[] = new Array(fishCaught.length);
 
-          // Handle gear array - convert to string
+        await this.runWithConcurrency(fishCaught, concurrency, async (fish, index) => {
+          const fishCopy: any = { ...fish };
+          // Gear stringification
           if (Array.isArray(fishCopy.gear)) {
-            (fishCopy as any).gear = fishCopy.gear.join(", ");
+            fishCopy.gear = fishCopy.gear.join(', ');
           }
 
-          // Handle photos
-          if (
-            fishCopy.photo &&
-            fishCopy.photo.startsWith("data:image") &&
-            photosFolder
-          ) {
-            try {
-              // Extract base64 data and determine file extension
-              const [header, base64Data] = fishCopy.photo.split(",");
+          let fileAdded = false;
+          try {
+            if (fishCopy.photo && typeof fishCopy.photo === 'string' && fishCopy.photo.startsWith('data:image') && photosFolder) {
+              const [header, base64Data] = fishCopy.photo.split(',');
               const mimeMatch = header.match(/data:image\/([^;]+)/);
-              const extension = mimeMatch ? mimeMatch[1] : "jpg";
-
-              // Create filename
+              const extension = mimeMatch ? mimeMatch[1] : 'jpg';
               const filename = `fish_${fish.id || index}_${Date.now()}.${extension}`;
-
-              // Add photo to ZIP
               photosFolder.file(filename, base64Data, { base64: true });
-
-              // Set photo filename in CSV data
-              (fishCopy as any).photo_filename = filename;
-            } catch (error) {
-              DEV_LOG(
-                `Failed to process photo for fish ${fish.id}:`,
-                error,
-              );
-              (fishCopy as any).photo_filename = "";
+              fishCopy.photo_filename = filename;
+              fileAdded = true;
+            } else if (photosFolder) {
+              const path = fishCopy.photoPath as string | undefined;
+              const enc = fishCopy.encryptedMetadata as string | undefined;
+              if (path) {
+                try {
+                  const res = await firebaseDataService.getDecryptedPhoto(path, enc);
+                  if (res && res.data) {
+                    const base64 = this.arrayBufferToBase64(res.data);
+                    const mime = res.mimeType || 'image/jpeg';
+                    const extension = mime.split('/')[1] || 'jpg';
+                    const filename = `fish_${fish.id || index}_${Date.now()}.${extension}`;
+                    photosFolder.file(filename, base64, { base64: true });
+                    fishCopy.photo_filename = filename;
+                    fileAdded = true;
+                  }
+                } catch {/* ignore */}
+              }
+              if (!fileAdded && fishCopy.photoUrl) {
+                try {
+                  const resp = await fetch(fishCopy.photoUrl);
+                  if (resp.ok) {
+                    const buf = await resp.arrayBuffer();
+                    const ct = resp.headers.get('content-type') || 'image/jpeg';
+                    const base64 = this.arrayBufferToBase64(buf);
+                    const extension = ct.split('/')[1] || 'jpg';
+                    const filename = `fish_${fish.id || index}_${Date.now()}.${extension}`;
+                    photosFolder.file(filename, base64, { base64: true });
+                    fishCopy.photo_filename = filename;
+                    fileAdded = true;
+                  }
+                } catch {/* ignore */}
+              }
             }
-          } else {
-            (fishCopy as any).photo_filename = "";
+          } catch (e) {
+            DEV_LOG(`Failed to process photo for fish ${fish.id}:`, e);
           }
 
-          // Remove the large base64 string from CSV
-          delete fishCopy.photo;
-
-          return fishCopy;
+          if (!fileAdded) fishCopy.photo_filename = '';
+          delete fishCopy.photo; // remove inline base64 from CSV
+          processed[index] = fishCopy;
         });
 
-        const fishCsv = Papa.unparse(fishDataForCsv);
-        zip.file("fish.csv", fishCsv);
+        const fishCsv = Papa.unparse(processed);
+        zip.file('fish.csv', fishCsv);
       }
 
       // Generate ZIP blob
