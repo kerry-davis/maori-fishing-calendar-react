@@ -73,8 +73,10 @@ export class DataExportService {
   /**
    * Export all data as a ZIP file containing JSON data and photos
    */
-  async exportDataAsZip(): Promise<Blob> {
+  async exportDataAsZip(onProgress?: (p: import("../types").ImportProgress) => void): Promise<Blob> {
     DEV_LOG("Exporting data as a zip file...");
+    const start = performance.now?.() ?? Date.now();
+    this.emitProgress(onProgress, 'collecting', 0, 3, start, 'Collecting data…');
 
     try {
       // Get all data from Firebase (primary) with fallback to IndexedDB
@@ -83,6 +85,7 @@ export class DataExportService {
         firebaseDataService.isReady() ? firebaseDataService.getAllWeatherLogs() : databaseService.getAllWeatherLogs(),
         firebaseDataService.isReady() ? firebaseDataService.getAllFishCaught() : databaseService.getAllFishCaught(),
       ]);
+      this.emitProgress(onProgress, 'collecting', 1, 3, start, 'Collected data');
 
       // Get tackle box data from Firebase hooks (with localStorage fallback)
       const tacklebox = this.getLocalStorageData("tacklebox", []);
@@ -108,6 +111,8 @@ export class DataExportService {
       // Add photos to ZIP if they exist (supports inline, Storage-backed, and encrypted photos)
       if (fishCaught && photosFolder) {
         const concurrency = 4;
+        let done = 0;
+        const total = fishCaught.length;
         await this.runWithConcurrency(fishCaught, concurrency, async (fish, index) => {
           try {
             // 1) Inline data URL
@@ -160,6 +165,8 @@ export class DataExportService {
             }
           } catch (error) {
             DEV_LOG(`Failed to process photo for fish ${fish.id}:`, error);
+          } finally {
+            done++; this.emitProgress(onProgress, 'photos', done, total, start, `Packing photos… (${done}/${total})`);
           }
         });
       }
@@ -168,7 +175,11 @@ export class DataExportService {
       zip.file("data.json", JSON.stringify(exportDataContainer, null, 2));
 
       // Generate ZIP blob
-      const content = await zip.generateAsync({ type: "blob" });
+      const content = await zip.generateAsync({ type: "blob" }, (meta) => {
+        const pct = Math.max(0, Math.min(100, Math.round(meta.percent || 0)));
+        this.emitProgress(onProgress, 'zipping', pct, 100, start, `Zipping… ${pct}%`);
+      });
+      this.emitProgress(onProgress, 'finalizing', 1, 1, start, 'Done');
 
       DEV_LOG("Data export completed successfully");
       return content;
@@ -183,8 +194,10 @@ export class DataExportService {
   /**
    * Export all data as CSV files in a ZIP archive
    */
-  async exportDataAsCSV(): Promise<Blob> {
+  async exportDataAsCSV(onProgress?: (p: import("../types").ImportProgress) => void): Promise<Blob> {
     DEV_LOG("Exporting data as CSV...");
+    const start = performance.now?.() ?? Date.now();
+    this.emitProgress(onProgress, 'collecting', 0, 3, start, 'Collecting data…');
 
     try {
       // Get all data from Firebase (primary) with fallback to IndexedDB
@@ -193,6 +206,7 @@ export class DataExportService {
         firebaseDataService.isReady() ? firebaseDataService.getAllWeatherLogs() : databaseService.getAllWeatherLogs(),
         firebaseDataService.isReady() ? firebaseDataService.getAllFishCaught() : databaseService.getAllFishCaught(),
       ]);
+      this.emitProgress(onProgress, 'collecting', 1, 3, start, 'Collected data');
 
       // Create ZIP file
       const zip = new JSZip();
@@ -216,6 +230,8 @@ export class DataExportService {
         const concurrency = 4;
         const processed: any[] = new Array(fishCaught.length);
 
+        let done = 0;
+        const total = fishCaught.length;
         await this.runWithConcurrency(fishCaught, concurrency, async (fish, index) => {
           const fishCopy: any = { ...fish };
           // Gear stringification
@@ -273,6 +289,7 @@ export class DataExportService {
           if (!fileAdded) fishCopy.photo_filename = '';
           delete fishCopy.photo; // remove inline base64 from CSV
           processed[index] = fishCopy;
+          done++; this.emitProgress(onProgress, 'photos', done, total, start, `Packing photos… (${done}/${total})`);
         });
 
         const fishCsv = Papa.unparse(processed);
@@ -280,7 +297,11 @@ export class DataExportService {
       }
 
       // Generate ZIP blob
-      const content = await zip.generateAsync({ type: "blob" });
+      const content = await zip.generateAsync({ type: "blob" }, (meta) => {
+        const pct = Math.max(0, Math.min(100, Math.round(meta.percent || 0)));
+        this.emitProgress(onProgress, 'zipping', pct, 100, start, `Zipping… ${pct}%`);
+      });
+      this.emitProgress(onProgress, 'finalizing', 1, 1, start, 'Done');
 
       DEV_LOG("CSV export completed successfully");
       return content;
