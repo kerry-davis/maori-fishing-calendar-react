@@ -288,11 +288,9 @@ const Header: FC<HeaderProps> = ({
             <button onClick={onTackleBoxClick} className="icon-btn p-1 sm:p-1.5" title="Tackle Box">
               <i className="fas fa-box text-xs sm:text-sm" />
             </button>
-            {user && (
-              <button onClick={onGalleryClick} className="icon-btn p-1 sm:p-1.5" title="Gallery">
-                <i className="fas fa-images text-xs sm:text-sm" />
-              </button>
-            )}
+            <button onClick={onGalleryClick} className="icon-btn p-1 sm:p-1.5" title="Gallery">
+              <i className="fas fa-images text-xs sm:text-sm" />
+            </button>
             <button
               type="button"
               onClick={handleThemeToggle}
@@ -447,12 +445,10 @@ const Header: FC<HeaderProps> = ({
                 <i className="fas fa-box text-base mb-0" />
                 <span className="text-[8px] font-medium leading-none">Gear</span>
               </button>
-              {user && (
-                <button onClick={() => { closeMobileMenu(); onGalleryClick(); }} className="icon-btn flex flex-col items-center justify-center p-0 min-h-[24px] min-w-[60px]" title="Gallery">
-                  <i className="fas fa-images text-base mb-0" />
-                  <span className="text-[8px] font-medium leading-none">Photos</span>
-                </button>
-              )}
+              <button onClick={() => { closeMobileMenu(); onGalleryClick(); }} className="icon-btn flex flex-col items-center justify-center p-0 min-h-[24px] min-w-[60px]" title="Gallery">
+                <i className="fas fa-images text-base mb-0" />
+                <span className="text-[8px] font-medium leading-none">Photos</span>
+              </button>
               <button
                 type="button"
                 onClick={() => { closeMobileMenu(); handleThemeToggle(); }}
