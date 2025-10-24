@@ -10,6 +10,7 @@ import type { Trip, WeatherLog, FishCaught, DateModalProps } from "@shared/types
 import { DEV_LOG, PROD_ERROR } from '../../shared/utils/loggingHelpers';
 import { useAuth } from '../../app/providers/AuthContext';
 import { createSignInEncryptedPlaceholder } from '@shared/utils/photoPreviewUtils';
+import { getOrCreateGuestSessionId } from '@shared/services/guestSessionService';
 
 export interface TripLogModalProps extends DateModalProps {
   onEditTrip?: (tripId: number) => void;
@@ -580,6 +581,7 @@ const TripCard: React.FC<TripCardProps> = ({
   photoPreviews
 }) => {
   const { user } = useAuth();
+  const currentGuestSessionId = getOrCreateGuestSessionId();
   const formatHours = (hours: number): string => {
     if (hours === 1) return "1 hour";
     return `${hours} hours`;
@@ -824,28 +826,38 @@ const TripCard: React.FC<TripCardProps> = ({
                         </div>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
-                        <Button
-                          onClick={() => onEditFish(fish.id)}
-                          size="sm"
-                          className="px-3 py-1 text-xs"
-                          disabled={!user}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          onClick={(e) => {
-                            DEV_LOG('[UI Debug] Fish delete button clicked, calling onDeleteFish with ID:', fish.id);
-                            DEV_LOG('[UI Debug] Button element:', e.currentTarget);
-                            DEV_LOG('[UI Debug] Button is disabled?', e.currentTarget.disabled);
-                            onDeleteFish(fish.id);
-                          }}
-                          variant="secondary"
-                          size="sm"
-                          className="px-3 py-1 text-xs cursor-pointer select-none"
-                          disabled={!user}
-                        >
-                          Delete
-                        </Button>
+                        {(() => {
+                          const canEdit = Boolean(user) || (fish.guestSessionId && fish.guestSessionId === currentGuestSessionId);
+                          return (
+                            <Button
+                              onClick={() => onEditFish(fish.id)}
+                              size="sm"
+                              className="px-3 py-1 text-xs"
+                              disabled={!canEdit}
+                            >
+                              Edit
+                            </Button>
+                          );
+                        })()}
+                        {(() => {
+                          const canDelete = Boolean(user) || (fish.guestSessionId && fish.guestSessionId === currentGuestSessionId);
+                          return (
+                            <Button
+                              onClick={(e) => {
+                                DEV_LOG('[UI Debug] Fish delete button clicked, calling onDeleteFish with ID:', fish.id);
+                                DEV_LOG('[UI Debug] Button element:', e.currentTarget);
+                                DEV_LOG('[UI Debug] Button is disabled?', e.currentTarget.disabled);
+                                onDeleteFish(fish.id);
+                              }}
+                              variant="secondary"
+                              size="sm"
+                              className="px-3 py-1 text-xs cursor-pointer select-none"
+                              disabled={!canDelete}
+                            >
+                              Delete
+                            </Button>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>
@@ -863,7 +875,6 @@ const TripCard: React.FC<TripCardProps> = ({
               <Button
                 onClick={() => onAddFish(trip.id)}
                 className="w-full"
-                disabled={!user}
               >
                 Add Fish
               </Button>

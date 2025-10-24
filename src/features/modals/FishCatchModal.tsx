@@ -9,6 +9,7 @@ import { storage } from "@shared/services/firebase";
 import { ref, deleteObject } from "firebase/storage";
 import type { FishCaught } from "@shared/types";
 import { createSignInEncryptedPlaceholder } from "@shared/utils/photoPreviewUtils";
+import { getOrCreateGuestSessionId } from "@shared/services/guestSessionService";
 
 export interface FishCatchModalProps {
   isOpen: boolean;
@@ -219,11 +220,19 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
 
       let savedData: FishCaught;
       if (isEditing && fishId) {
-        await db.updateFishCaught({ id: fishId, ...fishData });
-        savedData = { id: fishId, ...fishData };
+        const payload: any = { id: fishId, ...fishData };
+        if (!user) {
+          payload.guestSessionId = getOrCreateGuestSessionId();
+        }
+        await db.updateFishCaught(payload);
+        savedData = { id: fishId, ...payload };
       } else {
-        const newId = await db.createFishCaught(fishData);
-        savedData = { id: newId.toString(), ...fishData };
+        const payload: any = { ...fishData };
+        if (!user) {
+          payload.guestSessionId = getOrCreateGuestSessionId();
+        }
+        const newId = await db.createFishCaught(payload);
+        savedData = { id: newId.toString(), ...payload };
       }
 
       if (onFishCaught) onFishCaught(savedData);
