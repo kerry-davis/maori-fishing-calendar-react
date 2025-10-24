@@ -5,8 +5,8 @@ import type {
    GallerySortOrder,
 } from "@shared/types";
 import { useDatabaseService } from '../../app/providers/DatabaseContext';
-import { firebaseDataService } from "@shared/services/firebaseDataService";
 import { photoMigrationService } from "@shared/services/photoMigrationService";
+import { getFishPhotoPreview } from "@shared/utils/photoPreviewUtils";
 
 
 interface PhotoItem {
@@ -68,7 +68,11 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
   // Cleanup object URLs on unmount only
   useEffect(() => {
     return () => {
-      objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      objectUrlsRef.current.forEach((url) => {
+        if (typeof url === 'string' && url.startsWith('blob:')) {
+          URL.revokeObjectURL(url);
+        }
+      });
       objectUrlsRef.current = [];
     };
   }, []);
@@ -115,54 +119,57 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
       db.getAllTrips(),
       db.getAllFishCaught(),
     ]);
-    // Create photo items from fish catches that have photos
-    const photoItems: PhotoItem[] = [];
-  // Do not revoke object URLs here; cleanup is handled on unmount only
 
+    const tripsById = new Map(trips.map((t: any) => [t.id, t]));
+
+    // Initial skeleton items (fast render)
+    const initialItems: PhotoItem[] = [];
     for (const fish of fishCaught) {
-      // Detect encrypted photo: must have encryptedMetadata and enc_photos path
-      const isEncrypted = Boolean(fish.encryptedMetadata && typeof fish.photoPath === 'string' && fish.photoPath.includes('enc_photos'));
-      const rawPhoto: string | undefined = fish.photoUrl || fish.photo;
-      let displayPhoto: string | undefined = fixPhotoData(rawPhoto || '');
-      if (isEncrypted && typeof fish.photoPath === 'string') {
-        try {
-          const decryptedData = await firebaseDataService.getDecryptedPhoto(
-            fish.photoPath,
-            fish.encryptedMetadata
-          );
-          if (decryptedData) {
-            const blob = new Blob([decryptedData.data], { type: decryptedData.mimeType });
-            const objectUrl = URL.createObjectURL(blob);
-            objectUrlsRef.current.push(objectUrl);
-            displayPhoto = objectUrl;
-          } else {
-            displayPhoto = undefined;
-          }
-        } catch (decryptError) {
-          console.warn('Failed to decrypt photo for display:', decryptError);
-          displayPhoto = undefined;
-        }
-      }
-      // Only add if trip found AND displayPhoto is usable
-      const trip = trips.find((t: any) => t.id === fish.tripId);
-      if (trip && displayPhoto) {
-        const photoItem = {
-          id: `${fish.id}-${fish.tripId}`,
-          fishId: fish.id,
-          tripId: fish.tripId,
-          photo: displayPhoto,
-          species: fish.species,
-          length: fish.length,
-          weight: fish.weight,
-          date: trip.date,
-          location: trip.location,
-          water: trip.water,
-          time: fish.time,
-        };
-        photoItems.push(photoItem);
-      }
+      const trip = tripsById.get(fish.tripId);
+      if (!trip) continue;
+      const rawPhoto: string | undefined = fixPhotoData((fish.photoUrl || fish.photo) ?? '');
+      initialItems.push({
+        id: `${fish.id}-${fish.tripId}`,
+        fishId: fish.id,
+        tripId: fish.tripId,
+        photo: rawPhoto || createPlaceholderSVG('Loading…'),
+        species: fish.species,
+        length: fish.length,
+        weight: fish.weight,
+        date: trip.date,
+        location: trip.location,
+        water: trip.water,
+        time: fish.time,
+      });
     }
-    setPhotos(photoItems);
+    setPhotos(initialItems);
+
+    // Progressive resolve with limited concurrency
+    const CONCURRENCY = 4;
+    let index = 0;
+    const workers: Promise<void>[] = [];
+    for (let w = 0; w < CONCURRENCY; w++) {
+      workers.push((async () => {
+        while (index < fishCaught.length) {
+          const i = index++;
+          const fish = fishCaught[i];
+          const trip = tripsById.get(fish.tripId);
+          if (!trip) continue;
+          try {
+            const url = await getFishPhotoPreview(fish as any);
+            if (url) {
+              if (url.startsWith('blob:')) objectUrlsRef.current.push(url);
+              setPhotos(prev => prev.map(p => p.fishId === fish.id && p.tripId === fish.tripId ? { ...p, photo: url } : p));
+            }
+          } catch (e) {
+            // ignore per-item errors
+          }
+          // Yield to event loop to keep UI responsive
+          await new Promise(r => setTimeout(r, 0));
+        }
+      })());
+    }
+    await Promise.all(workers);
   } catch (err) {
     setError("Failed to load photos");
   } finally {
@@ -566,6 +573,7 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
                             alt={`${photo.species} - ${photo.length}`}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                             decoding="async"
+                            loading="lazy"
                             onError={(e) => {
                               const target = e.target as HTMLImageElement;
                               const originalSrc = target.src;
@@ -660,6 +668,7 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
                 src={selectedPhoto.photo}
                 alt={`${selectedPhoto.species} - ${selectedPhoto.length}`}
                 className="max-w-full max-h-full object-contain bg-white dark:bg-gray-700 rounded-lg shadow-lg"
+                loading="eager"
                 onError={(e) => {
                   const target = e.target as HTMLImageElement;
                   const originalSrc = target.src;

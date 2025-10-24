@@ -22,6 +22,7 @@ import type { DocumentReference } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL, getMetadata, listAll, deleteObject, getBlob } from "firebase/storage";
 import type { StorageReference } from "firebase/storage";
 import { DEV_LOG, DEV_WARN, PROD_ERROR } from "../utils/loggingHelpers";
+import { compressImage } from "../utils/imageCompression";
 
 type QueuedSyncOperation = {
   id?: number;
@@ -156,6 +157,17 @@ export class FirebaseDataService {
     | { inlinePhoto: string; photoHash: string }
   >
   {
+    // Compress before hashing/encryption to store smaller files
+    try {
+      const compressed = await compressImage(bytes, mime, {
+        maxDimension: 1080,
+        quality: 0.85,
+        convertTo: 'image/jpeg',
+      });
+      bytes = compressed.bytes;
+      mime = compressed.mime || mime;
+    } catch {/* fallback to original */}
+
     const hash = await this.sha256Hex(bytes);
     const storageService = this.storageInstance;
 

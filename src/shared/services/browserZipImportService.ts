@@ -9,6 +9,7 @@
 
 import type { Trip, WeatherLog, FishCaught, ImportProgress } from "../types";
 import { firebaseDataService } from "./firebaseDataService";
+import { compressImage as coreCompressImage } from "../utils/imageCompression";
 import { databaseService } from "./databaseService";
 import { photoCacheService } from "./photoCacheService";
 import { auth, firestore } from "./firebase";
@@ -1183,7 +1184,7 @@ export class BrowserZipImportService {
       quality?: number;
       format?: 'jpeg' | 'png' | 'webp';
     } = {}
-  ): Promise<{ compressedData: Uint8Array; originalSize: number; compressedSize: number; compressionRatio: number }> {
+  ): Promise<{ compressedData: Uint8Array; originalSize: number; compressedSize: number; compressionRatio: number; mimeType: string }> {
 
     const defaultOptions = {
       maxWidth: 1080,
@@ -1194,148 +1195,39 @@ export class BrowserZipImportService {
 
     const config = { ...defaultOptions, ...options };
 
-    // Fallback for non-DOM environments (e.g., Vitest jsdom without Canvas/Image)
-    if (typeof document === 'undefined' || typeof Image === 'undefined') {
-      // Return original data unchanged; caching still benefits perf in tests
-      const originalSize = imageData.length;
-      const compressedSize = imageData.length;
-      return Promise.resolve({
-        compressedData: imageData,
+    const originalSize = imageData.length;
+    const inputMime = this.getMimeType(fileName);
+
+    try {
+      const maxDim = Math.min(config.maxWidth, config.maxHeight);
+      const targetMime = `image/${config.format}` as const;
+      const { bytes, mime } = await coreCompressImage(imageData, inputMime, {
+        maxDimension: maxDim,
+        quality: config.quality,
+        convertTo: targetMime as any,
+      });
+      const compressedSize = bytes.length;
+      const compressionRatio = ((originalSize - compressedSize) / originalSize) * 100;
+      return {
+        compressedData: bytes,
         originalSize,
         compressedSize,
-        compressionRatio: 0,
-      });
-    }
-
-    return new Promise((resolve) => {
-      const resolveIdentity = () => {
-        const originalSize = imageData.length;
-        const compressedSize = imageData.length;
-        resolve({
-          compressedData: imageData,
-          originalSize,
-          compressedSize,
-          compressionRatio: 0,
-        });
+        compressionRatio,
+        mimeType: mime || targetMime,
       };
-
-      try {
-        // Create blob from image data
-        const blob = new Blob([imageData as unknown as ArrayBuffer], { type: this.getMimeType(fileName) });
-
-        // Create image element for processing
-        const img = new Image();
-        const canvas = document.createElement('canvas');
-        let ctx: CanvasRenderingContext2D | null = null;
-        try {
-          ctx = canvas.getContext('2d');
-        } catch {
-          // jsdom may throw "Not implemented"; fall back to identity
-          return resolveIdentity();
-        }
-
-        if (!ctx) return resolveIdentity();
-
-        img.onload = () => {
-          try {
-            // Calculate new dimensions
-            const { width: newWidth, height: newHeight } = this.calculateDimensions(
-              img.width,
-              img.height,
-              config.maxWidth,
-              config.maxHeight
-            );
-
-            // Set canvas dimensions
-            canvas.width = newWidth;
-            canvas.height = newHeight;
-
-            // Draw and compress image
-            ctx.drawImage(img, 0, 0, newWidth, newHeight);
-
-            // Convert to desired format
-            const compressedBlob = canvas.toDataURL(`image/${config.format}`, config.quality);
-
-            // Convert back to Uint8Array
-            const base64Data = compressedBlob.split(',')[1];
-            const binaryString = atob(base64Data);
-            const compressedArray = new Uint8Array(binaryString.length);
-
-            for (let i = 0; i < binaryString.length; i++) {
-              compressedArray[i] = binaryString.charCodeAt(i);
-            }
-
-            const originalSize = imageData.length;
-            const compressedSize = compressedArray.length;
-            const compressionRatio = ((originalSize - compressedSize) / originalSize) * 100;
-
-            console.log(`Image compressed: ${fileName}`);
-            console.log(`  Original: ${(originalSize / 1024).toFixed(2)} KB`);
-            console.log(`  Compressed: ${(compressedSize / 1024).toFixed(2)} KB`);
-            console.log(`  Ratio: ${compressionRatio.toFixed(1)}% reduction`);
-            console.log(`  Dimensions: ${img.width}x${img.height} → ${newWidth}x${newHeight}`);
-
-            resolve({
-              compressedData: compressedArray,
-              originalSize,
-              compressedSize,
-              compressionRatio
-            });
-
-          } catch {
-            return resolveIdentity();
-          }
-        };
-
-        img.onerror = () => resolveIdentity();
-
-        // Create object URL for the image
-        const objectUrl = URL.createObjectURL(blob);
-        img.src = objectUrl;
-
-        // Clean up object URL after processing
-        setTimeout(() => {
-          URL.revokeObjectURL(objectUrl);
-        }, 1000);
-
-      } catch {
-        // Any setup failure -> identity
-        return resolveIdentity();
-      }
-    });
+    } catch {
+      // Fallback to identity
+      return {
+        compressedData: imageData,
+        originalSize,
+        compressedSize: originalSize,
+        compressionRatio: 0,
+        mimeType: inputMime,
+      };
+    }
   }
 
-  /**
-   * Calculate optimal dimensions maintaining aspect ratio
-   */
-  private calculateDimensions(
-    originalWidth: number,
-    originalHeight: number,
-    maxWidth: number,
-    maxHeight: number
-  ): { width: number; height: number } {
-
-    // If image is already within bounds, return original dimensions
-    if (originalWidth <= maxWidth && originalHeight <= maxHeight) {
-      return { width: originalWidth, height: originalHeight };
-    }
-
-    const aspectRatio = originalWidth / originalHeight;
-
-    let newWidth = maxWidth;
-    let newHeight = maxWidth / aspectRatio;
-
-    // If calculated height exceeds maxHeight, recalculate based on height
-    if (newHeight > maxHeight) {
-      newHeight = maxHeight;
-      newWidth = maxHeight * aspectRatio;
-    }
-
-    return {
-      width: Math.round(newWidth),
-      height: Math.round(newHeight)
-    };
-  }
+  // calculateDimensions removed (now handled by shared imageCompression)
 
   /**
    * Process images with compression
@@ -1418,7 +1310,7 @@ export class BrowserZipImportService {
 
             // Convert compressed data to base64
             const base64Data = this.arrayBufferToBase64(compressionResult.compressedData);
-            const mimeType = `image/${compressionOptions.format}`;
+            const mimeType = compressionResult.mimeType || `image/${compressionOptions.format}`;
             const dataUri = `data:${mimeType};base64,${base64Data}`;
 
             // Store in cache

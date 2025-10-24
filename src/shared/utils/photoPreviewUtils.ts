@@ -3,6 +3,7 @@ import type { FishCaught } from '../types';
 import { firebaseDataService } from '@shared/services/firebaseDataService';
 import { storage } from '@shared/services/firebase';
 import { ref as storageRef, getDownloadURL } from 'firebase/storage';
+import { compressImage } from './imageCompression';
 
 /**
  * Returns a displayable photo URL for a FishCaught record, handling encrypted photos.
@@ -41,8 +42,16 @@ export async function getFishPhotoPreview(fish: FishCaught): Promise<string | un
         fish.encryptedMetadata
       );
       if (decryptedData) {
-        const blob = new Blob([decryptedData.data], { type: decryptedData.mimeType });
-        return URL.createObjectURL(blob);
+        // Downscale for preview to speed up gallery rendering
+        try {
+          const u8 = new Uint8Array(decryptedData.data);
+          const c = await compressImage(u8, decryptedData.mimeType, { maxDimension: 512, quality: 0.7, convertTo: 'image/jpeg' });
+          const blob = new Blob([c.bytes], { type: c.mime });
+          return URL.createObjectURL(blob);
+        } catch {
+          const blob = new Blob([decryptedData.data], { type: decryptedData.mimeType });
+          return URL.createObjectURL(blob);
+        }
       } else {
         return createPlaceholderSVG('Encrypted Photo');
       }
