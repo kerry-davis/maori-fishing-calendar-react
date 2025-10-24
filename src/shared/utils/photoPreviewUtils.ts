@@ -1,9 +1,26 @@
 // Shared encrypted photo preview logic for modals
 import type { FishCaught } from '../types';
 import { firebaseDataService } from '@shared/services/firebaseDataService';
-import { storage } from '@shared/services/firebase';
-import { ref as storageRef, getDownloadURL } from 'firebase/storage';
+// no direct storage refs needed here; firebaseDataService handles blob retrieval
 import { compressImage } from './imageCompression';
+import { photoCacheService } from '@shared/services/photoCacheService';
+
+// In-memory hot cache for this session (avoids IDB roundtrips)
+const inMemoryPreviewCache = new Map<string, string>();
+
+function makePreviewKey(fish: FishCaught, opts = { dim: 512, q: 0.7 }) {
+  const path = fish.photoPath || fish.photoUrl || fish.photo || 'inline';
+  const hash = fish.photoHash || '';
+  return `preview|${path}|${hash}|${opts.dim}|${opts.q}`;
+}
+
+function bytesToDataUri(bytes: Uint8Array, mime: string): string {
+  let binary = '';
+  const len = bytes.length;
+  for (let i = 0; i < len; i++) binary += String.fromCharCode(bytes[i]);
+  const base64 = btoa(binary);
+  return `data:${mime};base64,${base64}`;
+}
 
 /**
  * Returns a displayable photo URL for a FishCaught record, handling encrypted photos.
@@ -19,24 +36,29 @@ export async function getFishPhotoPreview(fish: FishCaught): Promise<string | un
   const isEncrypted = Boolean(fish.encryptedMetadata && typeof fish.photoPath === 'string' && fish.photoPath.includes('enc_photos'));
   const isGuest = !firebaseDataService.isAuthenticated?.() || (firebaseDataService as any).isGuest;
   const rawPhoto: string | undefined = fish.photoUrl || fish.photo;
-  // If photoPath exists and is not encrypted, try to resolve it to a usable URL
+  // If photoPath exists and is not encrypted, build or fetch a cached preview for authed users
   if (!isEncrypted && fish.photoPath) {
-    // If guest and the photo is in private Storage, show sign-in placeholder
-    if (isGuest) {
-      return createSignInEncryptedPlaceholder();
-    }
-    // If it's already a blob or data URL, return as-is
-    if (fish.photoPath.startsWith('blob:') || fish.photoPath.startsWith('data:') || fish.photoPath.startsWith('http')) {
-      return fish.photoPath;
+    if (isGuest) return createSignInEncryptedPlaceholder();
+
+    const key = makePreviewKey(fish);
+    const memHit = inMemoryPreviewCache.get(key);
+    if (memHit) return memHit;
+    const idbHit = await photoCacheService.get(key);
+    if (idbHit?.dataUri) {
+      inMemoryPreviewCache.set(key, idbHit.dataUri);
+      return idbHit.dataUri;
     }
 
-    // Otherwise assume it's a storage-relative path and try to get a download URL
     try {
-      const ref = storageRef(storage, fish.photoPath);
-      const url = await getDownloadURL(ref);
-      return url;
+      const data = await firebaseDataService.getDecryptedPhoto(fish.photoPath);
+      if (!data) return createPlaceholderSVG('No Photo');
+      const u8 = new Uint8Array(data.data);
+      const c = await compressImage(u8, data.mimeType, { maxDimension: 512, quality: 0.7, convertTo: 'image/jpeg' });
+      const dataUri = bytesToDataUri(c.bytes, c.mime);
+      inMemoryPreviewCache.set(key, dataUri);
+      await photoCacheService.set({ key, dataUri, mimeType: c.mime, originalSize: u8.length, compressedSize: c.bytes.length, createdAt: Date.now() });
+      return dataUri;
     } catch {
-      // If we can't resolve the storage path, return a friendly placeholder instead of the raw path
       return createPlaceholderSVG('No Photo');
     }
   }
@@ -46,24 +68,24 @@ export async function getFishPhotoPreview(fish: FishCaught): Promise<string | un
       return createSignInEncryptedPlaceholder();
     }
     try {
-      const decryptedData = await firebaseDataService.getDecryptedPhoto(
-        fish.photoPath,
-        fish.encryptedMetadata
-      );
-      if (decryptedData) {
-        // Downscale for preview to speed up gallery rendering
-        try {
-          const u8 = new Uint8Array(decryptedData.data);
-          const c = await compressImage(u8, decryptedData.mimeType, { maxDimension: 512, quality: 0.7, convertTo: 'image/jpeg' });
-          const blob = new Blob([c.bytes], { type: c.mime });
-          return URL.createObjectURL(blob);
-        } catch {
-          const blob = new Blob([decryptedData.data], { type: decryptedData.mimeType });
-          return URL.createObjectURL(blob);
-        }
-      } else {
-        return createSignInEncryptedPlaceholder();
+      const key = makePreviewKey(fish);
+      const memHit = inMemoryPreviewCache.get(key);
+      if (memHit) return memHit;
+      const idbHit = await photoCacheService.get(key);
+      if (idbHit?.dataUri) {
+        inMemoryPreviewCache.set(key, idbHit.dataUri);
+        return idbHit.dataUri;
       }
+
+      const decryptedData = await firebaseDataService.getDecryptedPhoto(fish.photoPath, fish.encryptedMetadata);
+      if (!decryptedData) return createSignInEncryptedPlaceholder();
+
+      const u8 = new Uint8Array(decryptedData.data);
+      const c = await compressImage(u8, decryptedData.mimeType, { maxDimension: 512, quality: 0.7, convertTo: 'image/jpeg' });
+      const dataUri = bytesToDataUri(c.bytes, c.mime);
+      inMemoryPreviewCache.set(key, dataUri);
+      await photoCacheService.set({ key, dataUri, mimeType: c.mime, originalSize: u8.length, compressedSize: c.bytes.length, createdAt: Date.now() });
+      return dataUri;
     } catch {
       return createSignInEncryptedPlaceholder();
     }
