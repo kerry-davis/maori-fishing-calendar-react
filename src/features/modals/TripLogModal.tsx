@@ -204,6 +204,21 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
     }
   }, [refreshTrigger, isOpen, selectedDate, loadTrips, loadFishCatches, loadWeatherLogs]);
 
+  // Re-run preview loading when encryption or user data readiness events fire (PWA cross-device photos)
+  useEffect(() => {
+    const handler = () => {
+      if (isOpen && selectedDate) {
+        loadFishCatches();
+      }
+    };
+    window.addEventListener('encryptionMigrationCompleted', handler as EventListener);
+    window.addEventListener('userDataReady', handler as EventListener);
+    return () => {
+      window.removeEventListener('encryptionMigrationCompleted', handler as EventListener);
+      window.removeEventListener('userDataReady', handler as EventListener);
+    };
+  }, [isOpen, selectedDate, loadFishCatches]);
+
   // Handle trip deletion - show confirmation first
   const handleDeleteTrip = useCallback(async (tripId: number, firebaseDocId?: string) => {
     DEV_LOG('handleDeleteTrip called with tripId:', tripId, 'firebaseDocId:', firebaseDocId);

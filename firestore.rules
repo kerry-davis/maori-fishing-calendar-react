@@ -13,31 +13,26 @@ service cloud.firestore {
     // Trips collection - users can only access their own trips
     match /trips/{document} {
       allow create: if isOwnerRequest();
-      // Allow listing only for documents owned by the requester
-      allow list: if isAuthenticated() && resource.data.userId == request.auth.uid;
-      // Per-document permissions
-      allow get, update, delete: if isOwnerResource();
+      // NOTE: `read` covers both single-document gets and queries (list)
+      allow read, update, delete: if isOwnerResource();
     }
 
     // Weather logs collection - users can only access their own weather logs
     match /weatherLogs/{document} {
       allow create: if isOwnerRequest();
-      allow list: if isAuthenticated() && resource.data.userId == request.auth.uid;
-      allow get, update, delete: if isOwnerResource();
+      allow read, update, delete: if isOwnerResource();
     }
 
     // Fish caught collection - users can only access their own fish records
     match /fishCaught/{document} {
       allow create: if isOwnerRequest();
-      allow list: if isAuthenticated() && resource.data.userId == request.auth.uid;
-      allow get, update, delete: if isOwnerResource();
+      allow read, update, delete: if isOwnerResource();
     }
 
     // Tackle items collection - users can only access their own tackle box
     match /tackleItems/{document} {
       allow create: if isOwnerRequest();
-      allow list: if isAuthenticated() && resource.data.userId == request.auth.uid;
-      allow get, update, delete: if isOwnerResource();
+      allow read, update, delete: if isOwnerResource();
     }
 
     // User settings collection - users can only access their own settings
@@ -55,8 +50,7 @@ service cloud.firestore {
     // Gear types collection - users can only access their own gear types
     match /gearTypes/{document} {
       allow create: if isOwnerRequest();
-      allow list: if isAuthenticated() && resource.data.userId == request.auth.uid;
-      allow get, update, delete: if isOwnerResource();
+      allow read, update, delete: if isOwnerResource();
     }
 
     // Allow read access to public data (if any)
