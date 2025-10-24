@@ -8,6 +8,7 @@ import { useFirebaseTackleBox } from "@shared/hooks/useFirebaseTackleBox";
 import { storage } from "@shared/services/firebase";
 import { ref, deleteObject } from "firebase/storage";
 import type { FishCaught } from "@shared/types";
+import { createSignInEncryptedPlaceholder } from "@shared/utils/photoPreviewUtils";
 
 export interface FishCatchModalProps {
   isOpen: boolean;
@@ -117,20 +118,21 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
       if (formData.encryptedMetadata && formData.photoPath) {
         setIsPhotoLoading(true);
         try {
-          const result = await firebaseDataService.getDecryptedPhoto(formData.photoPath, formData.encryptedMetadata);
-          if (isMounted && result && result.data) {
-            const blob = new Blob([result.data], { type: result.mimeType });
-            const url = URL.createObjectURL(blob);
-            setPhotoPreview(url);
-          } else if (isMounted) {
-            setPhotoPreview(null);
-            setUploadError('Failed to decrypt photo.');
+          // If guest (unauthenticated), show sign-in placeholder instead of attempting decrypt
+          if (!user) {
+            if (isMounted) setPhotoPreview(createSignInEncryptedPlaceholder());
+          } else {
+            const result = await firebaseDataService.getDecryptedPhoto(formData.photoPath, formData.encryptedMetadata);
+            if (isMounted && result && result.data) {
+              const blob = new Blob([result.data], { type: result.mimeType });
+              const url = URL.createObjectURL(blob);
+              setPhotoPreview(url);
+            } else if (isMounted) {
+              setPhotoPreview(createSignInEncryptedPlaceholder());
+            }
           }
         } catch (err) {
-          if (isMounted) {
-            setPhotoPreview(null);
-            setUploadError('Failed to decrypt photo.');
-          }
+          if (isMounted) setPhotoPreview(createSignInEncryptedPlaceholder());
         } finally {
           if (isMounted) setIsPhotoLoading(false);
         }
@@ -140,7 +142,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
     };
     tryDecryptPhoto();
     return () => { isMounted = false; };
-  }, [formData.encryptedMetadata, formData.photoPath]);
+  }, [formData.encryptedMetadata, formData.photoPath, user]);
 
   const handleInputChange = useCallback((field: string, value: string | string[]) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -673,10 +675,17 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                   <div className="text-sm font-medium mb-2" style={{ color: 'var(--secondary-text)' }}>Current Photo</div>
                   <div className="relative inline-block">
                     <img src={formData.photo} alt="Current catch" className="w-32 h-32 object-cover rounded" style={{ border: '1px solid var(--border-color)' }} />
+                    {!user && (formData.photoPath || formData.encryptedMetadata) && (
+                      <div className="absolute inset-0 flex items-center justify-center rounded"
+                           style={{ backgroundColor: 'rgba(17,24,39,0.6)', color: 'white', border: '1px solid var(--border-color)' }}>
+                        <span className="text-[10px] font-medium">🔒 Sign in</span>
+                      </div>
+                    )}
+                    {(user || !formData.photoPath) && (
                     <button
                       type="button"
                       onClick={async () => {
-                        if (formData.photoPath) {
+                        if (user && formData.photoPath) {
                           try {
                             const storageRef = ref(storage, formData.photoPath);
                             await deleteObject(storageRef);
@@ -692,22 +701,18 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                       className="absolute top-2 right-2 btn btn-danger px-2 py-1 text-xs"
                     >
                       Delete Photo
-                    </button>
+                    </button>)}
                   </div>
                 </div>
               )}
 
               {/* Photo Preview for newly selected or decrypted photos */}
               <div className="mt-2">
-                <div className="text-sm font-medium mb-2" style={{ color: 'var(--secondary-text)' }}>
-                  {isPhotoLoading || isUploadingPhoto
-                    ? 'Loading Photo...'
-                    : uploadError
-                    ? 'Upload Failed'
-                    : photoPreview
-                    ? 'Selected Photo'
-                    : 'No Photo'}
-                </div>
+                {(isPhotoLoading || isUploadingPhoto || uploadError || photoPreview) && (
+                  <div className="text-sm font-medium mb-2" style={{ color: 'var(--secondary-text)' }}>
+                    {isPhotoLoading || isUploadingPhoto ? 'Loading Photo...' : uploadError ? 'Upload Failed' : photoPreview ? 'Selected Photo' : ''}
+                  </div>
+                )}
                 <div className="relative inline-block">
                   {isPhotoLoading ? (
                     <div className="flex items-center justify-center w-32 h-32 bg-gray-100 dark:bg-gray-700 rounded">
@@ -720,9 +725,11 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                       className={`w-32 h-32 object-cover rounded ${uploadError ? 'opacity-50' : ''}`}
                       style={{ border: `1px solid ${uploadError ? 'var(--error-border)' : 'var(--border-color)'}` }}
                     />
-                  ) : (
-                    <div className="flex items-center justify-center w-32 h-32 bg-gray-100 dark:bg-gray-700 rounded">
-                      <span className="text-gray-400">No photo</span>
+                  ) : null}
+                  {!user && (formData.photoPath || formData.encryptedMetadata) && (
+                    <div className="absolute inset-0 flex items-center justify-center rounded"
+                         style={{ backgroundColor: 'rgba(17,24,39,0.6)', color: 'white', border: '1px solid var(--border-color)' }}>
+                      <span className="text-[10px] font-medium">🔒 Sign in</span>
                     </div>
                   )}
                   {photoPreview && !isPhotoLoading && (

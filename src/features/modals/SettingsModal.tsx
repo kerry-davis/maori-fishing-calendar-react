@@ -254,7 +254,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
           </div>
         </div>
 
-        {/* Data Export Section */}
+        {/* Data Export Section (auth only) */}
+        {user && (
         <div className="pb-6" style={{ borderBottom: '1px solid var(--border-color)' }}>
           <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--primary-text)' }}>
             Export Data
@@ -283,8 +284,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             </Button>
           </div>
         </div>
+        )}
 
-        {/* Data Import Section - Single button auto-detects legacy or normal */}
+        {/* Data Import Section - auth only */}
+        {user && (
         <div className="pb-6">
           <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--primary-text)' }}>
             Import Data
@@ -316,6 +319,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             </p>
           </div>
         </div>
+        )}
 
         {/* Legacy section removed: single import handles both */}
 

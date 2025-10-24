@@ -8,6 +8,8 @@ import { FishCatchModal } from "./FishCatchModal";
 import ConfirmationDialog from "@shared/components/ConfirmationDialog";
 import type { Trip, WeatherLog, FishCaught, DateModalProps } from "@shared/types";
 import { DEV_LOG, PROD_ERROR } from '../../shared/utils/loggingHelpers';
+import { useAuth } from '../../app/providers/AuthContext';
+import { createSignInEncryptedPlaceholder } from '@shared/utils/photoPreviewUtils';
 
 export interface TripLogModalProps extends DateModalProps {
   onEditTrip?: (tripId: number) => void;
@@ -49,6 +51,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'weather' | 'fish' | 'trip', id: string, tripId?: number, firebaseDocId?: string } | null>(null);
   const db = useDatabaseService();
+  const { user } = useAuth();
 
   // Format date for display and database queries
   const formatDateForDisplay = (date: Date): string => {
@@ -119,7 +122,12 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
         if (!fish.photo && !fish.photoUrl && !fish.photoPath) {
           continue;
         }
-        const preview = await getFishPhotoPreview(fish);
+        // Guest users cannot fetch private Storage; show sign-in placeholder for any storage-backed path
+        const isEncrypted = Boolean(fish.encryptedMetadata && typeof fish.photoPath === 'string' && fish.photoPath.includes('enc_photos'));
+        const hasStoragePath = Boolean(fish.photoPath);
+        const preview = (!user && (isEncrypted || hasStoragePath))
+          ? createSignInEncryptedPlaceholder()
+          : await getFishPhotoPreview(fish);
         const fallback = fish.photoUrl || fish.photo || undefined;
         const resolvedPreview = preview || fallback;
         if (resolvedPreview) {
@@ -293,20 +301,9 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
   };
 
   // Handle fish caught
-  const handleFishCaught = (fish: FishCaught) => {
-    setFishCatches(prev => {
-      // Check if this fish already exists (for updates)
-      const existingIndex = prev.findIndex(f => f.id === fish.id);
-      if (existingIndex >= 0) {
-        // Replace existing fish catch
-        const updated = [...prev];
-        updated[existingIndex] = fish;
-        return updated;
-      } else {
-        // Add new fish catch
-        return [...prev, fish];
-      }
-    });
+  const handleFishCaught = (_fish: FishCaught) => {
+    // Reload catches and previews so photo add/update/delete is reflected immediately
+    void loadFishCatches();
   };
 
   // Handle fish catch editing
@@ -582,6 +579,7 @@ const TripCard: React.FC<TripCardProps> = ({
   fishCatches,
   photoPreviews
 }) => {
+  const { user } = useAuth();
   const formatHours = (hours: number): string => {
     if (hours === 1) return "1 hour";
     return `${hours} hours`;
@@ -779,14 +777,27 @@ const TripCard: React.FC<TripCardProps> = ({
                       <div className="flex items-start gap-3 flex-1">
                           {(() => {
                             const previewSrc = photoPreviews[fish.id] || fish.photoUrl || fish.photo;
-                            if (!previewSrc) return null;
+                            const isEncrypted = Boolean(fish.encryptedMetadata && typeof fish.photoPath === 'string' && fish.photoPath.includes('enc_photos'));
+                            const hasStoragePath = Boolean(fish.photoPath);
+                            const requiresAuth = !user && (isEncrypted || hasStoragePath);
+                            if (!previewSrc && !requiresAuth) return null;
                             return (
-                              <img
-                                src={previewSrc}
-                                alt={`${fish.species} photo`}
-                                className="w-8 h-8 object-cover rounded border flex-shrink-0"
-                                style={{ borderColor: 'var(--border-color)' }}
-                              />
+                              <div className="relative w-8 h-8 flex-shrink-0">
+                                {previewSrc && (
+                                  <img
+                                    src={previewSrc}
+                                    alt={`${fish.species} photo`}
+                                    className="w-8 h-8 object-cover rounded border"
+                                    style={{ borderColor: 'var(--border-color)' }}
+                                  />
+                                )}
+                                {requiresAuth && (
+                                  <div className="absolute inset-0 flex items-center justify-center rounded border"
+                                       style={{ backgroundColor: 'var(--secondary-background)', borderColor: 'var(--border-color)' }}>
+                                    <span className="text-[10px]">🔒 Sign in</span>
+                                  </div>
+                                )}
+                              </div>
                             );
                           })()}
                         <div className="flex-1 min-w-0">
@@ -817,6 +828,7 @@ const TripCard: React.FC<TripCardProps> = ({
                           onClick={() => onEditFish(fish.id)}
                           size="sm"
                           className="px-3 py-1 text-xs"
+                          disabled={!user}
                         >
                           Edit
                         </Button>
@@ -830,6 +842,7 @@ const TripCard: React.FC<TripCardProps> = ({
                           variant="secondary"
                           size="sm"
                           className="px-3 py-1 text-xs cursor-pointer select-none"
+                          disabled={!user}
                         >
                           Delete
                         </Button>
@@ -850,6 +863,7 @@ const TripCard: React.FC<TripCardProps> = ({
               <Button
                 onClick={() => onAddFish(trip.id)}
                 className="w-full"
+                disabled={!user}
               >
                 Add Fish
               </Button>

@@ -6,7 +6,8 @@ import type {
 } from "@shared/types";
 import { useDatabaseService } from '../../app/providers/DatabaseContext';
 import { photoMigrationService } from "@shared/services/photoMigrationService";
-import { getFishPhotoPreview } from "@shared/utils/photoPreviewUtils";
+import { useAuth } from '../../app/providers/AuthContext';
+import { getFishPhotoPreview, createPlaceholderSVG, createSignInEncryptedPlaceholder } from "@shared/utils/photoPreviewUtils";
 
 
 interface PhotoItem {
@@ -14,6 +15,7 @@ interface PhotoItem {
   fishId: string;
   tripId: number;
   photo: string;
+  requiresAuth?: boolean;
   species: string;
   length: string;
   weight: string;
@@ -47,6 +49,7 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
 }) => {
   // Remove duplicate declarations from previous patch
   const db = useDatabaseService();
+  const { user } = useAuth();
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -128,11 +131,21 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
       const trip = tripsById.get(fish.tripId);
       if (!trip) continue;
       const rawPhoto: string | undefined = fixPhotoData((fish.photoUrl || fish.photo) ?? '');
+      const isEncrypted = Boolean(fish.encryptedMetadata && typeof fish.photoPath === 'string' && fish.photoPath.includes('enc_photos'));
+      const isGuest = !user;
+      const hasStoragePath = Boolean(fish.photoPath);
+      const initialPhoto = (isGuest && (isEncrypted || hasStoragePath))
+        ? createSignInEncryptedPlaceholder()
+        : rawPhoto;
+      // Decide if this photo should be listed at all
+      const shouldInclude = Boolean(initialPhoto) || (isGuest && (isEncrypted || hasStoragePath));
+      if (!shouldInclude) continue;
       initialItems.push({
         id: `${fish.id}-${fish.tripId}`,
         fishId: fish.id,
         tripId: fish.tripId,
-        photo: rawPhoto || createPlaceholderSVG('Loading…'),
+        photo: initialPhoto || createPlaceholderSVG('Loading…'),
+        requiresAuth: isGuest && (isEncrypted || hasStoragePath),
         species: fish.species,
         length: fish.length,
         weight: fish.weight,
@@ -156,6 +169,12 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
           const trip = tripsById.get(fish.tripId);
           if (!trip) continue;
           try {
+            const isEncrypted = Boolean(fish.encryptedMetadata && typeof fish.photoPath === 'string' && fish.photoPath.includes('enc_photos'));
+            const hasStoragePath = Boolean(fish.photoPath);
+            if (!user && (isEncrypted || hasStoragePath)) {
+              // Keep sign-in placeholder for guests; skip fetch/decrypt
+              continue;
+            }
             const url = await getFishPhotoPreview(fish as any);
             if (url) {
               if (url.startsWith('blob:')) objectUrlsRef.current.push(url);
@@ -372,22 +391,7 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
     return undefined;
   };
 
-  const createPlaceholderSVG = (text: string): string => {
-    const svg = `<svg width="300" height="300" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" style="stop-color:#f3f4f6;stop-opacity:1" />
-          <stop offset="100%" style="stop-color:#e5e7eb;stop-opacity:1" />
-        </linearGradient>
-      </defs>
-      <rect width="100%" height="100%" fill="url(#grad1)"/>
-      <circle cx="150" cy="120" r="30" fill="#d1d5db" opacity="0.6"/>
-      <path d="M140 110 L160 110 L155 125 Z" fill="#d1d5db" opacity="0.6"/>
-      <text x="50%" y="180" font-family="system-ui, -apple-system, sans-serif" font-size="16" font-weight="500" fill="#6b7280" text-anchor="middle" dy=".3em">${text}</text>
-      <text x="50%" y="200" font-family="system-ui, -apple-system, sans-serif" font-size="12" fill="#9ca3af" text-anchor="middle" dy=".3em">Tap to view details</text>
-    </svg>`;
-    return `data:image/svg+xml;base64,${btoa(svg)}`;
-  };
+  // Use shared placeholder generator for consistency across modals
 
   const getAvailableMonths = () => {
     const months = new Set<string>();
@@ -563,15 +567,18 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
                         <div
                           key={photo.id}
                           onClick={() => handlePhotoClick(photo)}
-                          className="relative aspect-square rounded-lg overflow-hidden
+                          className="relative rounded-lg overflow-hidden
                                    cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all duration-200
                                    group"
+                          style={{}}
                         >
+                          {/* Ratio box */}
+                          <div className="pt-[100%]"></div>
                           {/* Image */}
                           <img
                             src={photo.photo}
                             alt={`${photo.species} - ${photo.length}`}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                            className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                             decoding="async"
                             loading="lazy"
                             onError={(e) => {
@@ -609,6 +616,13 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
                               </p>
                             </div>
                           </div>
+                          {/* Lock badge for guest + storage-backed photos */}
+                          {photo.requiresAuth && (
+                            <div className="absolute top-1 left-1 z-20 px-2 py-0.5 rounded text-[10px] font-medium"
+                                 style={{ backgroundColor: 'rgba(17,24,39,0.7)', color: 'white' }}>
+                              🔒 Sign in
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -659,7 +673,8 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
 
             {/* Photo */}
             <div
-              className="flex items-center justify-center min-h-[60vh] max-h-[80vh] bg-gray-50 dark:bg-gray-600"
+              className="flex items-center justify-center bg-gray-50 dark:bg-gray-600 p-2 overflow-auto"
+              style={{ maxHeight: '70vh' }}
               onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
@@ -667,27 +682,29 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
               <img
                 src={selectedPhoto.photo}
                 alt={`${selectedPhoto.species} - ${selectedPhoto.length}`}
-                className="max-w-full max-h-full object-contain bg-white dark:bg-gray-700 rounded-lg shadow-lg"
+                className="block object-contain bg-white dark:bg-gray-700 rounded-lg shadow-lg"
+                style={{ maxWidth: '90vw', maxHeight: '68vh', width: 'auto', height: 'auto' }}
                 loading="eager"
                 onError={(e) => {
                   const target = e.target as HTMLImageElement;
                   const originalSrc = target.src;
 
-                  // If it's not already a placeholder, try to fix the image data
                   if (!originalSrc.includes('data:image/svg+xml')) {
-                    console.warn('Full-size image failed to load, attempting to fix:', originalSrc.substring(0, 50) + '...');
-
-                    // Try to reprocess the image data
                     const fixedSrc = fixPhotoData(originalSrc);
                     if (fixedSrc && fixedSrc !== originalSrc && !fixedSrc.includes('data:image/svg+xml')) {
                       target.src = fixedSrc;
                     } else {
-                      // Use placeholder as final fallback
                       target.src = createPlaceholderSVG('Image not available');
                     }
                   }
                 }}
               />
+              {selectedPhoto.requiresAuth && (
+                <div className="absolute top-3 left-3 z-20 px-2 py-1 rounded text-xs font-medium"
+                     style={{ backgroundColor: 'rgba(17,24,39,0.7)', color: 'white' }}>
+                  🔒 Sign in to view
+                </div>
+              )}
             </div>
 
             {/* Photo info */}
