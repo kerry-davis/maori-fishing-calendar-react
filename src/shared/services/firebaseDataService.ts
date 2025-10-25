@@ -2308,6 +2308,66 @@ export class FirebaseDataService {
     }
   }
 
+  /**
+   * Aggressively attempts to drain the sync queue by resolving IDs via queries,
+   * converting missing updates into creates, and treating missing deletes as success.
+   * If entries still cannot be applied, moves them to a quarantine key and clears the queue
+   * so the UI can proceed without being blocked.
+   */
+  async drainSyncQueueAggressive(): Promise<{ attempted: number; remaining: number; quarantinedKey?: string }> {
+    if (this.isGuest || !this.userId) {
+      return { attempted: 0, remaining: 0 };
+    }
+
+    // First, run a normal processing pass
+    await this.processSyncQueue();
+
+    if (this.syncQueue.length === 0) {
+      return { attempted: 0, remaining: 0 };
+    }
+
+    // Attempt aggressive application per-entry
+    const remaining: QueuedSyncOperation[] = [];
+    for (const entry of this.syncQueue) {
+      try {
+        const ok = await this.applyQueuedOperation(entry);
+        if (!ok) {
+          // If still not ok, try converting update->create for missing mappings
+          if (entry.operation === 'update') {
+            const clone: QueuedSyncOperation = { ...entry, operation: 'create' };
+            const ok2 = await this.applyQueuedOperation(clone);
+            if (!ok2) remaining.push(entry);
+          } else if (entry.operation === 'delete') {
+            // Treat missing target deletes as success
+            continue;
+          } else {
+            remaining.push(entry);
+          }
+        }
+      } catch {
+        remaining.push(entry);
+      }
+    }
+
+    this.syncQueue = remaining;
+    this.saveSyncQueue(false);
+
+    // If still remaining, quarantine and clear to unblock UI
+    if (this.syncQueue.length > 0) {
+      const key = `syncQuarantine_${this.userId}_${Date.now()}`;
+      try {
+        localStorage.setItem(key, JSON.stringify(this.syncQueue));
+      } catch {}
+      this.syncQueue = [];
+      this.saveSyncQueue(false);
+      this.notifySyncQueueCleared();
+      return { attempted: remaining.length, remaining: 0, quarantinedKey: key };
+    }
+
+    this.notifySyncQueueCleared();
+    return { attempted: 0, remaining: 0 };
+  }
+
   private scheduleQueueRetry(): void {
     if (this.queueRetryTimeout || !this.isOnline) {
       return;

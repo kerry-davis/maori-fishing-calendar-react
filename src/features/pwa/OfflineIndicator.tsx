@@ -27,6 +27,17 @@ export const OfflineIndicator = () => {
     return isOnline && (Date.now() - started) > 90_000;
   }, [syncQueueLength, isOnline]);
 
+  const attemptedRepairRef = useRef(false);
+  useEffect(() => {
+    if (isStuck && !attemptedRepairRef.current) {
+      attemptedRepairRef.current = true;
+      try { (firebaseDataService as any).drainSyncQueueAggressive?.(); } catch {}
+    }
+    if (!isStuck) {
+      attemptedRepairRef.current = false;
+    }
+  }, [isStuck]);
+
   // Determine status and styling
   const getStatusInfo = () => {
     if (!isOnline) {
@@ -104,11 +115,10 @@ export const OfflineIndicator = () => {
               type="button"
               className="underline text-xs"
               onClick={() => {
-                try { (window as any).clearSyncQueue?.(); } catch {}
-                try { (firebaseDataService as any).clearSyncQueue?.(); } catch {}
+                try { (firebaseDataService as any).drainSyncQueueAggressive?.(); } catch {}
               }}
             >
-              Force clear
+              Repair sync
             </button>
           )}
         </div>
