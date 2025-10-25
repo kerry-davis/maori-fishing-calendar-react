@@ -36,12 +36,13 @@ erDiagram
     number hours
     string companions
     string notes
+    string contentHash
     timestamp createdAt
     timestamp updatedAt
   }
 
   WEATHER_LOGS {
-    string id        "<tripId>-<ts>"
+    string id        "<tripId>-<ulid> (opaque)"
     string userId FK
     number tripId FK "references TRIPS.id"
     string timeOfDay
@@ -50,12 +51,13 @@ erDiagram
     string windDirection
     string waterTemp
     string airTemp
+    string contentHash
     timestamp createdAt
     timestamp updatedAt
   }
 
   FISH_CAUGHT {
-    string id        "<tripId>-<ts>"
+    string id        "<tripId>-<ulid> (opaque)"
     string userId FK
     number tripId FK "references TRIPS.id"
     string species
@@ -68,8 +70,9 @@ erDiagram
     string photoHash
     string photoPath  "users/<uid>/enc_photos/... or users/<uid>/images/..."
     string photoMime
-    string photoUrl   "optional cached"
+    string photoUrl   "optional cached (avoid persisting for encrypted photos)"
     string encryptedMetadata "for encrypted photos"
+    string contentHash
     timestamp createdAt
     timestamp updatedAt
   }
@@ -102,8 +105,9 @@ erDiagram
 ```
 
 Notes:
-- Gear types are primarily stored in `userSettings.gearTypes`. A `gearTypes` collection also exists for per-document gear type storage; the app supports both patterns.
+- Gear types are primarily stored in `userSettings.gearTypes`. The `gearTypes` collection exists but is deprecated for most flows to avoid drift.
 - Sensitive fields are deterministically encrypted client-side per `SECURITY.md` (selected string fields in trips/weatherLogs/fishCaught/tackleItems).
+- Weather/Fish IDs are opaque and use a ULID-based suffix; UI should not parse IDs.
 
 ## 2) Local (Guest/Offline) Data ERD
 

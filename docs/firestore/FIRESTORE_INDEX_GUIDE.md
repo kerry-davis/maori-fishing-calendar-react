@@ -1,8 +1,8 @@
 # Firestore Index Setup for Encryption Migration
 
-## Required Composite Index
+## Required Composite Indexes
 
-The encryption migration requires a composite index on the `trips` collection to properly query and encrypt user data.
+These indexes support common queries (encryption migration, listing, and per-trip lookups) used across the app.
 
 ### Index Details
 
@@ -17,6 +17,9 @@ The encryption migration requires composite indexes on multiple collections. Eac
   - `createdAt` (Ascending)
 - **Scope**: Collection
 
+Recommended additional index for date filtering:
+- `userId` (Ascending), `date` (Ascending)
+
 **2. WeatherLogs Collection**
 - **Collection**: `weatherLogs`
 - **Fields**: 
@@ -24,12 +27,18 @@ The encryption migration requires composite indexes on multiple collections. Eac
   - `createdAt` (Ascending)
 - **Scope**: Collection
 
+Recommended per-trip query index:
+- `userId` (Ascending), `tripId` (Ascending)
+
 **3. FishCaught Collection** (if applicable)
 - **Collection**: `fishCaught`
 - **Fields**: 
   - `userId` (Ascending)
   - `createdAt` (Ascending)
 - **Scope**: Collection
+
+Recommended per-trip query index:
+- `userId` (Ascending), `tripId` (Ascending)
 
 **4. TackleItems Collection** (if applicable)
 - **Collection**: `tackleItems`
@@ -93,7 +102,37 @@ If you have Firebase CLI configured, you can create all required indexes using t
       ]
     },
     {
+      "collectionGroup": "trips",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "weatherLogs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "weatherLogs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "tripId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "fishCaught",
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -110,14 +149,8 @@ If you have Firebase CLI configured, you can create all required indexes using t
       "collectionGroup": "fishCaught",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "userId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "ASCENDING"
-        }
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "tripId", "order": "ASCENDING" }
       ]
     },
     {

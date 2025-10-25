@@ -7,6 +7,7 @@ export default defineConfig({
     alias: {
       '@app': '/src/app',
       '@shared': '/src/shared',
+      '@shared/services/firebase': '/src/shared/services/__mocks__/firebase.ts',
       '@features': '/src/features'
     }
   },

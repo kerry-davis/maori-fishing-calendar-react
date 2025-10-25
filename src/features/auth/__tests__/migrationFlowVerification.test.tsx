@@ -45,30 +45,24 @@ vi.mock('@app/providers/PWAContext', () => ({
 describe('Migration Flow Verification', () => {
   let authCallback: ((user: any) => void) | null = null;
   let migrationEvents: any[] = [];
+  let dispatchSpy: ReturnType<typeof vi.spyOn> | null = null;
   
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     migrationEvents = [];
     
     // Setup onAuthStateChanged mock to capture the callback
-    vi.mocked(require('../../../shared/services/firebase').auth.onAuthStateChanged).mockImplementation((callback: (user: any) => void) => {
+    const firebase = await import('@shared/services/firebase');
+    vi.mocked(firebase.auth.onAuthStateChanged).mockImplementation((callback: (user: any) => void) => {
       authCallback = callback as (user: any) => void;
       return vi.fn(); // unsubscribe function
     });
     
-    // Mock window events
-    Object.defineProperty(window, 'dispatchEvent', {
-      value: vi.fn((event: CustomEvent) => {
-        migrationEvents.push(event);
-      }),
-    });
-    
-    Object.defineProperty(window, 'addEventListener', {
-      value: vi.fn(),
-    });
-    
-    Object.defineProperty(window, 'removeEventListener', {
-      value: vi.fn(),
+    // Spy window events but keep native behavior
+    const originalDispatch = window.dispatchEvent.bind(window);
+    dispatchSpy = vi.spyOn(window, 'dispatchEvent').mockImplementation((event: any) => {
+      migrationEvents.push(event);
+      return originalDispatch(event);
     });
     
     // Mock localStorage
@@ -101,6 +95,10 @@ describe('Migration Flow Verification', () => {
   afterEach(() => {
     authCallback = null;
     migrationEvents = [];
+    if (dispatchSpy) {
+      dispatchSpy.mockRestore();
+      dispatchSpy = null;
+    }
   });
 
   it('should clear error pill and continue polling after Firestore index is created', async () => {

@@ -4,7 +4,7 @@ import type { FishCaught } from '../../shared/types';
 export interface FishCaughtDisplayProps {
   fishCaught: FishCaught[];
   onEdit?: (fishCaught: FishCaught) => void;
-  onDelete?: (fishCaughtId: number) => void;
+  onDelete?: (fishCaughtId: string) => void;
   isLoading?: boolean;
 }
 
@@ -24,12 +24,7 @@ export const FishCaughtDisplay: React.FC<FishCaughtDisplayProps> = ({
 }) => {
   // Handle delete - let parent handle confirmation
   const handleDelete = (fishCaughtId: string) => {
-    if (onDelete) {
-      const numericId = parseInt(fishCaughtId.split('-').pop() || '0', 10);
-      if (numericId > 0) {
-        onDelete(numericId);
-      }
-    }
+    if (onDelete) onDelete(fishCaughtId);
   };
 
   // Format time display

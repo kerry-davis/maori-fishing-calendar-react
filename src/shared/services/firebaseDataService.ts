@@ -1,4 +1,5 @@
 import type { Trip, WeatherLog, FishCaught, ImportProgress } from "../types";
+import { generateULID } from "../utils/ulid";
 import { firestore, storage } from "@shared/services/firebase";
 import { encryptionService, ENCRYPTION_COLLECTION_FIELD_MAP, isPossiblyEncrypted } from './encryptionService';
 import { photoEncryptionService } from './photoEncryptionService';
@@ -49,6 +50,7 @@ export class FirebaseDataService {
   private hasLoggedStorageUnavailable = false;
   private isProcessingQueue = false;
   private queueRetryTimeout: ReturnType<typeof setTimeout> | null = null;
+  private readonly PHOTO_ENCRYPTION_STRICT = (import.meta as any)?.env?.VITE_PHOTO_ENCRYPTION_STRICT === 'true';
 
   constructor() {
     // Monitor online/offline status
@@ -229,23 +231,19 @@ export class FirebaseDataService {
           }
         });
 
-        let url = '';
-        try {
-          url = await getDownloadURL(ref);
-        } catch {
-          // ignore; URL can be fetched later on demand
-        }
-
+        // Do not persist long-lived download URLs for encrypted photos; fetch on demand
         return {
           photoHash: hash,
           photoPath: encryptionResult.storagePath,
           photoMime: mime,
-          photoUrl: url,
           encryptedMetadata: photoEncryptionService.serializeMetadata(encryptionResult.metadata)
         };
       } catch (encryptionError) {
         DEV_WARN('[Photo Encryption] Encryption failed, falling back to unencrypted storage:', encryptionError);
-        // Fall through to unencrypted storage
+        if (this.PHOTO_ENCRYPTION_STRICT) {
+          throw new Error('Photo encryption failed and strict mode is enabled');
+        }
+        // Fall through to unencrypted storage when not strict
       }
     }
 
@@ -1006,7 +1004,7 @@ export class FirebaseDataService {
       async () => {
         this.validateWeatherLogData(weatherData);
 
-        const localId = `${weatherData.tripId}-${Date.now()}`;
+        const localId = `${weatherData.tripId}-${generateULID()}`;
         let weatherWithIds: any = { ...weatherData, id: localId, userId: this.userId };
         try { weatherWithIds = await encryptionService.encryptFields('weatherLogs', weatherWithIds); } catch (e) { DEV_WARN('[encryption] weather encrypt failed', e); }
 
@@ -1325,7 +1323,7 @@ export class FirebaseDataService {
           details: fishData.details ? this.sanitizeString(fishData.details) : fishData.details,
         };
 
-        const localId = `${fishData.tripId}-${Date.now()}`;
+        const localId = `${fishData.tripId}-${generateULID()}`;
         let fishWithIds: any = { ...sanitizedFishData, id: localId, userId: this.userId };
         try { fishWithIds = await encryptionService.encryptFields('fishCaught', fishWithIds); } catch (e) { DEV_WARN('[encryption] fish encrypt failed', e); }
 
@@ -3070,6 +3068,7 @@ export class FirebaseDataService {
 
   /**
    * Get all gear types from Firestore
+   * @deprecated Prefer userSettings.gearTypes for source of truth to avoid drift.
    */
   async getAllGearTypes(): Promise<string[]> {
     if (!this.isReady()) {
@@ -3091,6 +3090,7 @@ export class FirebaseDataService {
 
   /**
    * Create a new gear type in Firestore
+   * @deprecated Prefer updating userSettings.gearTypes; this collection path is being phased out.
    */
   async createGearType(name: string): Promise<string> {
     if (!this.isReady()) {
@@ -3115,6 +3115,7 @@ export class FirebaseDataService {
 
   /**
    * Update a gear type in Firestore
+   * @deprecated Prefer updating userSettings.gearTypes; this collection path is being phased out.
    */
   async updateGearType(id: string, newName: string): Promise<void> {
     if (!this.isReady()) {
@@ -3135,6 +3136,7 @@ export class FirebaseDataService {
 
   /**
    * Delete a gear type from Firestore
+   * @deprecated Prefer updating userSettings.gearTypes; this collection path is being phased out.
    */
   async deleteGearType(id: string): Promise<void> {
     if (!this.isReady()) {

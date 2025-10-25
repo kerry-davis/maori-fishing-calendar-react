@@ -4,7 +4,7 @@ import type { WeatherLog } from '../../shared/types';
 export interface WeatherLogDisplayProps {
   weatherLogs: WeatherLog[];
   onEdit?: (weatherLog: WeatherLog) => void;
-  onDelete?: (weatherLogId: number) => void;
+  onDelete?: (weatherLogId: string) => void;
   isLoading?: boolean;
 }
 
@@ -55,12 +55,7 @@ export const WeatherLogDisplay: React.FC<WeatherLogDisplayProps> = ({
 
   // Handle delete - let parent handle confirmation
   const handleDelete = (weatherLogId: string) => {
-    if (onDelete) {
-      const numericId = parseInt(weatherLogId.split('-').pop() || '0', 10);
-      if (numericId > 0) {
-        onDelete(numericId);
-      }
-    }
+    if (onDelete) onDelete(weatherLogId);
   };
 
   if (isLoading) {
