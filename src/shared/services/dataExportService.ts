@@ -87,9 +87,43 @@ export class DataExportService {
       ]);
       this.emitProgress(onProgress, 'collecting', 1, 3, start, 'Collected data');
 
-      // Get tackle box data from Firebase hooks (with localStorage fallback)
-      const tacklebox = this.getLocalStorageData("tacklebox", []);
+      // Get tackle box data
       const gearTypes = this.getLocalStorageData("gearTypes", []);
+      const uid = auth?.currentUser?.uid;
+      const norm = (v?: string) => (v || '').trim().toLowerCase();
+      const mkKey = (d: any) => [norm(d.type), norm(d.brand), norm(d.name), norm(d.colour)].join('|');
+      const hashFNV1a = (str: string) => { let h=0x811c9dc5; for (let i=0;i<str.length;i++){ h^=str.charCodeAt(i); h=Math.imul(h,0x01000193);} return ('0000000'+(h>>>0).toString(16)).slice(-8); };
+      const stableNumericId = (str: string) => { let h=0x811c9dc5; for (let i=0;i<str.length;i++){ h^=str.charCodeAt(i); h=Math.imul(h,0x01000193);} return (h>>>0); };
+
+      let tacklebox: any[] = [];
+      try {
+        if (uid && firestore) {
+          // Authenticated export: read tackle items directly from Firestore to include gearId (doc.id)
+          const snapshot = await getDocs(query(collection(firestore, 'tackleItems'), where('userId', '==', uid)));
+          tacklebox = snapshot.docs.map(d => {
+            const data: any = d.data();
+            return {
+              id: stableNumericId(d.id),
+              gearId: d.id,
+              name: data.name || '',
+              brand: data.brand || '',
+              type: data.type || '',
+              colour: data.colour || ''
+            };
+          });
+        } else {
+          // Guest export: use localStorage and synthesize stable gearId matching catch gearIds
+          const local = this.getLocalStorageData('tacklebox', []);
+          tacklebox = Array.isArray(local) ? local.map((it: any) => ({
+            ...it,
+            gearId: it.gearId || `local-${hashFNV1a(mkKey(it))}`
+          })) : [];
+        }
+      } catch (e) {
+        // Fallback to localStorage if Firestore read fails
+        const local = this.getLocalStorageData('tacklebox', []);
+        tacklebox = Array.isArray(local) ? local : [];
+      }
 
       // Create export data container matching original format
       const exportDataContainer = {
@@ -650,6 +684,15 @@ export class DataExportService {
     }
 
     // If tacklebox items are present, mirror them into Firestore for authenticated users
+    // Build a composite-key -> gearId mapping while inserting tackle items
+    const keyToGearId = new Map<string, string>();
+    const norm = (v?: string) => (v || '').trim().toLowerCase();
+    const mkKey = (d: any) => [norm(d.type), norm(d.brand), norm(d.name), norm(d.colour)].join('|');
+    const hashFNV1a = (str: string) => {
+      let hash = 0x811c9dc5;
+      for (let i = 0; i < str.length; i++) { hash ^= str.charCodeAt(i); hash = Math.imul(hash, 0x01000193); }
+      return ('0000000' + (hash >>> 0).toString(16)).slice(-8);
+    };
     try {
       const uid = auth?.currentUser?.uid;
       const items: any[] | undefined = data.localStorage?.tacklebox;
@@ -676,12 +719,16 @@ export class DataExportService {
             const rest = { ...(item || {}) } as Record<string, unknown>;
             delete (rest as any).id;
             const ref = doc(collection(firestore, "tackleItems"));
-            batch.set(ref, {
+            const payload = {
               ...rest,
               userId: uid,
+              gearId: ref.id,
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
-            });
+            } as any;
+            batch.set(ref, payload);
+            const key = mkKey(payload);
+            if (key && !keyToGearId.has(key)) keyToGearId.set(key, ref.id);
           }
           await batch.commit();
         }
@@ -728,6 +775,31 @@ export class DataExportService {
 
     if (dbData.fish_caught && Array.isArray(dbData.fish_caught)) {
       for (const fish of dbData.fish_caught) {
+        // Map legacy gear strings/composites to gearIds using newly inserted tackle items
+        try {
+          const selected: string[] = Array.isArray(fish.gear) ? fish.gear : [];
+          const gearIds: string[] = [];
+          for (const g of selected) {
+            const s = norm(String(g));
+            let gid: string | undefined;
+            if (s.includes('|')) {
+              // incoming composite may be name-first; normalize to type|brand|name|colour used by mkKey
+              const parts = s.split('|').map(p => norm(p));
+              const key = parts.length === 4 ? [parts[0], parts[1], parts[2], parts[3]].join('|')
+                : s;
+              gid = keyToGearId.get(key);
+            } else {
+              // name-only: find first matching by name across key map
+              for (const [k, id] of keyToGearId.entries()) {
+                const name = k.split('|')[2];
+                if (name === s) { gid = id; break; }
+              }
+            }
+            if (!gid) gid = `local-${hashFNV1a(s)}`;
+            if (!gearIds.includes(gid)) gearIds.push(gid);
+          }
+          if (gearIds.length) (fish as any).gearIds = gearIds;
+        } catch {/* ignore mapping failures */}
         await ((firebaseDataService as any).upsertFishCaughtFromImport?.(fish) ?? firebaseDataService.createFishCaught(fish));
         doneUnits++;
         this.emitProgress(onProgress, 'importing', doneUnits, totalUnits || 1, startTs ?? (performance.now?.() ?? Date.now()), 'Writing fish…');
@@ -800,7 +872,40 @@ export class DataExportService {
     }
 
     if (dbData.fish_caught && Array.isArray(dbData.fish_caught)) {
+      // Build local tackle mapping from provided tacklebox
+      const items: any[] = Array.isArray(data.localStorage?.tacklebox) ? data.localStorage.tacklebox : [];
+      const keyToGearId = new Map<string, string>();
+      const nameToIds = new Map<string, string[]>();
+      const norm = (v?: string) => (v || '').trim().toLowerCase();
+      const mkKey = (d: any) => [norm(d.type), norm(d.brand), norm(d.name), norm(d.colour)].join('|');
+      const hashFNV1a = (str: string) => { let hash = 0x811c9dc5; for (let i=0;i<str.length;i++){ hash ^= str.charCodeAt(i); hash = Math.imul(hash,0x01000193);} return ('0000000'+(hash>>>0).toString(16)).slice(-8); };
+      for (const it of items) {
+        const key = mkKey(it);
+        const gid = it.gearId || `local-${hashFNV1a(key)}`;
+        if (!keyToGearId.has(key)) keyToGearId.set(key, gid);
+        const nm = norm(it.name);
+        const arr = nameToIds.get(nm) || [];
+        if (!arr.includes(gid)) arr.push(gid);
+        nameToIds.set(nm, arr);
+      }
       for (const fish of dbData.fish_caught) {
+        try {
+          const selected: string[] = Array.isArray(fish.gear) ? fish.gear : [];
+          const gearIds: string[] = [];
+          for (const g of selected) {
+            const s = norm(String(g));
+            let gid: string | undefined;
+            if (s.includes('|')) {
+              gid = keyToGearId.get(s);
+            } else {
+              const ids = nameToIds.get(s) || [];
+              gid = ids.length === 1 ? ids[0] : (ids[0] || undefined);
+            }
+            if (!gid) gid = `local-${hashFNV1a(s)}`;
+            if (!gearIds.includes(gid)) gearIds.push(gid);
+          }
+          if (gearIds.length) (fish as any).gearIds = gearIds;
+        } catch {/* ignore mapping failures */}
         if (typeof fish.id === 'string') {
           await databaseService.updateFishCaught(fish);
         } else {

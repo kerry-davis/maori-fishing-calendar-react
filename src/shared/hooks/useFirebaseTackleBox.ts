@@ -78,7 +78,7 @@ export function useFirebaseTackleBox(): [
           const data = docSnap.data();
           // Always derive a stable numeric id from doc id to avoid parseInt collisions
           const idNum = stableNumericId(docSnap.id);
-          items.push({ id: idNum, ...(data as any) } as TackleItem);
+          items.push({ id: idNum, gearId: docSnap.id, ...(data as any) } as TackleItem);
         });
 
         setTacklebox(dedupeByComposite(items));
@@ -171,11 +171,11 @@ export function useFirebaseTackleBox(): [
 
           const existing = existingByKey.get(key);
           if (existing) {
-            batch.update(existing.ref, itemData);
+            batch.update(existing.ref, { ...itemData, gearId: existing.ref.id });
             // Remove tracked duplicate refs for this key (will be deleted below)
           } else {
             const docRef = doc(collection(firestore, 'tackleItems'));
-            batch.set(docRef, { ...itemData, createdAt: serverTimestamp() });
+            batch.set(docRef, { ...itemData, gearId: docRef.id, createdAt: serverTimestamp() });
           }
         }
 

@@ -221,6 +221,44 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
     setError(null);
 
     try {
+      const norm = (v?: string) => (v || '').trim().toLowerCase();
+      const gearKey = (item: { type: string; brand: string; name: string; colour: string }) => `${norm(item.type)}|${norm(item.brand)}|${norm(item.name)}|${norm(item.colour)}`;
+      const hashFNV1a = (str: string) => {
+        let hash = 0x811c9dc5;
+        for (let i = 0; i < str.length; i++) {
+          hash ^= str.charCodeAt(i);
+          hash = Math.imul(hash, 0x01000193);
+        }
+        return ('0000000' + (hash >>> 0).toString(16)).slice(-8);
+      };
+      const compositeToId = new Map<string, string>();
+      const nameToIds = new Map<string, string[]>();
+      for (const it of tackleBox) {
+        const key = gearKey(it);
+        const gid = it.gearId || `local-${hashFNV1a(key)}`;
+        if (!compositeToId.has(key)) compositeToId.set(key, gid);
+        const nm = norm(it.name);
+        const arr = nameToIds.get(nm) || [];
+        if (!arr.includes(gid)) arr.push(gid);
+        nameToIds.set(nm, arr);
+      }
+
+      const resolvedGearIds: string[] = [];
+      for (const g of formData.gear) {
+        const s = norm(g);
+        let gid: string | undefined;
+        if (s.includes('|')) {
+          // composite key
+          gid = compositeToId.get(s);
+        } else {
+          const ids = nameToIds.get(s) || [];
+          gid = ids.length === 1 ? ids[0] : (ids[0] || undefined);
+        }
+        if (!gid) {
+          gid = `local-${hashFNV1a(s)}`;
+        }
+        if (!resolvedGearIds.includes(gid)) resolvedGearIds.push(gid);
+      }
       const fishData: Omit<FishCaught, "id"> = {
         tripId,
         species: formData.species.trim(),
@@ -228,6 +266,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
         weight: formData.weight.trim(),
         time: formData.time.trim(),
         gear: formData.gear,
+        gearIds: resolvedGearIds,
         details: formData.details.trim(),
         photo: formData.photo,
       };

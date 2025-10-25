@@ -11,6 +11,7 @@ import type { ImportProgress } from '../../shared/types';
 import { useLocationContext } from '@app/providers/LocationContext';
 import { DEV_LOG, PROD_ERROR } from '../../shared/utils/loggingHelpers';
 import { clearUserContext } from '@shared/utils/clearUserContext';
+import { useFirebaseTackleBox } from '@shared/hooks/useFirebaseTackleBox';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -46,6 +47,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [isResettingApp, setIsResettingApp] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
   const [resetSuccess, setResetSuccess] = useState<string | null>(null);
+  // Rebuild gear links state
+  const [rebuildRunning, setRebuildRunning] = useState(false);
+  const [rebuildResult, setRebuildResult] = useState<{ updated: number; total: number } | null>(null);
+  const [tacklebox] = useFirebaseTackleBox();
 
   // Trigger file chooser for import
   const handleImportClick = () => {
@@ -629,6 +634,80 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               )}
               {resetError && (
                 <span className="text-sm" style={{ color: 'var(--error-text)' }}>{resetError}</span>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <h4 className="text-sm font-semibold mb-2" style={{ color: 'var(--primary-text)' }}>Rebuild Catch Gear Links</h4>
+            <p className="text-xs mb-3" style={{ color: 'var(--secondary-text)' }}>
+              Map catches to stable gear IDs. Use after importing data or renaming gear. Safe to run multiple times.
+            </p>
+            <div className="flex items-center gap-3">
+              <Button
+                variant="secondary"
+                disabled={rebuildRunning}
+                loading={rebuildRunning}
+                onClick={async () => {
+                  setRebuildRunning(true);
+                  setRebuildResult(null);
+                  try {
+                    const norm = (v?: string) => (v || '').trim().toLowerCase();
+                    const gearKey = (it: any) => `${norm(it.type)}|${norm(it.brand)}|${norm(it.name)}|${norm(it.colour)}`;
+                    const hashFNV1a = (str: string) => { let h=0x811c9dc5; for (let i=0;i<str.length;i++){ h^=str.charCodeAt(i); h=Math.imul(h,0x01000193);} return ('0000000'+(h>>>0).toString(16)).slice(-8); };
+                    const compositeToId = new Map<string, string>();
+                    const nameToIds = new Map<string, string[]>();
+                    for (const it of tacklebox) {
+                      const key = gearKey(it);
+                      const gid = it.gearId || `local-${hashFNV1a(key)}`;
+                      if (!compositeToId.has(key)) compositeToId.set(key, gid);
+                      const nm = norm(it.name);
+                      const arr = nameToIds.get(nm) || [];
+                      if (!arr.includes(gid)) arr.push(gid);
+                      nameToIds.set(nm, arr);
+                    }
+
+                    const useFirebase = !!user;
+                    const allFish = useFirebase ? await firebaseDataService.getAllFishCaught() : await databaseService.getAllFishCaught();
+                    let updated = 0;
+                    for (const f of allFish) {
+                      const selected: string[] = Array.isArray(f.gear) ? f.gear : [];
+                      const newIds: string[] = [];
+                      for (const g of selected) {
+                        const s = norm(String(g));
+                        let gid: string | undefined;
+                        if (s.includes('|')) gid = compositeToId.get(s);
+                        else {
+                          const ids = nameToIds.get(s) || [];
+                          gid = ids.length === 1 ? ids[0] : (ids[0] || undefined);
+                        }
+                        if (!gid) gid = `local-${hashFNV1a(s)}`;
+                        if (!newIds.includes(gid)) newIds.push(gid);
+                      }
+                      const prev = Array.isArray((f as any).gearIds) ? (f as any).gearIds : [];
+                      const changed = newIds.length > 0 && (prev.length !== newIds.length || newIds.some((id, i) => id !== prev[i]));
+                      if (changed) {
+                        const updatedFish = { ...f, gearIds: newIds } as any;
+                        if (useFirebase) await firebaseDataService.updateFishCaught(updatedFish);
+                        else await databaseService.updateFishCaught(updatedFish);
+                        updated++;
+                      }
+                    }
+                    setRebuildResult({ updated, total: allFish.length });
+                  } catch (e) {
+                    setRebuildResult({ updated: 0, total: 0 });
+                    PROD_ERROR('Rebuild gear links failed', e);
+                  } finally {
+                    setRebuildRunning(false);
+                  }
+                }}
+              >
+                {rebuildRunning ? 'Rebuilding…' : 'Rebuild Links'}
+              </Button>
+              {rebuildResult && (
+                <span className="text-sm" style={{ color: 'var(--secondary-text)' }}>
+                  Updated {rebuildResult.updated} of {rebuildResult.total} catches
+                </span>
               )}
             </div>
           </div>

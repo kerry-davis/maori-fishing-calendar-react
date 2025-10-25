@@ -366,6 +366,7 @@ export class FirebaseDataService {
       length: fish.length,
       weight: fish.weight,
       time: fish.time,
+      gearIds: Array.isArray((fish as any).gearIds) ? [...(fish as any).gearIds].sort() : undefined,
       gear: Array.isArray(fish.gear) ? [...fish.gear].sort() : fish.gear,
       details: fish.details,
       photoHash: fish.photoHash || null,

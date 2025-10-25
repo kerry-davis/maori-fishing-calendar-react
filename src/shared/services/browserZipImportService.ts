@@ -616,6 +616,11 @@ export class BrowserZipImportService {
             }
 
             // Replace tackleItems with imported items to avoid duplicates
+            const keyToGearId = new Map<string, string>();
+            const nameToIds = new Map<string, string[]>();
+            const norm = (v?: string) => (v || '').trim().toLowerCase();
+            const mkKey = (d: any) => [norm(d.type), norm(d.brand), norm(d.name), norm(d.colour)].join('|');
+
             if (Array.isArray(legacyData.tacklebox) && legacyData.tacklebox.length > 0) {
               const q = query(collection(firestore, 'tackleItems'), where('userId', '==', uid));
               const snapshot = await getDocs(q);
@@ -635,15 +640,26 @@ export class BrowserZipImportService {
                   const rest = { ...(item || {}) } as Record<string, unknown>;
                   delete (rest as any).id;
                   const ref = doc(collection(firestore, 'tackleItems'));
-                  batch.set(ref, {
+                  const payload: any = {
                     ...rest,
                     userId: uid,
+                    gearId: ref.id,
                     createdAt: serverTimestamp(),
                     updatedAt: serverTimestamp(),
-                  });
+                  };
+                  batch.set(ref, payload);
+                  const key = mkKey(payload);
+                  if (key && !keyToGearId.has(key)) keyToGearId.set(key, ref.id);
+                  const nm = norm((payload as any).name);
+                  const arr = nameToIds.get(nm) || [];
+                  if (!arr.includes(ref.id)) arr.push(ref.id);
+                  nameToIds.set(nm, arr);
                 }
                 await batch.commit();
               }
+              // Attach mapping to legacyData for later fish mapping
+              (legacyData as any).__gearKeyToId = keyToGearId;
+              (legacyData as any).__nameToIds = nameToIds;
             }
           }
         }
@@ -698,6 +714,27 @@ export class BrowserZipImportService {
         // Import fish catches with photo data (ALWAYS upsert)
         for (const fishCatch of fishCatchesToImport) {
           try {
+            // Map legacy gear to gearIds using imported tackle
+            try {
+              const keyToGearId: Map<string, string> | undefined = (legacyData as any).__gearKeyToId;
+              const nameToIds: Map<string, string[]> | undefined = (legacyData as any).__nameToIds;
+              const norm = (v?: string) => (v || '').trim().toLowerCase();
+              const hashFNV1a = (str: string) => { let h=0x811c9dc5; for (let i=0;i<str.length;i++){ h^=str.charCodeAt(i); h=Math.imul(h,0x01000193);} return ('0000000'+(h>>>0).toString(16)).slice(-8); };
+              const selected: string[] = Array.isArray((fishCatch as any).gear) ? (fishCatch as any).gear : [];
+              const gearIds: string[] = [];
+              for (const g of selected) {
+                const s = norm(String(g));
+                let gid: string | undefined;
+                if (s.includes('|') && keyToGearId) gid = keyToGearId.get(s);
+                else if (nameToIds) {
+                  const ids = nameToIds.get(s) || [];
+                  gid = ids.length === 1 ? ids[0] : (ids[0] || undefined);
+                }
+                if (!gid) gid = `local-${hashFNV1a(s)}`;
+                if (!gearIds.includes(gid)) gearIds.push(gid);
+              }
+              if (gearIds.length) (fishCatch as any).gearIds = gearIds;
+            } catch {/* ignore */}
             // If fish catch has a photo reference, try to find and attach the actual photo data
             if (fishCatch.photo && typeof fishCatch.photo === 'string') {
               // Look for the photo in the imported photos collection
@@ -760,6 +797,38 @@ export class BrowserZipImportService {
         // Import fish catches with photo data
         for (const fishCatch of fishCatchesToImport) {
           try {
+            // Map legacy gear to local gearIds for guest mode
+            try {
+              const items = Array.isArray(legacyData.tacklebox) ? legacyData.tacklebox : [];
+              const norm = (v?: string) => (v || '').trim().toLowerCase();
+              const mkKey = (d: any) => [norm(d.type), norm(d.brand), norm(d.name), norm(d.colour)].join('|');
+              const hashFNV1a = (str: string) => { let h=0x811c9dc5; for (let i=0;i<str.length;i++){ h^=str.charCodeAt(i); h=Math.imul(h,0x01000193);} return ('0000000'+(h>>>0).toString(16)).slice(-8); };
+              const keyToId = new Map<string, string>();
+              const nameToIds = new Map<string, string[]>();
+              for (const it of items) {
+                const key = mkKey(it);
+                const gid = (it as any).gearId || `local-${hashFNV1a(key)}`;
+                if (!keyToId.has(key)) keyToId.set(key, gid);
+                const nm = norm((it as any).name);
+                const arr = nameToIds.get(nm) || [];
+                if (!arr.includes(gid)) arr.push(gid);
+                nameToIds.set(nm, arr);
+              }
+              const selected: string[] = Array.isArray((fishCatch as any).gear) ? (fishCatch as any).gear : [];
+              const gearIds: string[] = [];
+              for (const g of selected) {
+                const s = norm(String(g));
+                let gid: string | undefined;
+                if (s.includes('|')) gid = keyToId.get(s);
+                else {
+                  const ids = nameToIds.get(s) || [];
+                  gid = ids.length === 1 ? ids[0] : (ids[0] || undefined);
+                }
+                if (!gid) gid = `local-${hashFNV1a(s)}`;
+                if (!gearIds.includes(gid)) gearIds.push(gid);
+              }
+              if (gearIds.length) (fishCatch as any).gearIds = gearIds;
+            } catch {/* ignore */}
             // If fish catch has a photo reference, try to find and attach the actual photo data
             if (fishCatch.photo && typeof fishCatch.photo === 'string') {
               // Look for the photo in the imported photos collection
