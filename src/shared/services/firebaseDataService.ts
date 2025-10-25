@@ -16,7 +16,8 @@ import {
   where,
   orderBy,
   serverTimestamp,
-  writeBatch
+  writeBatch,
+  deleteField
 } from "firebase/firestore";
 import type { DocumentReference } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL, getMetadata, listAll, deleteObject, getBlob } from "firebase/storage";
@@ -63,6 +64,32 @@ export class FirebaseDataService {
     // Add emergency clear method to window for debugging
     (window as any).clearFirebaseSync = () => this.clearSyncQueue();
     (window as any).debugIdMappings = () => this.debugIdMappings();
+  }
+
+  private stripUndefined<T extends Record<string, any>>(obj: T): T {
+    const copy: Record<string, any> = { ...obj };
+    Object.keys(copy).forEach((k) => {
+      if (copy[k] === undefined) delete copy[k];
+    });
+    return copy as T;
+  }
+
+  private sanitizeFishUpdatePayload(base: Record<string, any>): Record<string, any> {
+    // Remove undefineds first
+    const payload: Record<string, any> = this.stripUndefined(base);
+
+    // If client indicates photo cleared or replaced, ensure we remove storage-backed fields
+    const wantsClear = payload.photo === '' || payload.photoPath === '' || payload.photoUrl === '' || payload.encryptedMetadata === undefined;
+    if (wantsClear) {
+      payload.photo = deleteField();
+      payload.photoPath = deleteField();
+      payload.photoUrl = deleteField();
+      payload.photoMime = deleteField();
+      payload.photoHash = deleteField();
+      payload.encryptedMetadata = deleteField();
+    }
+
+    return payload;
   }
 
   private ensureServiceReady(): void {
@@ -1604,6 +1631,9 @@ export class FirebaseDataService {
             }
           }
         }
+
+        // Sanitize payload for Firestore (remove undefined; clear photo-related fields when requested)
+        const cleanUpdatePayload = this.sanitizeFishUpdatePayload(fishWithUser);
         DEV_LOG('[Fish Update] Starting update for fish ID:', fishCaught.id);
 
         if (this.isOnline) {
@@ -1614,7 +1644,7 @@ export class FirebaseDataService {
             if (firebaseId) {
               const docRef = doc(firestore, 'fishCaught', firebaseId);
               await updateDoc(docRef, {
-                ...fishWithUser,
+                ...cleanUpdatePayload,
                 updatedAt: serverTimestamp()
               });
               DEV_LOG('Fish caught updated in Firestore:', firebaseId);
@@ -1623,7 +1653,7 @@ export class FirebaseDataService {
 
             DEV_LOG('No Firebase ID mapping found for fish catch, creating new document');
             const docRef = await addDoc(collection(firestore, 'fishCaught'), {
-              ...fishWithUser,
+              ...this.stripUndefined(fishWithUser),
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp()
             });
@@ -1637,7 +1667,7 @@ export class FirebaseDataService {
         }
 
         await databaseService.updateFishCaught(fishCaught);
-        this.queueOperation('update', 'fishCaught', fishWithUser);
+        this.queueOperation('update', 'fishCaught', this.stripUndefined(fishWithUser));
       }
     );
   }
@@ -2556,14 +2586,14 @@ export class FirebaseDataService {
     if (operationType === 'create') {
       if (firebaseId) {
         await updateDoc(doc(firestore, 'fishCaught', firebaseId), {
-          ...basePayload,
+          ...this.sanitizeFishUpdatePayload(basePayload),
           updatedAt: serverTimestamp()
         });
         return true;
       }
 
       const docRef = await addDoc(collection(firestore, 'fishCaught'), {
-        ...basePayload,
+        ...this.stripUndefined(basePayload),
         createdAt: serverTimestamp()
       });
       await this.storeLocalMapping('fishCaught', localId, docRef.id);
@@ -2575,7 +2605,7 @@ export class FirebaseDataService {
     }
 
     await updateDoc(doc(firestore, 'fishCaught', firebaseId), {
-      ...basePayload,
+      ...this.sanitizeFishUpdatePayload(basePayload),
       updatedAt: serverTimestamp()
     });
     return true;

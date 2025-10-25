@@ -52,6 +52,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set());
+  const [fileInputKey, setFileInputKey] = useState(0);
   const isEditing = fishId !== undefined;
 
   const loadFishData = useCallback(async (id: string) => {
@@ -704,8 +705,10 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                         }
                         handleInputChange("photo", "");
                         handleInputChange("photoPath", "");
+                        handleInputChange("encryptedMetadata", "");
                         setPhotoPreview(null);
                         setUploadError(null);
+                        setFileInputKey((k) => k + 1);
                       }}
                       className="absolute top-2 right-2 btn btn-danger px-2 py-1 text-xs"
                     >
@@ -754,13 +757,9 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                         // Also clear selected photo from form state so it won't be saved
                         handleInputChange("photo", "");
                         handleInputChange("photoPath", "");
-                        // Clear the file input properly
-                        const fileInput = document.getElementById('photo-upload') as HTMLInputElement;
-                        if (fileInput) {
-                          fileInput.value = '';
-                          // Force re-render to ensure file input is cleared across all browsers
-                          fileInput.replaceWith(fileInput.cloneNode(true));
-                        }
+                        handleInputChange("encryptedMetadata", "");
+                        // Force React to remount the file input so onChange binding remains intact
+                        setFileInputKey((k) => k + 1);
                       }}
                       className="absolute top-2 right-2 btn btn-danger px-2 py-1 text-xs"
                     >
@@ -786,7 +785,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                     <div className="text-sm" style={{ color: 'var(--secondary-text)' }}>{isUploadingPhoto ? "Uploading..." : "Upload New Photo"}</div>
                   </div>
                 </button>
-                <input type="file" id="photo-upload" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+                <input key={fileInputKey} type="file" id="photo-upload" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
               </div>
             </div>
 
