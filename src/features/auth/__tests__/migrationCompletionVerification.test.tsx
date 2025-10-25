@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, renderHook, act, waitFor } from '@testing-library/react';
-import { AuthProvider, useAuth } from '@app/providers/AuthContext';
+import { AuthProvider } from '@app/providers/AuthContext';
+import { useEncryptionMigrationStatus } from '@shared/hooks/useEncryptionMigrationStatus';
 import { encryptionService } from '@shared/services/encryptionService';
 import { firebaseDataService } from '@shared/services/firebaseDataService';
 import EncryptionMigrationStatus from '@features/encryption/EncryptionMigrationStatus';
@@ -114,7 +115,7 @@ describe('Migration Completion Verification', () => {
       }
     });
 
-    const { result } = renderHook(() => useAuth(), {
+    const { result } = renderHook(() => useEncryptionMigrationStatus(), {
       wrapper: AuthProvider,
     });
 
@@ -201,7 +202,7 @@ describe('Migration Completion Verification', () => {
       }
     });
 
-    const { result } = renderHook(() => useAuth(), {
+    const { result } = renderHook(() => useEncryptionMigrationStatus(), {
       wrapper: AuthProvider,
     });
 
@@ -252,7 +253,7 @@ describe('Migration Completion Verification', () => {
 
   it('should handle migration completion with no warnings after proper setup', async () => {
     // Mock a scenario where migration runs successfully from start to finish
-    const { result } = renderHook(() => useAuth(), {
+    const { result } = renderHook(() => useEncryptionMigrationStatus(), {
       wrapper: AuthProvider,
     });
 

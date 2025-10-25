@@ -1,24 +1,11 @@
-// In test environment, export lightweight stubs to avoid initializing Firebase SDK
-// Vitest sets import.meta.env.TEST = true
-if (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.TEST) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const stub: any = {};
-  // @ts-expect-error - conditional re-exports for test
-  export const app = stub;
-  // @ts-expect-error - conditional re-exports for test
-  export const auth = { onAuthStateChanged: () => () => {}, signOut: async () => {} } as any;
-  // @ts-expect-error - conditional re-exports for test
-  export const storage = stub;
-  // @ts-expect-error - conditional re-exports for test
-  export const firestore = stub;
-} else {
-  // Import the functions you need from the SDKs you need
-  import { initializeApp } from "firebase/app";
-  import { getAuth } from "firebase/auth";
-  import { getStorage } from "firebase/storage";
-  import { getFirestore } from "firebase/firestore";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+// Import SDKs at top level (required by ESM) and conditionally initialize below
+import { initializeApp, type FirebaseApp } from "firebase/app";
+import { getAuth, type Auth } from "firebase/auth";
+import { getStorage, type FirebaseStorage } from "firebase/storage";
+import { getFirestore, type Firestore } from "firebase/firestore";
+
+// Detect test environment set by Vitest
+const isTest = typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.TEST;
 
 // Check if required Firebase environment variables are available
 const requiredEnvVars = [
@@ -27,9 +14,10 @@ const requiredEnvVars = [
   'VITE_FIREBASE_PROJECT_ID'
 ];
 
-const missingEnvVars = requiredEnvVars.filter(envVar => !import.meta.env[envVar]);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const missingEnvVars = requiredEnvVars.filter((envVar) => !(import.meta as any).env[envVar]);
 
-if (missingEnvVars.length > 0) {
+if (!isTest && missingEnvVars.length > 0) {
   console.warn('Firebase environment variables not configured:', missingEnvVars);
   console.warn('Authentication features will be disabled. Please configure the following environment variables:');
   console.warn(missingEnvVars.map(envVar => `  - ${envVar}`).join('\n'));
@@ -46,44 +34,44 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
+// Initialize values (stubs by default; real instances when configured)
+let appVar: FirebaseApp = {} as unknown as FirebaseApp;
+// minimal auth stub used by tests and when not configured
+let authVar: Auth = ({ onAuthStateChanged: () => () => {}, signOut: async () => {} } as unknown) as Auth;
+let storageVar: FirebaseStorage = {} as unknown as FirebaseStorage;
+let firestoreVar: Firestore = {} as unknown as Firestore;
+
+if (!isTest) {
+  try {
+    if (missingEnvVars.length === 0) {
+      if (import.meta.env.DEV) {
+        console.log('Initializing Firebase with config (dev):', {
+          projectId: firebaseConfig.projectId,
+          authDomain: firebaseConfig.authDomain,
+          hasApiKey: !!firebaseConfig.apiKey
+        });
+      }
+
+      appVar = initializeApp(firebaseConfig);
+      authVar = getAuth(appVar);
+      storageVar = getStorage(appVar);
+      firestoreVar = getFirestore(appVar);
+
+      if (import.meta.env.DEV) {
+        console.log('Firebase initialized successfully');
+      }
+    } else {
+      console.warn('Firebase not initialized due to missing environment variables');
+      console.warn('Authentication features will be disabled until environment variables are configured');
+      console.warn('Missing variables:', missingEnvVars);
+    }
+  } catch (error) {
+    console.error('Failed to initialize Firebase:', error);
+    console.warn('Please check your Firebase configuration and environment variables');
+  }
+}
+
 // Google OAuth Client ID from environment variables
 export const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
-// Initialize Firebase with error handling
-let app: any = null;
-let auth: any = null;
-let storage: any = null;
-let firestore: any = null;
-
-try {
-  if (missingEnvVars.length === 0) {
-    // Only log verbose configuration details in development to prevent leaking info in production
-    if (import.meta.env.DEV) {
-      console.log('Initializing Firebase with config (dev):', {
-        projectId: firebaseConfig.projectId,
-        authDomain: firebaseConfig.authDomain,
-        hasApiKey: !!firebaseConfig.apiKey
-      });
-    }
-
-    app = initializeApp(firebaseConfig);
-    auth = getAuth(app);
-    storage = getStorage(app);
-    firestore = getFirestore(app);
-    if (import.meta.env.DEV) {
-      console.log('Firebase initialized successfully');
-    }
-  } else {
-    console.warn('Firebase not initialized due to missing environment variables');
-    console.warn('Authentication features will be disabled until environment variables are configured');
-    console.warn('Missing variables:', missingEnvVars);
-  }
-} catch (error) {
-  console.error('Failed to initialize Firebase:', error);
-  console.error('Error details:', error);
-  console.warn('Please check your Firebase configuration and environment variables');
-  console.warn('Authentication features will be disabled');
-}
-
-export { app, auth, storage, firestore };
-}
+export { appVar as app, authVar as auth, storageVar as storage, firestoreVar as firestore };

@@ -2,13 +2,16 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useModalWithCleanup } from '@shared/hooks/useModalWithCleanup';
 
-// Mock Firebase auth
+// Mock Firebase auth and ensure other exports exist
 vi.mock('@shared/services/firebase', () => ({
   auth: {
     currentUser: null,
     onAuthStateChanged: vi.fn(),
     signOut: vi.fn().mockResolvedValue(undefined)
-  }
+  },
+  firestore: {} as any,
+  storage: {} as any,
+  app: {} as any,
 }));
 
 describe('Test 6 Validation - SSR Safe and Auth Context Only', () => {

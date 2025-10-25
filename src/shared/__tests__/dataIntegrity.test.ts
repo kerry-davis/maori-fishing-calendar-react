@@ -136,9 +136,8 @@ describe('Data Integrity - Cross-Account Contamination Prevention', () => {
       
       await clearUserState();
 
-      // Check if the URL hash was processed (the hash should be checked, not necessarily cleared)
-      expect(window.location.hash).toBe('#settings');
-      // The function checks for modal hash but may not always clear it depending on conditions
+      // The enhanced cleanup now clears modal-related URL hash
+      expect(window.location.hash).toBe('');
     });
 
     it('should clear encryption service', async () => {

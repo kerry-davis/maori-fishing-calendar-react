@@ -24,16 +24,26 @@ vi.mock('@shared/services/firebaseDataService', () => ({
       collections: {},
     }),
     resetEncryptionMigrationState: vi.fn(),
+    // Methods used by AuthProvider background operations
+    switchToUser: vi.fn().mockResolvedValue(undefined),
+    mergeLocalDataForUser: vi.fn().mockResolvedValue(undefined),
+    clearAllData: vi.fn().mockResolvedValue(undefined),
+    initialize: vi.fn().mockResolvedValue(undefined),
+    backupLocalDataBeforeLogout: vi.fn().mockResolvedValue(undefined),
+    clearSyncQueue: vi.fn().mockResolvedValue(undefined),
   }
 }));
 
-// Mock Firebase auth
+// Mock Firebase services used indirectly by providers (ensure all exports exist)
 vi.mock('@shared/services/firebase', () => ({
   auth: {
     onAuthStateChanged: vi.fn(),
     signOut: vi.fn(),
     getRedirectResult: vi.fn(),
-  }
+  },
+  firestore: {} as any,
+  storage: {} as any,
+  app: {} as any,
 }));
 
 // Mock PWAContext

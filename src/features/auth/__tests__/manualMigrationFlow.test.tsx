@@ -109,12 +109,14 @@ describe('Manual Migration Flow Verification', () => {
       const indexError = new Error('The query requires an index. You can create it here: https://console.firebase.google.com/v1/rprojects/test-project/databases/(default)/indexes?create_composite=CkVwaXJlcG9zdHJ5IGluZGV4IGZvciBlbmNyeXB0aW9u');
 
       vi.mocked(firebaseDataService.startBackgroundEncryptionMigration).mockRejectedValueOnce(indexError);
-      
-      const { result } = renderHook(() => useEncryptionMigrationStatus(), {
-        wrapper: AuthProvider,
-      });
 
-      // Log in user
+      const { container } = render(
+        <AuthProvider>
+          <EncryptionMigrationStatus />
+        </AuthProvider>
+      );
+
+      // Log in user for the rendered provider instance
       await act(async () => {
         if (authCallback) {
           const mockUser = { uid: 'testuser', email: 'test@example.com' };
@@ -124,11 +126,6 @@ describe('Manual Migration Flow Verification', () => {
 
       await act(async () => {
         await new Promise(resolve => setTimeout(resolve, 150));
-      });
-
-      // Start migration which will fail with index error
-      await act(async () => {
-        result.current.start?.();
       });
 
       // Simulate the service emitting index error event
@@ -143,12 +140,6 @@ describe('Manual Migration Flow Verification', () => {
         }));
       });
 
-      const { container } = render(
-        <AuthProvider>
-          <EncryptionMigrationStatus />
-        </AuthProvider>
-      );
-
       // Error pill should be visible
       await waitFor(() => {
         expect(screen.getByTestId('encryption-migration-pill-error')).toBeInTheDocument();
@@ -160,9 +151,11 @@ describe('Manual Migration Flow Verification', () => {
 
   describe('Step 2: Console Link Usage', () => {
     it('should include working console links in error message', async () => {
-      const { result } = renderHook(() => useEncryptionMigrationStatus(), {
-        wrapper: AuthProvider,
-      });
+      const renderResult = render(
+        <AuthProvider>
+          <EncryptionMigrationStatus />
+        </AuthProvider>
+      );
 
       await act(async () => {
         if (authCallback) {
@@ -186,16 +179,6 @@ describe('Manual Migration Flow Verification', () => {
           }
         }));
       });
-
-      await waitFor(() => {
-        expect(result.current.error).toBeTruthy();
-      });
-
-      const renderResult = render(
-        <AuthProvider>
-          <EncryptionMigrationStatus />
-        </AuthProvider>
-      );
 
       // Should have functioning console link
       const consoleLink = screen.getByText('Fix in Console');
@@ -241,6 +224,18 @@ describe('Manual Migration Flow Verification', () => {
       
       await act(async () => {
         result.current.start?.();
+      });
+
+      // Simulate index error event for the hook to consume
+      act(() => {
+        window.dispatchEvent(new CustomEvent('encryptionIndexError', {
+          detail: {
+            collection: 'trips',
+            error: indexError.message,
+            userId: 'retrytest',
+            consoleUrl: 'https://console.firebase.google.com/'
+          }
+        }));
       });
 
       await waitFor(() => {
@@ -361,6 +356,14 @@ describe('Manual Migration Flow Verification', () => {
       );
 
       // Pill should be visible during migration
+      // Ensure this provider instance is logged in
+      await act(async () => {
+        if (authCallback) {
+          const mockUser = { uid: 'pill-user', email: 'pill@test.com' };
+          authCallback(mockUser);
+        }
+      });
+      await act(async () => { await new Promise(r => setTimeout(r, 50)); });
       expect(screen.getByTestId('encryption-migration-pill')).toBeInTheDocument();
       expect(screen.getByText('Encrypting data…')).toBeInTheDocument();
 
@@ -400,7 +403,7 @@ describe('Manual Migration Flow Verification', () => {
         }
       });
 
-      const { result } = renderHook(() => useAuth(), {
+      const { result } = renderHook(() => useEncryptionMigrationStatus(), {
         wrapper: AuthProvider,
       });
 
@@ -418,6 +421,18 @@ describe('Manual Migration Flow Verification', () => {
       // First collection error
       await act(async () => {
         result.current.start?.();
+      });
+
+      // Emit index error for first collection
+      act(() => {
+        window.dispatchEvent(new CustomEvent('encryptionIndexError', {
+          detail: {
+            collection: 'trips',
+            error: 'Index missing for trips',
+            userId: 'multitest',
+            consoleUrl: 'https://console.firebase.google.com/'
+          }
+        }));
       });
 
       await waitFor(() => {
@@ -439,12 +454,24 @@ describe('Manual Migration Flow Verification', () => {
         result.current.forceRestart?.();
       });
 
+      // Emit index error for second collection
+      act(() => {
+        window.dispatchEvent(new CustomEvent('encryptionIndexError', {
+          detail: {
+            collection: 'weatherLogs',
+            error: 'Index missing for weatherLogs',
+            userId: 'multitest',
+            consoleUrl: 'https://console.firebase.google.com/'
+          }
+        }));
+      });
+
       await waitFor(() => {
         expect(result.current.error?.collection).toBe('weatherLogs');
       });
 
       // Fix second collection, retry
-      vi.mocked(firebaseDataService.startBackgroundMigrationMigration).mockResolvedValue(undefined);
+      vi.mocked(firebaseDataService.startBackgroundEncryptionMigration).mockResolvedValue(undefined);
       
       await act(async () => {
         result.current.forceRestart?.();
@@ -458,7 +485,7 @@ describe('Manual Migration Flow Verification', () => {
 
   describe('Manual Verification Checklist Validation', () => {
     it('should pass all manual verification checklist items', async () => {
-      const { result } = renderHook(() => useAuth(), {
+      const { result } = renderHook(() => useEncryptionMigrationStatus(), {
         wrapper: AuthProvider,
       });
 
