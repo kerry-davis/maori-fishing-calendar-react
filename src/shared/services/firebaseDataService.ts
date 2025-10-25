@@ -769,22 +769,50 @@ export class FirebaseDataService {
 
           if (this.isOnline) {
             try {
-              const firebaseId = await this.getFirebaseId('trips', trip.id.toString());
-              if (firebaseId) {
-                const docRef = doc(firestore, 'trips', firebaseId);
-                await updateDoc(docRef, {
-                  ...operationPayload,
-                  updatedAt: serverTimestamp()
-                });
-                DEV_LOG('Trip updated in Firestore with validation:', firebaseId);
+              // 1) Try mapping
+              const mappedId = await this.getFirebaseId('trips', trip.id.toString());
+              if (mappedId) {
+                const docRef = doc(firestore, 'trips', mappedId);
+                await updateDoc(docRef, { ...operationPayload, updatedAt: serverTimestamp() });
+                DEV_LOG('Trip updated in Firestore with validation:', mappedId);
                 return;
               }
+
+              // 2) Resolve by querying (userId + id)
+              try {
+                const q = query(
+                  collection(firestore, 'trips'),
+                  where('userId', '==', this.userId),
+                  where('id', '==', trip.id)
+                );
+                const snapshot = await getDocs(q);
+                if (!snapshot.empty) {
+                  const existing = snapshot.docs[0];
+                  await updateDoc(existing.ref, { ...operationPayload, updatedAt: serverTimestamp() });
+                  await this.storeLocalMapping('trips', trip.id.toString(), existing.id);
+                  DEV_LOG('Trip updated in Firestore via query resolution:', existing.id);
+                  return;
+                }
+              } catch (e) {
+                DEV_WARN('Trip update query failed, falling back to create:', e);
+              }
+
+              // 3) Create new if not found, then store mapping
+              const createdRef = await addDoc(collection(firestore, 'trips'), {
+                ...operationPayload,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+              });
+              await this.storeLocalMapping('trips', trip.id.toString(), createdRef.id);
+              DEV_LOG('Trip created in Firestore during update fallback:', createdRef.id);
+              return;
             } catch (error) {
               DEV_WARN('Firestore update failed, falling back to local:', error);
             }
           }
 
           await databaseService.updateTrip(trip);
+          // Only queue when offline or Firestore path failed entirely
           this.queueOperation('update', 'trips', operationPayload);
         }, 'updateTrip');
       }
@@ -2288,7 +2316,7 @@ export class FirebaseDataService {
     this.queueRetryTimeout = setTimeout(() => {
       this.queueRetryTimeout = null;
       void this.processSyncQueue();
-    }, 5_000);
+    }, 1_000);
   }
 
   private async applyQueuedOperation(entry: QueuedSyncOperation): Promise<boolean> {

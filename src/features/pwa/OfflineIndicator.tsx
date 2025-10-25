@@ -83,24 +83,22 @@ export const OfflineIndicator = () => {
   };
 
   return (
-    <div className={`fixed top-14 sm:top-20 left-0 right-0 ${statusInfo.bgColor} ${statusInfo.textColor} px-4 py-2 text-center text-sm font-medium z-30 transition-all duration-300`}>
+    <div className={`fixed top-0 left-0 right-0 ${statusInfo.bgColor} ${statusInfo.textColor} px-4 py-2 text-center text-sm font-medium z-50 transition-all duration-300`}>
       <div className="flex items-center justify-center space-x-2">
         <span className="text-lg">{statusInfo.icon}</span>
         <span>{statusInfo.message}</span>
         <div className="flex items-center space-x-2 ml-3">
-          {syncQueueLength > 0 && (
-            <button
-              type="button"
-              className="underline text-xs"
-              onClick={() => {
-                const until = Date.now() + 10 * 60 * 1000;
-                setDismissedUntil(until);
-                try { sessionStorage.setItem('hideSyncBannerUntil', String(until)); } catch {}
-              }}
-            >
-              Hide
-            </button>
-          )}
+          <button
+            type="button"
+            className="underline text-xs"
+            onClick={() => {
+              const until = Date.now() + 10 * 60 * 1000;
+              setDismissedUntil(until);
+              try { sessionStorage.setItem('hideSyncBannerUntil', String(until)); } catch {}
+            }}
+          >
+            Hide
+          </button>
           {isStuck && (
             <button
               type="button"
