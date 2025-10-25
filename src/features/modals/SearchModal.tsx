@@ -112,11 +112,15 @@ export const SearchModal: React.FC<SearchModalProps> = ({
           }
         }
 
+        const hoursPart = (typeof trip.hours === 'number' && isFinite(trip.hours) && trip.hours > 0)
+          ? `${trip.hours} hours`
+          : '';
+        const compPart = trip.companions ? ` with ${trip.companions}` : '';
         results.push({
           type: "trip",
           id: trip.id,
           title: `${trip.water} - ${trip.location}`,
-          subtitle: `${trip.hours} hours${trip.companions ? ` with ${trip.companions}` : ""}`,
+          subtitle: `${hoursPart}${hoursPart && compPart ? compPart : (!hoursPart ? compPart : '')}`,
           date: trip.date,
           content: trip.notes || "No notes",
           matchedText,

@@ -582,7 +582,8 @@ const TripCard: React.FC<TripCardProps> = ({
 }) => {
   const { user } = useAuth();
   const currentGuestSessionId = getOrCreateGuestSessionId();
-  const formatHours = (hours: number): string => {
+  const formatHours = (hours?: number): string => {
+    if (typeof hours !== 'number' || !isFinite(hours) || hours <= 0) return '';
     if (hours === 1) return "1 hour";
     return `${hours} hours`;
   };
@@ -671,12 +672,14 @@ const TripCard: React.FC<TripCardProps> = ({
       </div>
 
       <div className="grid grid-cols-2 gap-4 text-sm">
-        <div>
-          <span style={{ color: 'var(--secondary-text)' }}>Duration:</span>
-          <span className="ml-2" style={{ color: 'var(--primary-text)' }}>
-            {formatHours(trip.hours)}
-          </span>
-        </div>
+        {typeof trip.hours === 'number' && isFinite(trip.hours) && trip.hours > 0 && (
+          <div>
+            <span style={{ color: 'var(--secondary-text)' }}>Duration:</span>
+            <span className="ml-2" style={{ color: 'var(--primary-text)' }}>
+              {formatHours(trip.hours)}
+            </span>
+          </div>
+        )}
 
         {trip.companions && (
           <div>

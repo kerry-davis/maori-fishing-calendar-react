@@ -43,6 +43,20 @@ export function useFirebaseTackleBox(): [
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const dedupeByComposite = useCallback((items: TackleItem[]): TackleItem[] => {
+    const seen = new Set<string>();
+    const norm = (v?: string) => (v || '').trim().toLowerCase();
+    const out: TackleItem[] = [];
+    for (const it of items) {
+      const key = [norm(it.name), norm(it.brand), norm(it.type), norm(it.colour)].join('|');
+      if (!seen.has(key)) {
+        seen.add(key);
+        out.push(it);
+      }
+    }
+    return out;
+  }, []);
+
   // Load tackle box from Firestore or localStorage
   const loadTackleBox = useCallback(async () => {
     setLoading(true);
@@ -60,24 +74,20 @@ export function useFirebaseTackleBox(): [
         const querySnapshot = await getDocs(q);
         const items: TackleItem[] = [];
 
-        querySnapshot.forEach((doc) => {
-          const data = doc.data();
-          // Use numeric parse when possible, else stable hash to avoid NaN IDs
-          const parsed = parseInt(doc.id, 10);
-          const idNum = Number.isNaN(parsed) ? stableNumericId(doc.id) : parsed;
-          items.push({
-            id: idNum,
-            ...data
-          } as TackleItem);
+        querySnapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          // Always derive a stable numeric id from doc id to avoid parseInt collisions
+          const idNum = stableNumericId(docSnap.id);
+          items.push({ id: idNum, ...(data as any) } as TackleItem);
         });
 
-        setTacklebox(items);
+        setTacklebox(dedupeByComposite(items));
       } else {
         // Guest user - load from localStorage
         const localData = localStorage.getItem('tacklebox');
         if (localData) {
           const items = JSON.parse(localData);
-          setTacklebox(items);
+          setTacklebox(dedupeByComposite(items));
         } else {
           setTacklebox([]);
         }
@@ -91,7 +101,7 @@ export function useFirebaseTackleBox(): [
         const localData = localStorage.getItem('tacklebox');
         if (localData) {
           const items = JSON.parse(localData);
-          setTacklebox(items);
+          setTacklebox(dedupeByComposite(items));
         } else {
           setTacklebox([]);
         }
@@ -113,7 +123,7 @@ export function useFirebaseTackleBox(): [
   const updateTackleBox = useCallback(async (
     value: TackleItem[] | ((prev: TackleItem[]) => TackleItem[])
   ) => {
-    const newValue = value instanceof Function ? value(tacklebox) : value;
+    const newValue = dedupeByComposite(value instanceof Function ? value(tacklebox) : value);
     setTacklebox(newValue);
     setError(null);
 
@@ -125,68 +135,64 @@ export function useFirebaseTackleBox(): [
           where('userId', '==', user.uid)
         );
         const querySnapshot = await getDocs(q);
-        const existingItems = new Map();
+        // Build maps keyed by composite key
+        const existingByKey = new Map<string, { ref: any; data: any }>();
+        const duplicatesByKey = new Map<string, any[]>();
+        const norm = (v?: string) => (v || '').trim().toLowerCase();
+        const mkKey = (d: any) => [norm(d.name), norm(d.brand), norm(d.type), norm(d.colour)].join('|');
 
-        querySnapshot.forEach((doc) => {
-          existingItems.set(parseInt(doc.id), doc.ref);
+        querySnapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          const key = mkKey(data);
+          if (existingByKey.has(key)) {
+            // Track duplicates to be deleted later
+            const arr = duplicatesByKey.get(key) || [];
+            arr.push(docSnap.ref);
+            duplicatesByKey.set(key, arr);
+          } else {
+            existingByKey.set(key, { ref: docSnap.ref, data });
+          }
         });
 
         const batch = writeBatch(firestore);
+        const newKeys = new Set<string>();
 
-        // Delete items that are no longer in the new value
-        existingItems.forEach((ref, id) => {
-          if (!newValue.find(item => item.id === id)) {
-            batch.delete(ref);
-          }
-        });
-
-        // Track new items to map their IDs after commit
-        const newItemMappings = new Map<number, string>();
-
-        // Add or update items
+        // Upsert new/updated items by composite key
         for (const item of newValue) {
-          const itemWithoutId = (() => {
-            const clone = { ...item } as Omit<TackleItem, 'id'> & { id?: number };
-            delete (clone as { id?: number }).id;
-            return clone as Omit<TackleItem, 'id'>;
-          })();
+          const payload: any = { ...item };
+          delete payload.id; // don't persist local numeric id
           const itemData = {
-            ...itemWithoutId,
+            ...payload,
             userId: user.uid,
             updatedAt: serverTimestamp()
           };
+          const key = mkKey(itemData);
+          newKeys.add(key);
 
-          if (existingItems.has(item.id)) {
-            // Update existing
-            const ref = existingItems.get(item.id);
-            batch.update(ref, itemData);
+          const existing = existingByKey.get(key);
+          if (existing) {
+            batch.update(existing.ref, itemData);
+            // Remove tracked duplicate refs for this key (will be deleted below)
           } else {
-            // Add new item with generated Firebase ID
             const docRef = doc(collection(firestore, 'tackleItems'));
-            const numericId = item.id;
-            newItemMappings.set(numericId, docRef.id);
-            batch.set(docRef, {
-              ...itemData,
-              createdAt: serverTimestamp()
-            });
+            batch.set(docRef, { ...itemData, createdAt: serverTimestamp() });
           }
         }
 
-        await batch.commit();
+        // Delete items not present anymore
+        existingByKey.forEach((val, key) => {
+          if (!newKeys.has(key)) {
+            batch.delete(val.ref);
+          }
+        });
 
-        // Update local state with correct Firebase IDs for new items
-        if (newItemMappings.size > 0) {
-          const updatedItems = newValue.map(item => {
-            const firebaseId = newItemMappings.get(item.id);
-            if (firebaseId) {
-              return { ...item };
-            }
-            return item;
-          });
-          setTacklebox(updatedItems);
-        } else {
-          await loadTackleBox();
-        }
+        // Delete duplicate docs for same key
+        duplicatesByKey.forEach((refs) => {
+          refs.forEach(ref => batch.delete(ref));
+        });
+
+        await batch.commit();
+        await loadTackleBox();
       } else {
         // Guest user - save to localStorage
         localStorage.setItem('tacklebox', JSON.stringify(newValue));

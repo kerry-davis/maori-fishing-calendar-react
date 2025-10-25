@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Button, ProgressBar } from '@shared/components';
 import { Modal, ModalHeader, ModalBody } from './Modal';
 import { dataExportService, type ImportResult } from '@shared/services/dataExportService';
@@ -10,6 +10,7 @@ import { databaseService } from '@shared/services/databaseService';
 import type { ImportProgress } from '../../shared/types';
 import { useLocationContext } from '@app/providers/LocationContext';
 import { DEV_LOG, PROD_ERROR } from '../../shared/utils/loggingHelpers';
+import { clearUserContext } from '@shared/utils/clearUserContext';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -41,6 +42,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [exportStats, setExportStats] = useState<{ trips: number; weatherLogs: number; fishCatches: number; photos: number; filename: string; durationMs: number } | null>(null);
   // Delete stats
   const [deleteStats, setDeleteStats] = useState<{ trips: number; weatherLogs: number; fishCatches: number } | null>(null);
+  // PWA reset state
+  const [isResettingApp, setIsResettingApp] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetSuccess, setResetSuccess] = useState<string | null>(null);
 
   // Trigger file chooser for import
   const handleImportClick = () => {
@@ -204,7 +209,41 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     setExportStats(null);
     setDeleteStats(null);
     setExportProgress(null);
+    setResetError(null);
+    setResetSuccess(null);
   };
+
+  // Reset dialog state on logout/auth changes
+  useEffect(() => {
+    const handleAuthChanged = (event: Event) => {
+      try {
+        const detail = (event as CustomEvent).detail || {};
+        const loggedOut = !detail?.toUser;
+        if (loggedOut) {
+          // Clear all UI state and close modal
+          clearErrors();
+          setShowDeleteAllConfirm(false);
+          setShowImportConfirm(false);
+          setPendingImportFile(null);
+          setIsDeletingAll(false);
+          setIsImporting(false);
+          setIsExportingCSV(false);
+          setIsExportingJSON(false);
+          setImportProgress(null);
+          setDeleteProgress(null);
+          setImportStats(null);
+          setExportStats(null);
+          try { if (fileInputRef.current) fileInputRef.current.value = ''; } catch {}
+          // Close the settings modal if open
+          if (isOpen) {
+            onClose();
+          }
+        }
+      } catch {}
+    };
+    window.addEventListener('authStateChanged', handleAuthChanged as EventListener);
+    return () => window.removeEventListener('authStateChanged', handleAuthChanged as EventListener);
+  }, [clearErrors, isOpen, onClose]);
 
   const handleDeleteAllData = async () => {
     setIsDeletingAll(true);
@@ -253,6 +292,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       setShowDeleteAllConfirm(false);
       setDeleteStats({ trips: tripsBefore.length, weatherLogs: weatherBefore.length, fishCatches: fishBefore.length });
       setDeleteSuccess('All data has been deleted.');
+      // Signal UI layers (Calendar, modals) to refresh immediately without navigation
+      try {
+        window.dispatchEvent(new CustomEvent('databaseDataReady', { detail: { source: 'DeleteAll', timestamp: Date.now() } }));
+        window.dispatchEvent(new CustomEvent('userDataReady', { detail: { userId: user?.uid ?? null, isGuest: !user, source: 'DeleteAll', timestamp: Date.now() } }));
+        window.dispatchEvent(new Event('forceCalendarRefresh'));
+      } catch {}
     } catch (e) {
       PROD_ERROR('Failed to delete all data:', e);
       setImportError(e instanceof Error ? e.message : 'Failed to delete all data');
@@ -537,6 +582,56 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
           >
             {isDeletingAll ? 'Deleting…' : (<><i className="fas fa-trash-alt mr-2"></i>Delete All Data</>)}
           </Button>
+
+          <div className="mt-6">
+            <h4 className="text-sm font-semibold mb-2" style={{ color: 'var(--primary-text)' }}>Reset App Cache (PWA)</h4>
+            <p className="text-xs mb-3" style={{ color: 'var(--secondary-text)' }}>
+              If the app is stuck or shows dev build errors on mobile, reset the PWA. This clears service workers, caches, and local data, then reloads.
+            </p>
+            <div className="flex items-center gap-3">
+              <Button
+                variant="secondary"
+                onClick={async () => {
+                  setIsResettingApp(true);
+                  setResetError(null);
+                  setResetSuccess(null);
+                  try {
+                    await clearUserContext({ preserveGuestData: false });
+                    if ('serviceWorker' in navigator) {
+                      try {
+                        const regs = await navigator.serviceWorker.getRegistrations();
+                        await Promise.all(regs.map(r => r.unregister()));
+                      } catch (e) {
+                        console.warn('SW unregister failed:', e);
+                      }
+                    }
+                    try {
+                      if ('caches' in window) {
+                        const keys = await caches.keys();
+                        await Promise.all(keys.map(k => caches.delete(k)));
+                      }
+                    } catch {}
+                    setResetSuccess('App cache cleared. Reloading…');
+                    setTimeout(() => window.location.reload(), 600);
+                  } catch (e) {
+                    setResetError(e instanceof Error ? e.message : 'Failed to reset app cache');
+                  } finally {
+                    setIsResettingApp(false);
+                  }
+                }}
+                disabled={isResettingApp}
+                loading={isResettingApp}
+              >
+                {isResettingApp ? 'Resetting…' : 'Reset App Cache'}
+              </Button>
+              {resetSuccess && (
+                <span className="text-sm" style={{ color: 'var(--success-text)' }}>{resetSuccess}</span>
+              )}
+              {resetError && (
+                <span className="text-sm" style={{ color: 'var(--error-text)' }}>{resetError}</span>
+              )}
+            </div>
+          </div>
         </div>
         </div>
       </ModalBody>

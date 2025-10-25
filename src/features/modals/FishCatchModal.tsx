@@ -1,6 +1,7 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { firebaseDataService } from "@shared/services/firebaseDataService";
 import { Button } from "@shared/components/Button";
+import ConfirmationDialog from '@shared/components/ConfirmationDialog';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "./Modal";
 import { useDatabaseService } from '../../app/providers/DatabaseContext';
 import { useAuth } from '../../app/providers/AuthContext';
@@ -54,6 +55,36 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
   const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set());
   const [fileInputKey, setFileInputKey] = useState(0);
   const isEditing = fishId !== undefined;
+  // Gear rename handling: ask for confirmation before removing stale gear
+  const [showStaleGearConfirm, setShowStaleGearConfirm] = useState(false);
+  const [staleGear, setStaleGear] = useState<string[]>([]);
+  const lastPromptSignatureRef = useRef<string | null>(null);
+
+  // Gear composite key helpers (type|brand|name|colour)
+  const norm = (v?: string) => (v || '').trim();
+  const gearKey = (item: { type: string; brand: string; name: string; colour: string }) =>
+    `${norm(item.type)}|${norm(item.brand)}|${norm(item.name)}|${norm(item.colour)}`.toLowerCase();
+  const isSelectedGear = (item: { type: string; brand: string; name: string; colour: string }) => {
+    const key = gearKey(item);
+    return formData.gear.includes(key) || formData.gear.includes(item.name);
+  };
+
+  useEffect(() => {
+    if (!formData.gear?.length) return;
+    const validNames = new Set(tackleBox.map(g => norm(g.name)));
+    const validKeys = new Set(tackleBox.map(g => gearKey(g)));
+    const invalid = formData.gear.filter(g => !validKeys.has((g || '').toLowerCase()) && !validNames.has(norm(g)));
+    if (invalid.length > 0) {
+      const sig = invalid.slice().sort().join('|');
+      if (lastPromptSignatureRef.current !== sig) {
+        lastPromptSignatureRef.current = sig;
+        setStaleGear(invalid);
+        setShowStaleGearConfirm(true);
+      }
+    } else {
+      lastPromptSignatureRef.current = null;
+    }
+  }, [tackleBox, formData.gear]);
 
   const loadFishData = useCallback(async (id: string) => {
     setError(null);
@@ -385,15 +416,16 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
 
   const selectAllInType = (type: string) => {
     const typeItems = filteredAndGroupedGear[type] || [];
-    const typeItemNames = typeItems.map(item => item.name);
-    const newSelection = [...new Set([...formData.gear, ...typeItemNames])];
+    const keys = typeItems.map(item => gearKey(item));
+    const newSelection = Array.from(new Set([...formData.gear, ...keys]));
     handleInputChange("gear", newSelection);
   };
 
   const clearAllInType = (type: string) => {
     const typeItems = filteredAndGroupedGear[type] || [];
-    const typeItemNames = typeItems.map(item => item.name);
-    const newSelection = formData.gear.filter(gear => !typeItemNames.includes(gear));
+    const keys = new Set(typeItems.map(item => gearKey(item)));
+    const names = new Set(typeItems.map(item => item.name));
+    const newSelection = formData.gear.filter(gear => !(keys.has(gear.toLowerCase()) || names.has(gear)));
     handleInputChange("gear", newSelection);
   };
 
@@ -598,26 +630,30 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                               >
                                 <input
                                   type="checkbox"
-                                  checked={formData.gear.includes(item.name)}
+                                  checked={isSelectedGear(item)}
                                   onChange={(e) => {
                                     if (e.target.checked) {
-                                      handleInputChange("gear", [...formData.gear, item.name]);
+                                      const key = gearKey(item);
+                                      const next = formData.gear.filter(g => g !== item.name); // drop legacy
+                                      if (!next.includes(key)) next.push(key);
+                                      handleInputChange("gear", next);
                                     } else {
-                                      handleInputChange("gear", formData.gear.filter(gear => gear !== item.name));
+                                      const key = gearKey(item);
+                                      handleInputChange("gear", formData.gear.filter(gear => gear !== key && gear !== item.name));
                                     }
                                   }}
                                   className="mr-3 w-4 h-4 text-white bg-transparent border-2 rounded focus:ring-0"
                                   style={{
-                                    borderColor: formData.gear.includes(item.name) ? 'white' : 'var(--border-color)',
-                                    backgroundColor: formData.gear.includes(item.name) ? 'var(--button-primary)' : 'transparent'
+                                    borderColor: isSelectedGear(item) ? 'white' : 'var(--border-color)',
+                                    backgroundColor: isSelectedGear(item) ? 'var(--button-primary)' : 'transparent'
                                   }}
                                 />
                                 <div className="flex-1">
-                                  <div className="text-sm font-medium" style={{ color: formData.gear.includes(item.name) ? 'white' : 'var(--primary-text)' }}>
-                                    {item.name}
+                                  <div className="text-sm font-medium" style={{ color: isSelectedGear(item) ? 'white' : 'var(--primary-text)' }}>
+                                    {item.name} {item.brand ? `· ${item.brand}` : ''} {item.colour ? `· ${item.colour}` : ''}
                                   </div>
-                                  <div className="text-xs" style={{ color: formData.gear.includes(item.name) ? 'rgba(255,255,255,0.8)' : 'var(--secondary-text)' }}>
-                                    {item.brand}
+                                  <div className="text-xs" style={{ color: isSelectedGear(item) ? 'rgba(255,255,255,0.8)' : 'var(--secondary-text)' }}>
+                                    {item.type}
                                   </div>
                                 </div>
                               </label>
@@ -659,7 +695,15 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                         className="inline-flex items-center px-2 py-1 rounded-full text-xs"
                         style={{ backgroundColor: 'var(--chip-background)', color: 'var(--chip-text)' }}
                       >
-                        {gearItem}
+                        {(() => {
+                          const parts = (gearItem || '').split('|');
+                          if (parts.length === 4) {
+                            const [_t, b, n, c] = parts.map(p => p.trim());
+                            const label = [n, b && `· ${b}`, c && `· ${c}`].filter(Boolean).join(' ');
+                            return label || gearItem;
+                          }
+                          return gearItem;
+                        })()}
                         <button
                           type="button"
                           onClick={() => handleInputChange("gear", formData.gear.filter((_, i) => i !== index))}
@@ -822,6 +866,27 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
           </div>
         </ModalFooter>
       </Modal>
+
+      <ConfirmationDialog
+        isOpen={showStaleGearConfirm}
+        title="Remove unavailable gear?"
+        message={staleGear.length > 1
+          ? `The following gear item names are no longer in your tackle box: ${staleGear.join(', ')}. Remove them from this catch?`
+          : `"${staleGear[0] || ''}" is no longer in your tackle box. Remove it from this catch?`}
+        confirmText="Remove"
+        cancelText="Keep"
+        onConfirm={() => {
+          setFormData(prev => ({ ...prev, gear: prev.gear.filter(g => !staleGear.includes(g)) }));
+          setShowStaleGearConfirm(false);
+          setStaleGear([]);
+        }}
+        onCancel={() => {
+          setShowStaleGearConfirm(false);
+          setStaleGear([]);
+        }}
+        variant="warning"
+        overlayStyle="blur"
+      />
     </>
   );
 };
