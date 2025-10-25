@@ -236,6 +236,7 @@ export class FirebaseDataService {
           photoHash: hash,
           photoPath: encryptionResult.storagePath,
           photoMime: mime,
+          photoUrl: '',
           encryptedMetadata: photoEncryptionService.serializeMetadata(encryptionResult.metadata)
         };
       } catch (encryptionError) {

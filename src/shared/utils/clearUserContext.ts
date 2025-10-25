@@ -16,7 +16,8 @@ import { auth } from '@shared/services/firebase';
  */
 
 // WeakMap to track active listeners for cleanup
-const activeFirebaseListeners = new WeakMap();
+const activeFirebaseListeners: WeakMap<object, Array<() => void | Promise<void>>> = new WeakMap();
+const GUEST_LISTENER_KEY: object = {};
 const inMemoryCaches = new Map<string, any>();
 const clearedLocalStorageKeys = new Set<string>();
 const clearedSessionStorageKeys = new Set<string>();
@@ -83,12 +84,12 @@ function collectStorageKeys(storage: Storage | undefined): string[] {
 /**
  * Store active Firebase listener subscriptions for later cleanup
  */
-export function registerFirebaseListener(cleanupFn: () => void, key?: string): void {
-  if (!activeFirebaseListeners.has(auth.currentUser)) {
-    activeFirebaseListeners.set(auth.currentUser, []);
+export function registerFirebaseListener(cleanupFn: () => void | Promise<void>, key?: string): void {
+  const mapKey: object = (auth && auth.currentUser) ? (auth.currentUser as unknown as object) : GUEST_LISTENER_KEY;
+  if (!activeFirebaseListeners.has(mapKey)) {
+    activeFirebaseListeners.set(mapKey, []);
   }
-  
-  const listeners = activeFirebaseListeners.get(auth.currentUser);
+  const listeners = activeFirebaseListeners.get(mapKey)!;
   listeners.push(cleanupFn);
   
   // Also store by key for specific cleanup if needed
@@ -200,9 +201,10 @@ async function cleanupFirebaseListeners(): Promise<void> {
     }
     
     // Abort listeners for current user
-    const currentUser = auth.currentUser;
-    if (currentUser && activeFirebaseListeners.has(currentUser)) {
-      const listeners = activeFirebaseListeners.get(currentUser);
+    const currentUser = auth.currentUser as unknown as object | null;
+    const mapKey: object = currentUser ?? GUEST_LISTENER_KEY;
+    if (activeFirebaseListeners.has(mapKey)) {
+      const listeners = activeFirebaseListeners.get(mapKey)!;
       
       for (const cleanupFn of listeners) {
         try {
@@ -212,7 +214,7 @@ async function cleanupFirebaseListeners(): Promise<void> {
         }
       }
       
-      activeFirebaseListeners.delete(currentUser);
+      activeFirebaseListeners.delete(mapKey);
     }
     
     // Clear all in-memory caches
