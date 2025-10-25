@@ -15,3 +15,6 @@
 | verify:compatibility | Validates data shape compatibility post changes |
 
 Supporting utilities live under `scripts/`.
+
+Notes:
+- Set `CI=1` to mirror pipeline behavior (skips known-flaky integration suites per vitest.config.ts).

@@ -46,6 +46,9 @@ npm run dev
 npm test        # interactive
 npm run test:run
 
+# CI-like run (skips known-flaky integration suites)
+CI=1 npm run test:run
+
 # Production build
 npm run build
 npm run preview

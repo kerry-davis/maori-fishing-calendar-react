@@ -12,6 +12,13 @@
 - Added a guarded logout flow that waits for pending sync activity (with retry and override options) before signing users out.
 - Hardened modal handling around PWA authentication redirects to prevent unintended settings screens from opening post-login.
 
+### Recent
+- Testing: CI-only exclusions for known-flaky integration suites; reproduce locally with `CI=1 npm run test:run` (see vitest.config.ts).
+- AuthContext: added robust timer and listener cleanup; stabilized previous-user tracking for background operations in tests.
+- Hooks: `useModalWithCleanup` now relies solely on `uid` (removed legacy `user.id`).
+- Data Service: encrypted photo storage returns `{ photoUrl: '' }` and `encryptedMetadata`; clients fetch URLs on demand.
+- Utils: `clearUserContext` uses a typed `WeakMap` with a dedicated guest key to avoid null issues; improved persistent cleanup logging.
+
 ## History (Lite)
 
 | Date   | Change |

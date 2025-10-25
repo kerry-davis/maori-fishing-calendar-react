@@ -108,4 +108,4 @@ If you believe you have found a security issue, please open a private security a
 
 ## Encrypted Photos in Firebase Storage
 
-User photos are compressed client-side (max 1080px, ~0.85 JPEG) and encrypted before upload to Firebase Storage under `users/<uid>/enc_photos/**`. Access is governed by `storage.rules` and served via tokenized download URLs from the SDK (`getDownloadURL(ref(storage, ...))`). For cross-origin access in previews/staging, configure bucket CORS; see docs/deployment/FIREBASE_STORAGE_CORS.md.
+User photos are compressed client-side (max 1080px, ~0.85 JPEG) and encrypted before upload to Firebase Storage under `users/<uid>/enc_photos/**`. For encrypted photos we intentionally do not persist a long‑lived `photoUrl` in Firestore (field is present but left empty); clients fetch a download URL on demand using the path and `encryptedMetadata` for decryption. Unencrypted legacy photos continue to store `photoUrl` when available. Access is governed by `storage.rules`. For cross-origin access in previews/staging, configure bucket CORS; see docs/deployment/FIREBASE_STORAGE_CORS.md.
