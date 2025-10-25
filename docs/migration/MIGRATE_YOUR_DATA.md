@@ -89,7 +89,7 @@ I've created these scripts for you:
 - `scripts/migrate-from-legacy.js` - Extracts data from legacy app
 - `scripts/import-legacy-data.js` - Imports data into React app
 - `scripts/import-zip-migration.js` - Import zip files with Node.js
-- `src/services/browserZipImportService.ts` - **NEW: Browser-based zip import (mobile-friendly)**
+- `src/shared/services/browserZipImportService.ts` - **NEW: Browser-based zip import (mobile-friendly)**
 - `scripts/test-legacy-migration.js` - Tests the migration process
 
 ## 📋 Step-by-Step Instructions
