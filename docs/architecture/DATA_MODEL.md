@@ -109,13 +109,13 @@ Notes:
 - Sensitive fields are deterministically encrypted client-side per `SECURITY.md` (selected string fields in trips/weatherLogs/fishCaught/tackleItems).
 - Weather/Fish IDs are opaque and use a ULID-based suffix; UI should not parse IDs.
  
-### Update semantics and guardrails (to prevent data loss)
+### Update semantics and guardrails (to prevent data loss and display drift)
 - FISH_CAUGHT photo fields are preserved on updates unless an explicit removal signal is provided. Clients MUST NOT clear photo-related fields by omission.
   - To remove a photo, send one of: `photo: ''` or `photoPath: ''` or `photoUrl: ''` or `removePhoto: true`.
   - To keep an existing photo unchanged, do not include any photo fields in the update payload.
   - To replace a photo, set `photo` to a data URL; the service will move it to Storage and populate `photoPath` (+ `encryptedMetadata` when encrypted). For encrypted photos, `photoUrl` may remain empty by design.
   - When editing locally cached records (IndexedDB/guest mode), merge the existing photo metadata (`photoPath`, `photoUrl`, `photoHash`, `photoMime`, `encryptedMetadata`) into the update payload so the client-side store does not drop references while Firestore keeps them.
-- Gear rename propagation runs asynchronously. UI should enqueue rename tasks (via the gear maintenance service) and surface progress feedback rather than blocking the modal while catch records are updated.
+- Gear rename propagation runs asynchronously. UI should enqueue rename tasks (via the gear maintenance service) and surface progress feedback rather than blocking the modal while catch records are updated. The maintenance service now emits canonical rename events (`gear-rename-applied`, `gear-type-rename-applied`) immediately after writing both Firestore and IndexedDB; consumers (e.g., Trip Log) must subscribe and update in-memory state to keep denormalized gear labels in sync without requiring a full refresh.
 - Encrypted photos: prefer `photoPath` + `encryptedMetadata`; `photoUrl` is optional and often blank for encrypted objects (download URLs are fetched on demand).
  
 

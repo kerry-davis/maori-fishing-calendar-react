@@ -32,4 +32,4 @@ Add new tests under `src/test/`. Prefer fast, deterministic tests; mock Firebase
   1) Create a catch with a photo. 2) Edit non-photo fields and save. 3) Verify photo still present. 4) Now delete photo via UI and save; verify removed.
 - Photo replacement flow: when uploading a new photo during edit, verify `photoPath`/`encryptedMetadata` get set and old photo is not removed until replacement succeeds.
 - Encrypted photo invariant: `photoUrl` may be empty; UI must render via decrypted blob or sign-in placeholder as appropriate.
-- Gear rename maintenance: rename a gear item/type and ensure queued task completes, progress UI updates, and affected catches show new labels once processing finishes.
+- Gear rename maintenance: rename a gear item/type and ensure the queue emits progress, Trip Log reflects the new label immediately via `gear-rename-applied` / `gear-type-rename-applied` events, and the final task completion still matches catches after a full reload.

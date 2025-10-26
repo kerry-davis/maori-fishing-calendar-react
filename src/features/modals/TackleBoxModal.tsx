@@ -34,6 +34,9 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
   const [gearMaintenanceMessage, setGearMaintenanceMessage] = useState<string | null>(null);
   const maintenanceMessageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const normalize = (value?: string) => (value ?? '').trim();
+  const normalizeLower = (value?: string) => normalize(value).toLowerCase();
+
   console.log('TackleBoxModal rendered - tacklebox items:', tacklebox.length, 'gearTypes:', gearTypes.length);
 
   useEffect(() => {
@@ -137,9 +140,12 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
   const handleGearSave = async (gearData: Omit<TackleItem, 'id'> | TackleItem) => {
     try {
       // Helpers to build composite keys consistently with selection UI
-      const norm = (v?: string) => (v || '').trim();
-      const mkKey = (it: { type: string; brand: string; name: string; colour: string }) =>
-        `${norm(it.type)}|${norm(it.brand)}|${norm(it.name)}|${norm(it.colour)}`.toLowerCase();
+      const buildKey = (it: { type: string; brand: string; name: string; colour: string }) => {
+        const parts = [normalize(it.type), normalize(it.brand), normalize(it.name), normalize(it.colour)];
+        const canonical = parts.join('|');
+        const lower = parts.map(part => part.toLowerCase()).join('|');
+        return { canonical, lower };
+      };
 
       if ('id' in gearData) {
         // Update existing gear
@@ -150,14 +156,13 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
 
         // If name/brand/type/colour changed, update catch records' denormalized gear labels
         if (previous) {
-          const oldKey = mkKey(previous);
-          const newKey = mkKey(gearData as TackleItem);
-          const oldNameLc = norm(previous.name).toLowerCase();
-
-          if (oldKey !== newKey || oldNameLc !== norm((gearData as TackleItem).name).toLowerCase()) {
+          const oldKey = buildKey(previous);
+          const newKey = buildKey(gearData as TackleItem);
+          const oldNameLc = normalizeLower(previous.name);
+          if (oldKey.lower !== newKey.lower || oldNameLc !== normalizeLower((gearData as TackleItem).name)) {
             // Process both cloud and guest seamlessly via data service
             const description = `Gear rename: ${previous.name || 'Unnamed'} → ${(gearData as TackleItem).name || 'Unnamed'}`;
-            enqueueGearItemRename(oldKey, oldNameLc, newKey, description);
+            enqueueGearItemRename(oldKey.lower, oldNameLc, newKey.canonical, newKey.lower, description);
             console.log('Queued gear label maintenance task (item rename).');
           }
         }
@@ -202,10 +207,11 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
         ));
 
         // Also update catch records' denormalized gear composite labels for this type
-        const oldPrefix = `${oldTypeName.trim().toLowerCase()}|`;
-        const newPrefix = `${newTypeName.trim().toLowerCase()}|`;
+        const oldPrefixLower = `${normalizeLower(oldTypeName)}|`;
+        const newPrefixCanonical = normalize(newTypeName);
+        const newPrefixLower = normalizeLower(newTypeName);
         const description = `Gear type rename: ${oldTypeName} → ${newTypeName}`;
-        enqueueGearTypeRename(oldPrefix, newPrefix, description);
+        enqueueGearTypeRename(oldPrefixLower, newPrefixCanonical, newPrefixLower, description);
         console.log('Queued gear label maintenance task (type rename).');
       } else if (!oldTypeName && !gearTypes.includes(newTypeName)) {
         // Add new gear type

@@ -10,7 +10,7 @@
 | Trip log photos missing until edit | Legacy inline photos lacked preview fallback | Update to latest build or ensure photo fields populated |
 | IndexedDB “VersionError” on load | Cached DB schema newer than requested | Latest build auto-recovers; refresh again if needed |
 | Storage blocked by CORS | Missing origin in bucket CORS | Add origin to `cors.json`, re-apply with `gsutil cors set` |
-| Gear rename doesn’t show in catches immediately | Background maintenance queue still processing | Check the progress banner in Tackle Box; new labels appear after the task completes |
+| Gear rename doesn’t show in catches immediately | Background maintenance queue still processing OR consumer not subscribed to rename events | Check the progress banner in Tackle Box for task status; Trip Log listens to `gear-rename-applied` / `gear-type-rename-applied` events, so ensure you’re on the latest build and that the modal is open during processing |
 
 ## Photos disappear after editing a catch
 

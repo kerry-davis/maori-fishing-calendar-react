@@ -12,6 +12,7 @@ import { useAuth } from '../../app/providers/AuthContext';
 import { createSignInEncryptedPlaceholder } from '@shared/utils/photoPreviewUtils';
 import { getOrCreateGuestSessionId } from '@shared/services/guestSessionService';
 import { useFirebaseTackleBox } from '@shared/hooks/useFirebaseTackleBox';
+import { subscribeGearMaintenance } from '@shared/services/gearLabelMaintenanceService';
 
 export interface TripLogModalProps extends DateModalProps {
   onEditTrip?: (tripId: number) => void;
@@ -90,9 +91,95 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [isOpen, selectedDate, db, tackleBox]);
+  }, [isOpen, selectedDate, db]);
 
   // Load all fish catches for the selected date
+  const canonicalizeGearEntries = useCallback((entries: string[]): string[] => {
+    if (!entries?.length) {
+      return [];
+    }
+
+    const trim = (value?: string) => (value || '').trim();
+    const compositeMap = new Map<string, string>();
+    const nameMap = new Map<string, string>();
+
+    for (const item of tackleBox) {
+      const composite = `${trim(item.type)}|${trim(item.brand)}|${trim(item.name)}|${trim(item.colour)}`;
+      if (!composite.includes('|')) {
+        continue;
+      }
+      const normalizedComposite = composite
+        .split('|')
+        .map(part => part.trim().toLowerCase())
+        .join('|');
+      compositeMap.set(normalizedComposite, composite);
+
+      const nameLower = trim(item.name).toLowerCase();
+      if (nameLower && !nameMap.has(nameLower)) {
+        nameMap.set(nameLower, composite);
+      }
+    }
+
+    const normalizeCompositeValue = (value: string) =>
+      value
+        .split('|')
+        .map(part => part.trim().toLowerCase())
+        .join('|');
+
+    const normalizeNameValue = (value: string) => {
+      const parts = value.split('|');
+      if (parts.length === 4) {
+        return (parts[2] || '').trim().toLowerCase();
+      }
+      return value.trim().toLowerCase();
+    };
+
+    const dedup = new Set<string>();
+    const result: string[] = [];
+
+    for (const rawEntry of entries) {
+      if (!rawEntry) continue;
+      const value = String(rawEntry);
+      let canonical = '';
+
+      if (value.includes('|')) {
+        const compositeKey = normalizeCompositeValue(value);
+        const compositeMatch = compositeMap.get(compositeKey);
+        if (compositeMatch) {
+          canonical = compositeMatch;
+        }
+      }
+
+      if (!canonical) {
+        const nameKey = normalizeNameValue(value);
+        const nameMatch = nameMap.get(nameKey);
+        if (nameMatch) {
+          canonical = nameMatch;
+        }
+      }
+
+      if (!canonical) {
+        if (value.includes('|')) {
+          const parts = value.split('|').map(part => part.trim());
+          canonical = parts.length === 4 ? parts.join('|') : value.trim();
+        } else {
+          canonical = value.trim();
+        }
+      }
+
+      const normalizedKey = canonical.includes('|')
+        ? normalizeCompositeValue(canonical)
+        : canonical.trim().toLowerCase();
+
+      if (!dedup.has(normalizedKey)) {
+        dedup.add(normalizedKey);
+        result.push(canonical);
+      }
+    }
+
+    return result;
+  }, [tackleBox]);
+
   const loadFishCatches = useCallback(async () => {
     if (!isOpen || !selectedDate) return;
 
@@ -115,86 +202,6 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
         ...f,
         gear: Array.isArray(f.gear) ? f.gear : (f.gear ? [String(f.gear)] : [])
       }));
-
-      const trim = (v?: string) => (v || '').trim();
-      const compositeMap = new Map<string, string>();
-      const nameMap = new Map<string, string>();
-
-      for (const item of tackleBox) {
-        const composite = `${trim(item.type)}|${trim(item.brand)}|${trim(item.name)}|${trim(item.colour)}`;
-        compositeMap.set(
-          composite
-            .split('|')
-            .map(part => part.toLowerCase())
-            .join('|'),
-          composite
-        );
-        const nameLower = trim(item.name).toLowerCase();
-        if (!nameMap.has(nameLower)) {
-          nameMap.set(nameLower, composite);
-        }
-      }
-
-      const normalizeCompositeValue = (value: string) =>
-        value
-          .split('|')
-          .map(part => part.trim().toLowerCase())
-          .join('|');
-
-      const normalizeNameValue = (value: string) => {
-        const parts = value.split('|');
-        if (parts.length === 4) {
-          return (parts[2] || '').trim().toLowerCase();
-        }
-        return value.trim().toLowerCase();
-      };
-
-      const canonicalizeGearEntries = (entries: string[]): string[] => {
-        const dedup = new Set<string>();
-        const result: string[] = [];
-
-        for (const rawEntry of entries) {
-          if (!rawEntry) continue;
-          const value = String(rawEntry);
-          let canonical = '';
-
-          if (value.includes('|')) {
-            const compositeKey = normalizeCompositeValue(value);
-            const compositeMatch = compositeMap.get(compositeKey);
-            if (compositeMatch) {
-              canonical = compositeMatch;
-            }
-          }
-
-          if (!canonical) {
-            const nameKey = normalizeNameValue(value);
-            const nameMatch = nameMap.get(nameKey);
-            if (nameMatch) {
-              canonical = nameMatch;
-            }
-          }
-
-          if (!canonical) {
-            if (value.includes('|')) {
-              const parts = value.split('|').map(part => part.trim());
-              canonical = parts.length === 4 ? parts.join('|') : value.trim();
-            } else {
-              canonical = value.trim();
-            }
-          }
-
-          const normalizedKey = canonical.includes('|')
-            ? normalizeCompositeValue(canonical)
-            : canonical.trim().toLowerCase();
-
-          if (!dedup.has(normalizedKey)) {
-            dedup.add(normalizedKey);
-            result.push(canonical);
-          }
-        }
-
-        return result;
-      };
 
       const normalizedCatches = sanitized.map((fish) => ({
         ...fish,
@@ -231,7 +238,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
       PROD_ERROR("Error loading fish catches:", err);
       // Don't set error state for fish catches as it's not critical
     }
-  }, [isOpen, selectedDate, db]);
+  }, [isOpen, selectedDate, db, tackleBox]);
   // Cleanup blob URLs on unmount
   useEffect(() => {
     return () => {
@@ -289,7 +296,13 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
       loadFishCatches();
       loadWeatherLogs();
     }
-  }, [isOpen, selectedDate, loadFishCatches, loadWeatherLogs]);
+  }, [isOpen, selectedDate, loadFishCatches, loadWeatherLogs, loadTrips]);
+
+  useEffect(() => {
+    if (isOpen && selectedDate) {
+      void loadFishCatches();
+    }
+  }, [isOpen, selectedDate, tackleBox, loadFishCatches]);
 
   // Reload data when refresh trigger changes (e.g., after trip deletion from other modals)
   useEffect(() => {
@@ -314,6 +327,87 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
       window.removeEventListener('userDataReady', handler as EventListener);
     };
   }, [isOpen, selectedDate, loadFishCatches]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeGearMaintenance((event) => {
+      if (!isOpen) return;
+
+      if (event.type === 'gear-rename-applied') {
+        setFishCatches(prev => {
+          if (!prev.length) {
+            return prev;
+          }
+          let anyChanged = false;
+          const next = prev.map(fish => {
+            if (!Array.isArray(fish.gear) || !fish.gear.length) {
+              return fish;
+            }
+            let gearChanged = false;
+            const updatedGear = fish.gear.map(entry => {
+              const lower = String(entry || '').toLowerCase();
+              if (lower === event.oldKeyLower || lower === event.oldNameLower || lower === event.newKeyLower) {
+                gearChanged = true;
+                return event.newKeyCanonical;
+              }
+              return entry;
+            });
+            if (!gearChanged) {
+              return fish;
+            }
+            anyChanged = true;
+            return {
+              ...fish,
+              gear: canonicalizeGearEntries(updatedGear)
+            };
+          });
+          return anyChanged ? next : prev;
+        });
+      } else if (event.type === 'gear-type-rename-applied') {
+        setFishCatches(prev => {
+          if (!prev.length) {
+            return prev;
+          }
+          let anyChanged = false;
+          const next = prev.map(fish => {
+            if (!Array.isArray(fish.gear) || !fish.gear.length) {
+              return fish;
+            }
+            let gearChanged = false;
+            const updatedGear = fish.gear.map(entry => {
+              const value = String(entry || '');
+              const lower = value.toLowerCase();
+              if (lower.startsWith(event.oldPrefixLower)) {
+                const separatorIndex = value.indexOf('|');
+                const suffix = separatorIndex >= 0 ? value.slice(separatorIndex + 1) : '';
+                const normalizedSuffix = suffix ? suffix.replace(/^\|/, '') : '';
+                gearChanged = true;
+                return normalizedSuffix
+                  ? `${event.newPrefixCanonical}|${normalizedSuffix}`
+                  : event.newPrefixCanonical;
+              }
+              return entry;
+            });
+            if (!gearChanged) {
+              return fish;
+            }
+            anyChanged = true;
+            return {
+              ...fish,
+              gear: canonicalizeGearEntries(updatedGear)
+            };
+          });
+          return anyChanged ? next : prev;
+        });
+      }
+
+      if (event.type === 'task-complete' && event.processed > 0) {
+        void loadFishCatches();
+      }
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [canonicalizeGearEntries, isOpen, loadFishCatches]);
 
   // Handle trip deletion - show confirmation first
   const handleDeleteTrip = useCallback(async (tripId: number, firebaseDocId?: string) => {

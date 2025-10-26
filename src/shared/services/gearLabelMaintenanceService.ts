@@ -5,16 +5,18 @@ import { DEV_LOG, DEV_WARN } from '../utils/loggingHelpers';
 
 type GearRenameTask = {
   kind: 'gearRename';
-  oldKey: string;
-  oldName: string;
-  newKey: string;
+  oldKeyLower: string;
+  oldNameLower: string;
+  newKeyCanonical: string;
+  newKeyLower: string;
   description: string;
 };
 
 type GearTypeRenameTask = {
   kind: 'gearTypeRename';
-  oldPrefix: string;
-  newPrefix: string;
+  oldPrefixLower: string;
+  newPrefixCanonical: string;
+  newPrefixLower: string;
   description: string;
 };
 
@@ -29,6 +31,8 @@ type GearMaintenanceEvent =
   | { type: 'task-start'; label: string; total: number }
   | { type: 'task-progress'; label: string; processed: number; total: number }
   | { type: 'task-complete'; label: string; processed: number }
+  | { type: 'gear-rename-applied'; oldKeyLower: string; oldNameLower: string; newKeyCanonical: string; newKeyLower: string }
+  | { type: 'gear-type-rename-applied'; oldPrefixLower: string; newPrefixCanonical: string; newPrefixLower: string }
   | { type: 'task-error'; label: string; error: unknown };
 
 const subscribers = new Set<(event: GearMaintenanceEvent) => void>();
@@ -50,15 +54,28 @@ export function subscribeGearMaintenance(listener: (event: GearMaintenanceEvent)
   };
 }
 
-export function enqueueGearItemRename(oldKey: string, oldName: string, newKey: string, description: string): void {
-  queue.push({ kind: 'gearRename', oldKey: oldKey.toLowerCase(), oldName: oldName.toLowerCase(), newKey: newKey.toLowerCase(), description });
+export function enqueueGearItemRename(oldKeyLower: string, oldNameLower: string, newKeyCanonical: string, newKeyLower: string, description: string): void {
+  queue.push({
+    kind: 'gearRename',
+    oldKeyLower: oldKeyLower.toLowerCase(),
+    oldNameLower: oldNameLower.toLowerCase(),
+    newKeyCanonical,
+    newKeyLower: newKeyLower.toLowerCase(),
+    description
+  });
   pendingTasks += 1;
   emit({ type: 'queue-size', size: pendingTasks });
   scheduleProcessing();
 }
 
-export function enqueueGearTypeRename(oldPrefix: string, newPrefix: string, description: string): void {
-  queue.push({ kind: 'gearTypeRename', oldPrefix: oldPrefix.toLowerCase(), newPrefix: newPrefix.toLowerCase(), description });
+export function enqueueGearTypeRename(oldPrefixLower: string, newPrefixCanonical: string, newPrefixLower: string, description: string): void {
+  queue.push({
+    kind: 'gearTypeRename',
+    oldPrefixLower: oldPrefixLower.toLowerCase(),
+    newPrefixCanonical,
+    newPrefixLower: newPrefixLower.toLowerCase(),
+    description
+  });
   pendingTasks += 1;
   emit({ type: 'queue-size', size: pendingTasks });
   scheduleProcessing();
@@ -104,9 +121,9 @@ async function handleTask(task: Task): Promise<void> {
       let changed = false;
       const next = gear.map(entry => {
         const lower = String(entry || '').toLowerCase();
-        if (lower === task.oldKey || lower === task.oldName) {
+        if (lower === task.oldKeyLower || lower === task.oldNameLower || lower === task.newKeyLower) {
           changed = true;
-          return task.newKey;
+          return task.newKeyCanonical;
         }
         return entry;
       });
@@ -115,7 +132,7 @@ async function handleTask(task: Task): Promise<void> {
         updates.push({ ...fish, gear: deduped });
       }
     }
-    await persistUpdates(updates, task.description);
+    await persistUpdates(updates, task);
   } else {
     const updates: FishCaught[] = [];
     for (const fish of fishCaught) {
@@ -125,10 +142,12 @@ async function handleTask(task: Task): Promise<void> {
       const next = gear.map(entry => {
         const value = String(entry || '');
         const lower = value.toLowerCase();
-        if (lower.startsWith(task.oldPrefix)) {
-          const suffix = value.slice(value.indexOf('|') + 1);
+        if (lower.startsWith(task.oldPrefixLower)) {
+          const separatorIndex = value.indexOf('|');
+          const suffix = separatorIndex >= 0 ? value.slice(separatorIndex + 1) : '';
           changed = true;
-          return `${task.newPrefix}${suffix}`;
+          const normalizedSuffix = suffix ? suffix.replace(/^\|/, '') : '';
+          return normalizedSuffix ? `${task.newPrefixCanonical}|${normalizedSuffix}` : task.newPrefixCanonical;
         }
         return entry;
       });
@@ -137,7 +156,7 @@ async function handleTask(task: Task): Promise<void> {
         updates.push({ ...fish, gear: deduped });
       }
     }
-    await persistUpdates(updates, task.description);
+    await persistUpdates(updates, task);
   }
 }
 
@@ -150,9 +169,12 @@ async function getAllFishCaughtSafe(): Promise<FishCaught[]> {
   }
 }
 
-async function persistUpdates(updates: FishCaught[], label: string): Promise<void> {
+async function persistUpdates(updates: FishCaught[], task: Task): Promise<void> {
+  const label = task.description;
   const total = updates.length;
+
   if (total === 0) {
+    emitMutationEvent(task);
     emit({ type: 'task-complete', label, processed: 0 });
     DEV_LOG(`[GearMaintenance] ${label}: no records to update`);
     return;
@@ -170,13 +192,38 @@ async function persistUpdates(updates: FishCaught[], label: string): Promise<voi
       await yieldToEventLoop();
     }
   }
+  emitMutationEvent(task);
   emit({ type: 'task-complete', label, processed });
   DEV_LOG(`[GearMaintenance] ${label}: updated ${processed} record(s)`);
+}
+
+function emitMutationEvent(task: Task): void {
+  if (task.kind === 'gearRename') {
+    emit({
+      type: 'gear-rename-applied',
+      oldKeyLower: task.oldKeyLower,
+      oldNameLower: task.oldNameLower,
+      newKeyCanonical: task.newKeyCanonical,
+      newKeyLower: task.newKeyLower
+    });
+  } else {
+    emit({
+      type: 'gear-type-rename-applied',
+      oldPrefixLower: task.oldPrefixLower,
+      newPrefixCanonical: task.newPrefixCanonical,
+      newPrefixLower: task.newPrefixLower
+    });
+  }
 }
 
 async function saveCatch(record: FishCaught): Promise<void> {
   try {
     await firebaseDataService.updateFishCaught(record);
+    try {
+      await databaseService.updateFishCaught(record);
+    } catch (dbErr) {
+      DEV_WARN('[GearMaintenance] failed to sync local DB after Firebase update', dbErr);
+    }
   } catch (error) {
     DEV_WARN('[GearMaintenance] firebase update failed, falling back to local DB', error);
     await databaseService.updateFishCaught(record);
