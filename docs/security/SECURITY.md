@@ -55,6 +55,7 @@ trips: water, location, companions, notes
 weatherLogs: sky, windCondition, windDirection
 fishCaught: species, length, weight, time, details, gear[]
 tackleItems: name, brand, colour
+userSavedLocations: name, water, location, notes
 ```
 Non-encrypted fields are either identifiers, references, timestamps, or needed for querying / indexing.
 

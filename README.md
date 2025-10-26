@@ -24,6 +24,7 @@ Helps anglers plan and review fishing activity using lunar phases, weather, and 
 | ------ | ---------- |
 | Lunar | Māori lunar phase calendar & current moon info |
 | Trips | Create, edit, merge local guest data, log catches & weather |
+| Locations | Save up to 10 favorite fishing spots with coordinates, duplicate prevention |
 | Gear  | Tackle box & gear type management |
 | Weather | Capture conditions (manual + integration) |
 | Analytics | Basic success pattern exploration (charts) |

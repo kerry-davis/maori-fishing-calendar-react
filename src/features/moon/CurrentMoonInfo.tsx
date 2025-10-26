@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useLocationContext } from "@app/providers";
 import { TideSummary } from "../tide/TideSummary";
 import {
@@ -12,7 +12,13 @@ interface CurrentMoonInfoProps {
 }
 
 export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
-  const { userLocation, setLocation, requestLocation, searchLocation, searchLocationSuggestions } = useLocationContext();
+  const {
+    userLocation,
+    setLocation,
+    requestLocation,
+    searchLocation,
+    searchLocationSuggestions,
+  } = useLocationContext();
   const [moonInfo, setMoonInfo] = useState<{
     phase: LunarPhase;
     phaseIndex: number;
@@ -192,6 +198,10 @@ export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
     setLocationError(null);
   };
 
+  const handleClearLocation = useCallback(() => {
+    setLocation(null);
+  }, [setLocation]);
+
   // Get moon phase icon based on phase index
   const getMoonPhaseIcon = (phaseIndex: number): string => {
     if (phaseIndex === 0 || phaseIndex === 29) return "🌑"; // New Moon
@@ -351,7 +361,7 @@ export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
             })()}
 
             <button
-              onClick={() => setLocation(null)}
+              onClick={handleClearLocation}
               className="text-xs mt-2"
               style={{ color: 'var(--tertiary-text)' }}
               onMouseOver={(e) => e.currentTarget.style.color = 'var(--secondary-text)'}

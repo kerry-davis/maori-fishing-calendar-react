@@ -1,4 +1,13 @@
-import type { Trip, WeatherLog, FishCaught, ImportProgress } from "../types";
+import type {
+  Trip,
+  WeatherLog,
+  FishCaught,
+  ImportProgress,
+  SavedLocation,
+  SavedLocationCreateInput,
+  SavedLocationUpdateInput,
+} from "../types";
+import { MAX_SAVED_LOCATIONS, STORAGE_KEYS } from "../types";
 import { generateULID } from "../utils/ulid";
 import { firestore, storage } from "@shared/services/firebase";
 import { encryptionService, ENCRYPTION_COLLECTION_FIELD_MAP, isPossiblyEncrypted } from './encryptionService';
@@ -51,6 +60,9 @@ export class FirebaseDataService {
   private isProcessingQueue = false;
   private queueRetryTimeout: ReturnType<typeof setTimeout> | null = null;
   private readonly PHOTO_ENCRYPTION_STRICT = (import.meta as any)?.env?.VITE_PHOTO_ENCRYPTION_STRICT === 'true';
+  private readonly savedLocationsCollection = 'userSavedLocations';
+  private readonly savedLocationsStorageKey = STORAGE_KEYS.SAVED_LOCATIONS;
+  private readonly savedLocationsLimit = MAX_SAVED_LOCATIONS;
 
   constructor() {
     // Monitor online/offline status
@@ -2781,23 +2793,390 @@ export class FirebaseDataService {
     }
     return false;
   }
+
+  // SAVED LOCATION METHODS
+
+  async getSavedLocations(): Promise<SavedLocation[]> {
+    DEV_LOG('[SavedLocations] getSavedLocations called');
+    this.ensureServiceReady();
+    
+    if (this.isGuest) {
+      DEV_LOG('[SavedLocations] Guest mode - returning from localStorage');
+      return this.getGuestSavedLocations();
+    }
+    
+    if (!firestore || !this.userId) {
+      DEV_LOG('[SavedLocations] No Firestore or userId available');
+      return [];
+    }
+
+    try {
+      DEV_LOG('[SavedLocations] Querying Firestore for userId:', this.userId);
+      const q = query(
+        collection(firestore, this.savedLocationsCollection),
+        where('userId', '==', this.userId)
+      );
+      const snapshot = await getDocs(q);
+      DEV_LOG('[SavedLocations] Firestore returned', snapshot.size, 'documents');
+      
+      const locations: SavedLocation[] = [];
+      for (const docSnap of snapshot.docs) {
+        const data = docSnap.data();
+        const converted = await this.convertFromFirestore(data, docSnap.id, docSnap.id, 'savedLocations');
+        const { firebaseDocId: _firebaseDocId, ...rest } = converted;
+        locations.push(rest as SavedLocation);
+      }
+      
+      const sorted = locations.sort((a, b) => {
+        const aTime = a.createdAt || '';
+        const bTime = b.createdAt || '';
+        if (aTime && bTime && aTime !== bTime) {
+          return aTime.localeCompare(bTime);
+        }
+        return (a.name || '').localeCompare(b.name || '');
+      });
+      
+      DEV_LOG('[SavedLocations] Returning', sorted.length, 'sorted locations');
+      return sorted;
+    } catch (error) {
+      PROD_ERROR('[SavedLocations] Error fetching saved locations:', error);
+      throw error;
+    }
+  }
+
+  async createSavedLocation(input: SavedLocationCreateInput): Promise<SavedLocation> {
+    DEV_LOG('[SavedLocations] createSavedLocation called with input:', input);
+    this.ensureServiceReady();
+    this.validateSavedLocationInput(input, false);
+    const sanitized = this.stripUndefined(this.sanitizeSavedLocationInput(input));
+    DEV_LOG('[SavedLocations] Sanitized input:', sanitized);
+
+    if (this.isGuest) {
+      DEV_LOG('[SavedLocations] Creating in guest mode');
+      const existing = this.getGuestSavedLocations();
+      if (existing.length >= this.savedLocationsLimit) {
+        throw new Error(`You can only store up to ${this.savedLocationsLimit} saved locations.`);
+      }
+
+      // Check for duplicate coordinates in guest mode
+      if (typeof sanitized.lat === 'number' && typeof sanitized.lon === 'number') {
+        const duplicate = existing.find((loc) => {
+          if (typeof loc.lat === 'number' && typeof loc.lon === 'number') {
+            const latDiff = Math.abs(loc.lat - sanitized.lat);
+            const lonDiff = Math.abs(loc.lon - sanitized.lon);
+            return latDiff < 0.0001 && lonDiff < 0.0001;
+          }
+          return false;
+        });
+
+        if (duplicate) {
+          DEV_LOG('[SavedLocations] Duplicate guest location found:', duplicate);
+          throw new Error(`A location at these coordinates already exists: "${duplicate.name}"`);
+        }
+      }
+
+      const now = new Date().toISOString();
+      const id = generateULID();
+      const next: SavedLocation = {
+        id,
+        ...sanitized,
+        createdAt: now,
+        updatedAt: now
+      };
+      this.persistGuestSavedLocations([...existing, next]);
+      DEV_LOG('[SavedLocations] Guest location created with id:', id);
+      this.emitSavedLocationsChanged('created', id);
+      return next;
+    }
+
+    if (!firestore || !this.userId) {
+      PROD_ERROR('[SavedLocations] Firestore not available for saved locations');
+      throw new Error('Firestore not available for saved locations');
+    }
+
+    DEV_LOG('[SavedLocations] Checking current count');
+    const current = await this.getSavedLocations();
+    if (current.length >= this.savedLocationsLimit) {
+      PROD_ERROR('[SavedLocations] Limit reached:', current.length, '>=', this.savedLocationsLimit);
+      throw new Error(`You can only store up to ${this.savedLocationsLimit} saved locations.`);
+    }
+
+    // Check for duplicate coordinates (within 0.0001 degree tolerance ~11 meters)
+    if (typeof sanitized.lat === 'number' && typeof sanitized.lon === 'number') {
+      const duplicate = current.find((loc) => {
+        if (typeof loc.lat === 'number' && typeof loc.lon === 'number') {
+          const latDiff = Math.abs(loc.lat - sanitized.lat);
+          const lonDiff = Math.abs(loc.lon - sanitized.lon);
+          return latDiff < 0.0001 && lonDiff < 0.0001;
+        }
+        return false;
+      });
+
+      if (duplicate) {
+        DEV_LOG('[SavedLocations] Duplicate location found:', duplicate);
+        throw new Error(`A location at these coordinates already exists: "${duplicate.name}"`);
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+    const payload: Record<string, unknown> = {
+      ...sanitized,
+      userId: this.userId,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    };
+    DEV_LOG('[SavedLocations] Payload before encryption:', payload);
+
+    let encrypted = payload;
+    try {
+      encrypted = await encryptionService.encryptFields('savedLocations', payload);
+      DEV_LOG('[SavedLocations] Payload after encryption:', encrypted);
+    } catch (error) {
+      DEV_WARN('[SavedLocations] Encryption failed:', error);
+    }
+
+    try {
+      DEV_LOG('[SavedLocations] Writing to Firestore collection:', this.savedLocationsCollection);
+      const docRef = await addDoc(collection(firestore, this.savedLocationsCollection), encrypted);
+      DEV_LOG('[SavedLocations] Firestore document created with ID:', docRef.id);
+      
+      const {
+        name,
+        water,
+        location: locationName,
+        lat,
+        lon,
+        notes
+      } = sanitized as SavedLocationCreateInput;
+
+      const savedLocation: SavedLocation = {
+        id: docRef.id,
+        userId: this.userId ?? undefined,
+        name,
+        water,
+        location: locationName,
+        lat,
+        lon,
+        notes,
+        createdAt: nowIso,
+        updatedAt: nowIso
+      };
+      
+      DEV_LOG('[SavedLocations] Emitting savedLocationsChanged event');
+      this.emitSavedLocationsChanged('created', docRef.id);
+      DEV_LOG('[SavedLocations] Successfully created saved location:', savedLocation);
+      return savedLocation;
+    } catch (error) {
+      PROD_ERROR('[SavedLocations] Error creating saved location:', error);
+      throw error;
+    }
+  }
+
+  async updateSavedLocation(id: string, updates: SavedLocationUpdateInput): Promise<void> {
+    DEV_LOG('[SavedLocations] updateSavedLocation called for id:', id, 'with updates:', updates);
+    this.ensureServiceReady();
+    this.validateSavedLocationInput(updates, true);
+    const sanitized = this.stripUndefined(this.sanitizeSavedLocationInput(updates));
+
+    if (this.isGuest) {
+      DEV_LOG('[SavedLocations] Updating in guest mode');
+      const existing = this.getGuestSavedLocations();
+      const index = existing.findIndex((loc) => loc.id === id);
+      if (index === -1) {
+        throw new Error('Saved location not found');
+      }
+      const now = new Date().toISOString();
+      const updated: SavedLocation = {
+        ...existing[index],
+        ...sanitized,
+        updatedAt: now
+      };
+      const next = [...existing];
+      next[index] = updated;
+      this.persistGuestSavedLocations(next);
+      DEV_LOG('[SavedLocations] Guest location updated');
+      this.emitSavedLocationsChanged('updated', id);
+      return;
+    }
+
+    if (!firestore || !this.userId) {
+      throw new Error('Firestore not available for saved locations');
+    }
+
+    let encrypted: Record<string, unknown> = { ...sanitized };
+    try {
+      encrypted = await encryptionService.encryptFields('savedLocations', sanitized);
+      DEV_LOG('[SavedLocations] Updates encrypted');
+    } catch (error) {
+      DEV_WARN('[SavedLocations] Encryption failed:', error);
+    }
+
+    try {
+      const docRef = doc(firestore, this.savedLocationsCollection, id);
+      DEV_LOG('[SavedLocations] Updating Firestore document:', id);
+      await updateDoc(docRef, {
+        ...encrypted,
+        updatedAt: serverTimestamp()
+      });
+      DEV_LOG('[SavedLocations] Firestore document updated successfully');
+      this.emitSavedLocationsChanged('updated', id);
+    } catch (error) {
+      PROD_ERROR('[SavedLocations] Error updating saved location:', error);
+      throw error;
+    }
+  }
+
+  async deleteSavedLocation(id: string): Promise<void> {
+    DEV_LOG('[SavedLocations] deleteSavedLocation called for id:', id);
+    this.ensureServiceReady();
+
+    if (this.isGuest) {
+      DEV_LOG('[SavedLocations] Deleting in guest mode');
+      const existing = this.getGuestSavedLocations();
+      const next = existing.filter((loc) => loc.id !== id);
+      this.persistGuestSavedLocations(next);
+      DEV_LOG('[SavedLocations] Guest location deleted');
+      this.emitSavedLocationsChanged('deleted', id);
+      return;
+    }
+
+    if (!firestore) {
+      throw new Error('Firestore not available for saved locations');
+    }
+
+    try {
+      DEV_LOG('[SavedLocations] Deleting Firestore document:', id);
+      await deleteDoc(doc(firestore, this.savedLocationsCollection, id));
+      DEV_LOG('[SavedLocations] Firestore document deleted successfully');
+      this.emitSavedLocationsChanged('deleted', id);
+    } catch (error) {
+      PROD_ERROR('[SavedLocations] Error deleting saved location:', error);
+      throw error;
+    }
+  }
+
+  private getGuestSavedLocations(): SavedLocation[] {
+    try {
+      const raw = localStorage.getItem(this.savedLocationsStorageKey);
+      if (!raw) {
+        return [];
+      }
+      const parsed = JSON.parse(raw) as SavedLocation[];
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+      return parsed.slice(0, this.savedLocationsLimit).map((loc) => ({
+        ...loc,
+        name: typeof loc.name === 'string' ? loc.name : '',
+        createdAt: loc.createdAt,
+        updatedAt: loc.updatedAt
+      }));
+    } catch (error) {
+      PROD_ERROR('Error reading saved locations from localStorage:', error);
+      return [];
+    }
+  }
+
+  private persistGuestSavedLocations(locations: SavedLocation[]): void {
+    try {
+      localStorage.setItem(this.savedLocationsStorageKey, JSON.stringify(locations.slice(0, this.savedLocationsLimit)));
+    } catch (error) {
+      PROD_ERROR('Error persisting saved locations to localStorage:', error);
+    }
+  }
+
+  private sanitizeSavedLocationInput<T extends SavedLocationCreateInput | SavedLocationUpdateInput>(input: T): T {
+    const sanitized: Record<string, unknown> = {};
+
+    if (input.name !== undefined) {
+      sanitized.name = this.sanitizeString(input.name);
+    }
+    if (input.water !== undefined) {
+      sanitized.water = input.water ? this.sanitizeString(input.water) : '';
+    }
+    if (input.location !== undefined) {
+      sanitized.location = input.location ? this.sanitizeString(input.location) : '';
+    }
+    if (input.notes !== undefined) {
+      sanitized.notes = input.notes ? this.sanitizeString(input.notes) : '';
+    }
+    if (input.lat !== undefined) {
+      const lat = Number(input.lat);
+      sanitized.lat = Number.isFinite(lat) ? lat : undefined;
+    }
+    if (input.lon !== undefined) {
+      const lon = Number(input.lon);
+      sanitized.lon = Number.isFinite(lon) ? lon : undefined;
+    }
+
+    return sanitized as T;
+  }
+
+  private validateSavedLocationInput(input: SavedLocationCreateInput | SavedLocationUpdateInput, isUpdate: boolean): void {
+    if ((!isUpdate || input.name !== undefined)) {
+      if (typeof input.name !== 'string' || input.name.trim().length === 0) {
+        throw new Error('Saved location name is required');
+      }
+    }
+
+    if (input.lat !== undefined) {
+      const lat = Number(input.lat);
+      if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
+        throw new Error('Latitude must be a number between -90 and 90');
+      }
+    }
+
+    if (input.lon !== undefined) {
+      const lon = Number(input.lon);
+      if (!Number.isFinite(lon) || lon < -180 || lon > 180) {
+        throw new Error('Longitude must be a number between -180 and 180');
+      }
+    }
+  }
+
+  private emitSavedLocationsChanged(action: 'created' | 'updated' | 'deleted', id: string): void {
+    try {
+      window.dispatchEvent(new CustomEvent('savedLocationsChanged', {
+        detail: {
+          action,
+          id,
+          timestamp: Date.now(),
+          userId: this.userId,
+          isGuest: this.isGuest
+        }
+      }));
+    } catch (error) {
+      DEV_WARN('Failed to emit savedLocationsChanged event', error);
+    }
+  }
   /**
    * Check if error is a Firebase index error
    */
   private isFirebaseIndexError(error: Error): boolean {
+    const firebaseError = error as { code?: string; message: string };
+    const code = firebaseError?.code?.toLowerCase?.();
+    if (code === 'failed-precondition') {
+      return true;
+    }
+
     const indexErrorMessages = [
       'requires an index',
       'missing index',
       'index not found',
-      'The query requires an index',
-      'FAILED_PRECONDITION'
+      'the query requires an index'
     ];
-    
-    return indexErrorMessages.some(msg => 
-      error.message.toLowerCase().includes(msg.toLowerCase()) ||
-      error.stack?.toLowerCase().includes(msg.toLowerCase()) ||
-      error.name === 'FirebaseError'
+
+    return indexErrorMessages.some(msg =>
+      firebaseError.message.toLowerCase().includes(msg)
     );
+  }
+
+  private isPermissionDeniedError(error: Error): boolean {
+    const firebaseError = error as { code?: string; message?: string };
+    if (firebaseError?.code?.toLowerCase?.() === 'permission-denied') {
+      return true;
+    }
+    return firebaseError?.message?.toLowerCase?.().includes('missing or insufficient permissions') ?? false;
   }
 
   /**
@@ -2822,6 +3201,31 @@ export class FirebaseDataService {
     
     // Default to trips if we can't extract (most common case)
     return 'trips';
+  }
+
+  private markCollectionMigrationDone(collection: string, error: Error, broadcastIndexError: boolean): void {
+    try {
+      const stateKey = this.getEncStateKey(collection);
+      const currentState = this.loadEncState(stateKey);
+      currentState.done = true;
+      this.saveEncState(stateKey, currentState);
+
+      const context = broadcastIndexError ? 'index error' : 'permission fallback';
+      DEV_WARN(`[enc-migration] Marked collection '${collection}' as done due to ${context}`);
+
+      if (broadcastIndexError) {
+        window.dispatchEvent(new CustomEvent('encryptionIndexError', {
+          detail: {
+            collection,
+            error: error.message,
+            userId: this.userId,
+            consoleUrl: 'https://console.firebase.google.com/'
+          }
+        }));
+      }
+    } catch (stateError) {
+      PROD_ERROR('[enc-migration] Failed to mark collection as done after error:', stateError);
+    }
   }
 
   async startBackgroundEncryptionMigration(progressCb?: (p: { collection: string; processed: number; updated: number; done: boolean; remaining?: number }) => void): Promise<void> {
@@ -2852,35 +3256,17 @@ export class FirebaseDataService {
       }
     } catch (e) { 
       PROD_ERROR('[enc-migration] error', e); 
-      
-      // Handle Firebase index errors specifically
-      if (e instanceof Error && this.isFirebaseIndexError(e)) {
-        PROD_ERROR('[enc-migration] Firebase index error detected - failing fast');
-        
-        // Mark the affected collection as done to prevent indefinite hanging
-        const affectedCollection = this.extractCollectionFromError(e) || 'trips';
-        try {
-          const stateKey = this.getEncStateKey(affectedCollection);
-          const currentState = this.loadEncState(stateKey);
-          currentState.done = true;
-          this.saveEncState(stateKey, currentState);
-          
-          DEV_WARN(`[enc-migration] Marked collection '${affectedCollection}' as done due to index error`);
-          
-          // Dispatch index error event for UI to show proper message
-          window.dispatchEvent(new CustomEvent('encryptionIndexError', {
-            detail: { 
-              collection: affectedCollection,
-              error: e.message,
-              userId: this.userId,
-              consoleUrl: 'https://console.firebase.google.com/'
-            }
-          }));
-        } catch (stateError) {
-          PROD_ERROR('[enc-migration] Failed to mark collection as done after index error:', stateError);
+
+      if (e instanceof Error) {
+        if (this.isFirebaseIndexError(e)) {
+          PROD_ERROR('[enc-migration] Firebase index error detected - failing fast');
+          this.markCollectionMigrationDone(this.extractCollectionFromError(e) || 'trips', e, true);
+        } else if (this.isPermissionDeniedError(e)) {
+          DEV_WARN('[enc-migration] Permission denied while processing migration batch; treating as legacy and skipping.');
+          this.markCollectionMigrationDone(this.extractCollectionFromError(e) || 'trips', e, false);
         }
       }
-      
+
       // Log migration failure telemetry
       PROD_ERROR('[enc-migration] Migration failed:', {
         error: e instanceof Error ? e.message : 'Unknown error',
@@ -2932,7 +3318,16 @@ export class FirebaseDataService {
     } catch {
       baseQuery = query(collection(firestore, collectionName), where('userId','==',this.userId));
     }
-    const snapshot = await getDocs(baseQuery);
+    let snapshot;
+    try {
+      snapshot = await getDocs(baseQuery);
+    } catch (error) {
+      if (error instanceof Error && this.isPermissionDeniedError(error)) {
+        DEV_WARN(`[enc-migration] Permission denied when querying '${collectionName}'. Treating as complete to support legacy docs.`, error);
+        return { scanned: 0, updated: 0, done: true };
+      }
+      throw error;
+    }
     if (snapshot.empty) return { scanned: 0, updated: 0, done: true };
     let scanned = 0; let updated = 0;
     const batch = writeBatch(firestore);

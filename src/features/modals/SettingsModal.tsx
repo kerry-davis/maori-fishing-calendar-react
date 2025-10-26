@@ -9,6 +9,8 @@ import { firebaseDataService } from '@shared/services/firebaseDataService';
 import { databaseService } from '@shared/services/databaseService';
 import type { ImportProgress } from '../../shared/types';
 import { useLocationContext } from '@app/providers/LocationContext';
+import SavedLocationSelector from '@features/locations/SavedLocationSelector';
+import type { SavedLocation } from '@shared/types';
 import { DEV_LOG, PROD_ERROR } from '../../shared/utils/loggingHelpers';
 import { clearUserContext } from '@shared/utils/clearUserContext';
 import { useFirebaseTackleBox } from '@shared/hooks/useFirebaseTackleBox';
@@ -20,7 +22,12 @@ interface SettingsModalProps {
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   const { user } = useAuth();
-  const { userLocation, tideCoverage, refreshTideCoverage } = useLocationContext();
+  const {
+    userLocation,
+    tideCoverage,
+    refreshTideCoverage,
+    savedLocations,
+  } = useLocationContext();
   const [isExportingJSON, setIsExportingJSON] = useState(false);
   const [isExportingCSV, setIsExportingCSV] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -51,6 +58,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [rebuildRunning, setRebuildRunning] = useState(false);
   const [rebuildResult, setRebuildResult] = useState<{ updated: number; total: number } | null>(null);
   const [tacklebox] = useFirebaseTackleBox();
+  const [selectedSavedLocationId, setSelectedSavedLocationId] = useState<string>('');
+
+  // No auto-matching - only show selection when explicitly chosen from dropdown
+
+  const handleSavedLocationSwitch = useCallback((location: SavedLocation | null) => {
+    setSelectedSavedLocationId(location?.id ?? '');
+    if (location) {
+      void refreshTideCoverage();
+    }
+  }, [refreshTideCoverage]);
 
   // Trigger file chooser for import
   const handleImportClick = () => {
@@ -348,6 +365,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                   : 'Checking coverage…'
                 : 'Set a location to verify tide coverage.'}
             </p>
+          </div>
+          <div className="mt-4">
+            <SavedLocationSelector
+              selectedId={selectedSavedLocationId}
+              onSelect={handleSavedLocationSwitch}
+              showSaveCurrentButton
+              allowManage={false}
+              placeholder="Select a saved location"
+            />
           </div>
           <div className="flex gap-3 mt-4">
             <Button
