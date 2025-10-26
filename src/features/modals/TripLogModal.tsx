@@ -11,6 +11,7 @@ import { DEV_LOG, PROD_ERROR } from '../../shared/utils/loggingHelpers';
 import { useAuth } from '../../app/providers/AuthContext';
 import { createSignInEncryptedPlaceholder } from '@shared/utils/photoPreviewUtils';
 import { getOrCreateGuestSessionId } from '@shared/services/guestSessionService';
+import { useFirebaseTackleBox } from '@shared/hooks/useFirebaseTackleBox';
 
 export interface TripLogModalProps extends DateModalProps {
   onEditTrip?: (tripId: number) => void;
@@ -53,6 +54,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'weather' | 'fish' | 'trip', id: string, tripId?: number, firebaseDocId?: string } | null>(null);
   const db = useDatabaseService();
   const { user } = useAuth();
+  const [tackleBox] = useFirebaseTackleBox();
 
   // Format date for display and database queries
   const formatDateForDisplay = (date: Date): string => {
@@ -88,7 +90,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [isOpen, selectedDate, db]);
+  }, [isOpen, selectedDate, db, tackleBox]);
 
   // Load all fish catches for the selected date
   const loadFishCatches = useCallback(async () => {
@@ -114,11 +116,96 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
         gear: Array.isArray(f.gear) ? f.gear : (f.gear ? [String(f.gear)] : [])
       }));
 
-      setFishCatches(sanitized);
+      const trim = (v?: string) => (v || '').trim();
+      const compositeMap = new Map<string, string>();
+      const nameMap = new Map<string, string>();
+
+      for (const item of tackleBox) {
+        const composite = `${trim(item.type)}|${trim(item.brand)}|${trim(item.name)}|${trim(item.colour)}`;
+        compositeMap.set(
+          composite
+            .split('|')
+            .map(part => part.toLowerCase())
+            .join('|'),
+          composite
+        );
+        const nameLower = trim(item.name).toLowerCase();
+        if (!nameMap.has(nameLower)) {
+          nameMap.set(nameLower, composite);
+        }
+      }
+
+      const normalizeCompositeValue = (value: string) =>
+        value
+          .split('|')
+          .map(part => part.trim().toLowerCase())
+          .join('|');
+
+      const normalizeNameValue = (value: string) => {
+        const parts = value.split('|');
+        if (parts.length === 4) {
+          return (parts[2] || '').trim().toLowerCase();
+        }
+        return value.trim().toLowerCase();
+      };
+
+      const canonicalizeGearEntries = (entries: string[]): string[] => {
+        const dedup = new Set<string>();
+        const result: string[] = [];
+
+        for (const rawEntry of entries) {
+          if (!rawEntry) continue;
+          const value = String(rawEntry);
+          let canonical = '';
+
+          if (value.includes('|')) {
+            const compositeKey = normalizeCompositeValue(value);
+            const compositeMatch = compositeMap.get(compositeKey);
+            if (compositeMatch) {
+              canonical = compositeMatch;
+            }
+          }
+
+          if (!canonical) {
+            const nameKey = normalizeNameValue(value);
+            const nameMatch = nameMap.get(nameKey);
+            if (nameMatch) {
+              canonical = nameMatch;
+            }
+          }
+
+          if (!canonical) {
+            if (value.includes('|')) {
+              const parts = value.split('|').map(part => part.trim());
+              canonical = parts.length === 4 ? parts.join('|') : value.trim();
+            } else {
+              canonical = value.trim();
+            }
+          }
+
+          const normalizedKey = canonical.includes('|')
+            ? normalizeCompositeValue(canonical)
+            : canonical.trim().toLowerCase();
+
+          if (!dedup.has(normalizedKey)) {
+            dedup.add(normalizedKey);
+            result.push(canonical);
+          }
+        }
+
+        return result;
+      };
+
+      const normalizedCatches = sanitized.map((fish) => ({
+        ...fish,
+        gear: canonicalizeGearEntries(fish.gear)
+      }));
+
+      setFishCatches(normalizedCatches);
 
       // Generate photo previews (including decryption)
       const previews: Record<string, string> = {};
-      for (const fish of sanitized) {
+      for (const fish of normalizedCatches) {
         // Only render preview if photo, photoUrl, or photoPath exists
         if (!fish.photo && !fish.photoUrl && !fish.photoPath) {
           continue;
