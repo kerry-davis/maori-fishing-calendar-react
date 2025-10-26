@@ -11,6 +11,7 @@ import { ref, deleteObject } from "firebase/storage";
 import type { FishCaught } from "@shared/types";
 import { createSignInEncryptedPlaceholder } from "@shared/utils/photoPreviewUtils";
 import { getOrCreateGuestSessionId } from "@shared/services/guestSessionService";
+import { buildPhotoRemovalFields } from "@shared/utils/photoUpdateHelpers";
 
 export interface FishCatchModalProps {
   isOpen: boolean;
@@ -103,6 +104,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
           photoPath: fish.photoPath || "",
           encryptedMetadata: fish.encryptedMetadata ?? undefined,
         });
+        photoStatusRef.current = 'unchanged';
       } else {
         setError('Fish catch not found');
       }
@@ -179,8 +181,8 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
     return () => { isMounted = false; };
   }, [formData.encryptedMetadata, formData.photoPath, user]);
 
-  const handleInputChange = useCallback((field: string, value: string | string[]) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+  const handleInputChange = useCallback((field: string, value: string | string[] | undefined) => {
+    setFormData(prev => ({ ...prev, [field]: value as any }));
 
     // Clear validation error for this field
     if (validation.errors[field]) {
@@ -284,17 +286,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
 
       let savedData: FishCaught;
       if (isEditing && fishId) {
-        let payload: any;
-        if (photoStatusRef.current === 'unchanged') {
-          try {
-            const existing = await db.getFishCaughtById(fishId);
-            payload = { ...(existing || {}), ...fishDataBase, id: fishId };
-          } catch {
-            payload = { id: fishId, ...fishDataBase };
-          }
-        } else {
-          payload = { id: fishId, ...fishDataBase };
-        }
+        const payload: any = { id: fishId, ...fishDataBase };
         if (!user) {
           payload.guestSessionId = getOrCreateGuestSessionId();
         }
@@ -791,9 +783,10 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                             console.warn('Failed to delete photo from storage:', err);
                           }
                         }
-                        handleInputChange("photo", "");
-                        handleInputChange("photoPath", "");
-                        handleInputChange("encryptedMetadata", "");
+                        const removal = buildPhotoRemovalFields();
+                        handleInputChange("photo", removal.photo);
+                        handleInputChange("photoPath", removal.photoPath);
+                        handleInputChange("encryptedMetadata", removal.encryptedMetadata);
                         setPhotoPreview(null);
                         setUploadError(null);
                         setFileInputKey((k) => k + 1);
@@ -844,9 +837,10 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                         setPhotoPreview(null);
                         setUploadError(null);
                         // Also clear selected photo from form state so it won't be saved
-                        handleInputChange("photo", "");
-                        handleInputChange("photoPath", "");
-                        handleInputChange("encryptedMetadata", "");
+                        const removal = buildPhotoRemovalFields();
+                        handleInputChange("photo", removal.photo);
+                        handleInputChange("photoPath", removal.photoPath);
+                        handleInputChange("encryptedMetadata", removal.encryptedMetadata);
                         // Force React to remount the file input so onChange binding remains intact
                         setFileInputKey((k) => k + 1);
                         photoStatusRef.current = 'deleted';

@@ -175,6 +175,7 @@ Photo compression preset:
 - Global preset for imports and uploads: max dimension 1080px, JPEG quality ~0.85.
 - Imports: photos are standardized to this preset for smaller backups and faster loads.
 - Uploads: photos are compressed with the same preset before encryption and Storage upload.
+- Gear rename propagation runs via a background queue; modern builds surface progress in the Tackle Box UI instead of blocking edits.
 - Gallery previews may use smaller, temporary downscaled images for faster rendering.
 
 ---

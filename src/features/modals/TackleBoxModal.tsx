@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Modal, ModalHeader, ModalBody } from './Modal';
 import { Button } from '@shared/components/Button';
 import { GearForm } from './GearForm';
 import { GearTypeForm } from './GearTypeForm';
 import { useFirebaseTackleBox, useFirebaseGearTypes } from '@shared/hooks/useFirebaseTackleBox';
-import { firebaseDataService } from '@shared/services/firebaseDataService';
-import { databaseService } from '@shared/services/databaseService';
+import { enqueueGearItemRename, enqueueGearTypeRename, subscribeGearMaintenance } from '@shared/services/gearLabelMaintenanceService';
 import type { ModalProps, TackleItem } from '../../shared/types';
 import ConfirmationDialog from '@shared/components/ConfirmationDialog';
 
@@ -30,8 +29,54 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
   const [editingGear, setEditingGear] = useState<TackleItem | null>(null);
   const [editingGearType, setEditingGearType] = useState<string>('');
   const [showConfirm, setShowConfirm] = useState<{ open: boolean; title: string; message: string; onConfirm: () => void } | null>(null);
+  const [gearMaintenanceQueueSize, setGearMaintenanceQueueSize] = useState(0);
+  const [gearMaintenanceProgress, setGearMaintenanceProgress] = useState<{ label: string; processed: number; total: number } | null>(null);
+  const [gearMaintenanceMessage, setGearMaintenanceMessage] = useState<string | null>(null);
+  const maintenanceMessageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   console.log('TackleBoxModal rendered - tacklebox items:', tacklebox.length, 'gearTypes:', gearTypes.length);
+
+  useEffect(() => {
+    const unsubscribe = subscribeGearMaintenance(event => {
+      if (event.type === 'queue-size') {
+        setGearMaintenanceQueueSize(event.size);
+      } else if (event.type === 'task-start') {
+        setGearMaintenanceProgress({ label: event.label, processed: 0, total: event.total });
+      } else if (event.type === 'task-progress') {
+        setGearMaintenanceProgress({ label: event.label, processed: event.processed, total: event.total });
+      } else if (event.type === 'task-complete') {
+        setGearMaintenanceProgress(null);
+        const message = `${event.label} complete (${event.processed} catch${event.processed === 1 ? '' : 'es'} updated)`;
+        setGearMaintenanceMessage(message);
+        if (maintenanceMessageTimeoutRef.current) {
+          clearTimeout(maintenanceMessageTimeoutRef.current);
+        }
+        maintenanceMessageTimeoutRef.current = setTimeout(() => {
+          setGearMaintenanceMessage(null);
+          maintenanceMessageTimeoutRef.current = null;
+        }, 5000);
+      } else if (event.type === 'task-error') {
+        setGearMaintenanceProgress(null);
+        const message = `${event.label} failed. Check console for details.`;
+        setGearMaintenanceMessage(message);
+        if (maintenanceMessageTimeoutRef.current) {
+          clearTimeout(maintenanceMessageTimeoutRef.current);
+        }
+        maintenanceMessageTimeoutRef.current = setTimeout(() => {
+          setGearMaintenanceMessage(null);
+          maintenanceMessageTimeoutRef.current = null;
+        }, 7000);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      if (maintenanceMessageTimeoutRef.current) {
+        clearTimeout(maintenanceMessageTimeoutRef.current);
+        maintenanceMessageTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   // Reset form state when modal opens/closes
   useEffect(() => {
@@ -108,42 +153,12 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
           const oldKey = mkKey(previous);
           const newKey = mkKey(gearData as TackleItem);
           const oldNameLc = norm(previous.name).toLowerCase();
-          const newNameKey = newKey; // use composite format for new labels
 
           if (oldKey !== newKey || oldNameLc !== norm((gearData as TackleItem).name).toLowerCase()) {
             // Process both cloud and guest seamlessly via data service
-            try {
-              const allFish = await firebaseDataService.getAllFishCaught();
-              let updatedCount = 0;
-              for (const f of allFish) {
-                const arr = Array.isArray((f as any).gear) ? ((f as any).gear as string[]) : [];
-                if (!arr.length) continue;
-                let changed = false;
-                const next = arr.map(g => {
-                  const s = String(g || '').toLowerCase();
-                  if (s === oldKey || s === oldNameLc) { changed = true; return newNameKey; }
-                  return g;
-                });
-                // Also ensure uniqueness and drop legacy name duplicate if both exist
-                const dedup = Array.from(new Set(next));
-                if (changed) {
-                  const updatedFish = { ...f, gear: dedup } as any;
-                  try {
-                    await firebaseDataService.updateFishCaught(updatedFish);
-                    updatedCount++;
-                  } catch (e) {
-                    // Fallback to local DB if needed
-                    await databaseService.updateFishCaught(updatedFish);
-                    updatedCount++;
-                  }
-                }
-              }
-              if (updatedCount > 0) {
-                console.log(`Updated gear labels in ${updatedCount} catch record(s) after gear rename`);
-              }
-            } catch (e) {
-              console.warn('Failed to update catch gear labels after rename:', e);
-            }
+            const description = `Gear rename: ${previous.name || 'Unnamed'} → ${(gearData as TackleItem).name || 'Unnamed'}`;
+            enqueueGearItemRename(oldKey, oldNameLc, newKey, description);
+            console.log('Queued gear label maintenance task (item rename).');
           }
         }
       } else {
@@ -187,30 +202,11 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
         ));
 
         // Also update catch records' denormalized gear composite labels for this type
-        try {
-          const oldPrefix = `${oldTypeName.trim().toLowerCase()}|`;
-          const newPrefix = `${newTypeName.trim().toLowerCase()}|`;
-          const allFish = await firebaseDataService.getAllFishCaught();
-          let updatedCount = 0;
-          for (const f of allFish) {
-            const arr = Array.isArray((f as any).gear) ? ((f as any).gear as string[]) : [];
-            if (!arr.length) continue;
-            let changed = false;
-            const next = arr.map(g => {
-              const s = String(g || '');
-              if (s.toLowerCase().startsWith(oldPrefix)) { changed = true; return newPrefix + s.slice(s.indexOf('|') + 1); }
-              return g;
-            });
-            if (changed) {
-              const updatedFish = { ...f, gear: Array.from(new Set(next)) } as any;
-              try { await firebaseDataService.updateFishCaught(updatedFish); updatedCount++; }
-              catch { await databaseService.updateFishCaught(updatedFish); updatedCount++; }
-            }
-          }
-          if (updatedCount > 0) console.log(`Updated gear type labels in ${updatedCount} catch record(s)`);
-        } catch (e) {
-          console.warn('Failed to update catch labels for gear type rename:', e);
-        }
+        const oldPrefix = `${oldTypeName.trim().toLowerCase()}|`;
+        const newPrefix = `${newTypeName.trim().toLowerCase()}|`;
+        const description = `Gear type rename: ${oldTypeName} → ${newTypeName}`;
+        enqueueGearTypeRename(oldPrefix, newPrefix, description);
+        console.log('Queued gear label maintenance task (type rename).');
       } else if (!oldTypeName && !gearTypes.includes(newTypeName)) {
         // Add new gear type
         updateGearTypes(prev => [...prev, newTypeName]);
@@ -264,6 +260,50 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
       <ModalHeader title="My Tackle Box" onClose={onClose} />
 
       <ModalBody className="overflow-y-auto max-h-[75vh]">
+        {(gearMaintenanceProgress || gearMaintenanceMessage || gearMaintenanceQueueSize > 0) && (
+          <div className="mb-4 space-y-2">
+            {gearMaintenanceProgress && (
+              <div
+                className="rounded-md border p-3"
+                style={{ backgroundColor: 'var(--secondary-background)', borderColor: 'var(--border-color)' }}
+              >
+                <div className="flex items-center justify-between text-sm">
+                  <span style={{ color: 'var(--primary-text)' }}>
+                    Updating catch records: {gearMaintenanceProgress.label}
+                  </span>
+                  <span style={{ color: 'var(--secondary-text)' }}>
+                    {gearMaintenanceProgress.processed}/{gearMaintenanceProgress.total}
+                  </span>
+                </div>
+                <div className="mt-2 h-2 rounded bg-gray-200 dark:bg-gray-700">
+                  <div
+                    className="h-2 rounded"
+                    style={{
+                      width: `${gearMaintenanceProgress.total ? Math.min(100, (gearMaintenanceProgress.processed / gearMaintenanceProgress.total) * 100) : 0}%`,
+                      backgroundColor: 'var(--button-primary)'
+                    }}
+                  ></div>
+                </div>
+              </div>
+            )}
+
+            {gearMaintenanceMessage && (
+              <div
+                className="rounded-md border p-3 text-sm"
+                style={{ backgroundColor: 'var(--card-background)', borderColor: 'var(--border-color)', color: 'var(--primary-text)' }}
+              >
+                {gearMaintenanceMessage}
+              </div>
+            )}
+
+            {gearMaintenanceQueueSize > 0 && !gearMaintenanceProgress && (
+              <div className="text-xs" style={{ color: 'var(--secondary-text)' }}>
+                Queued catch updates: {gearMaintenanceQueueSize}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Main Content Area */}
         <div className="space-y-6">
           {/* Selection and Action Controls */}

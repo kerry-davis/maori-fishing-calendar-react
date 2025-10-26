@@ -19,6 +19,7 @@
 - Data Service: encrypted photo storage returns `{ photoUrl: '' }` and `encryptedMetadata`; clients fetch URLs on demand.
 - Utils: `clearUserContext` uses a typed `WeakMap` with a dedicated guest key to avoid null issues; improved persistent cleanup logging.
  - Data-loss guardrail: Fish catch updates preserve existing photos by default. Photo removal now requires explicit signal (`photo: ''`/`photoPath: ''`/`photoUrl: ''` or `removePhoto: true`). Updates by omission no longer clear photo fields.
+- Gear maintenance: rename operations enqueue background catch updates, with in-modal progress + completion messaging so users know when label propagation finishes.
 
 ## History (Lite)
 

@@ -114,6 +114,7 @@ Notes:
   - To remove a photo, send one of: `photo: ''` or `photoPath: ''` or `photoUrl: ''` or `removePhoto: true`.
   - To keep an existing photo unchanged, do not include any photo fields in the update payload.
   - To replace a photo, set `photo` to a data URL; the service will move it to Storage and populate `photoPath` (+ `encryptedMetadata` when encrypted). For encrypted photos, `photoUrl` may remain empty by design.
+- Gear rename propagation runs asynchronously. UI should enqueue rename tasks (via the gear maintenance service) and surface progress feedback rather than blocking the modal while catch records are updated.
 - Encrypted photos: prefer `photoPath` + `encryptedMetadata`; `photoUrl` is optional and often blank for encrypted objects (download URLs are fetched on demand).
  
 

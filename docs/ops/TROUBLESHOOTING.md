@@ -10,6 +10,7 @@
 | Trip log photos missing until edit | Legacy inline photos lacked preview fallback | Update to latest build or ensure photo fields populated |
 | IndexedDB “VersionError” on load | Cached DB schema newer than requested | Latest build auto-recovers; refresh again if needed |
 | Storage blocked by CORS | Missing origin in bucket CORS | Add origin to `cors.json`, re-apply with `gsutil cors set` |
+| Gear rename doesn’t show in catches immediately | Background maintenance queue still processing | Check the progress banner in Tackle Box; new labels appear after the task completes |
 
 ## Photos disappear after editing a catch
 
