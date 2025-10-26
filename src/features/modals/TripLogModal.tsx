@@ -140,9 +140,10 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
     for (const rawEntry of entries) {
       if (!rawEntry) continue;
       const value = String(rawEntry);
+      const hasCompositeSeparator = value.includes('|');
       let canonical = '';
 
-      if (value.includes('|')) {
+      if (hasCompositeSeparator) {
         const compositeKey = normalizeCompositeValue(value);
         const compositeMatch = compositeMap.get(compositeKey);
         if (compositeMatch) {
@@ -150,7 +151,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
         }
       }
 
-      if (!canonical) {
+      if (!canonical && !hasCompositeSeparator) {
         const nameKey = normalizeNameValue(value);
         const nameMatch = nameMap.get(nameKey);
         if (nameMatch) {
@@ -159,7 +160,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
       }
 
       if (!canonical) {
-        if (value.includes('|')) {
+        if (hasCompositeSeparator) {
           const parts = value.split('|').map(part => part.trim());
           canonical = parts.length === 4 ? parts.join('|') : value.trim();
         } else {

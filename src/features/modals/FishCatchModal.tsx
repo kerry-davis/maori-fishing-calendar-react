@@ -88,17 +88,55 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
     }
     return normLower(value);
   };
-  const isSelectedGear = (item: { type: string; brand: string; name: string; colour: string }) => {
-    const keyLower = gearKeyLower(item);
-    const nameLower = normLower(item.name);
-    return formData.gear.some((entry) => {
-      const candidateLower = entryLower(entry);
-      if (candidateLower === keyLower) {
-        return true;
+  const selectedGearLookup = React.useMemo(() => {
+    const compositeSelections = new Set<string>();
+    const legacyNameCounts = new Map<string, number>();
+
+    for (const entry of formData.gear) {
+      if (!entry) continue;
+      const normalized = entryLower(entry);
+      if (!normalized) continue;
+      if (entry.includes('|')) {
+        compositeSelections.add(normalized);
+      } else {
+        const nameLower = normLower(entry);
+        legacyNameCounts.set(nameLower, (legacyNameCounts.get(nameLower) ?? 0) + 1);
       }
-      return entryNameLower(entry) === nameLower;
-    });
-  };
+    }
+
+    const assignedNameCounts = new Map<string, number>();
+    const lookup = new Map<string, boolean>();
+
+    for (const item of tackleBox) {
+      const keyLower = gearKeyLower(item);
+      if (compositeSelections.has(keyLower)) {
+        lookup.set(keyLower, true);
+        continue;
+      }
+
+      const nameLower = normLower(item.name);
+      const totalForName = legacyNameCounts.get(nameLower) ?? 0;
+      if (totalForName > 0) {
+        const used = assignedNameCounts.get(nameLower) ?? 0;
+        if (used < totalForName) {
+          assignedNameCounts.set(nameLower, used + 1);
+          lookup.set(keyLower, true);
+          continue;
+        }
+      }
+
+      if (!lookup.has(keyLower)) {
+        lookup.set(keyLower, false);
+      }
+    }
+
+    return lookup;
+  }, [formData.gear, tackleBox]);
+
+  const isSelectedGear = useCallback((item: { type: string; brand: string; name: string; colour: string }) => {
+    const keyLower = gearKeyLower(item);
+    return selectedGearLookup.get(keyLower) ?? false;
+  }, [selectedGearLookup]);
 
   const gearDisplayLookup = React.useMemo(() => {
     const compositeMap = new Map<string, { name: string; brand: string; colour: string }>();
@@ -853,28 +891,45 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                                       const key = gearKey(item);
                                       const lower = gearKeyLower(item);
                                       const nameLower = normLower(item.name);
-                                      const next = formData.gear.filter((g) => {
-                                        const candidateLower = entryLower(g);
-                                        if (candidateLower === lower) {
-                                          return false;
+                                      let replaced = false;
+                                      const next: string[] = [];
+
+                                      for (const entry of formData.gear) {
+                                        const candidateLower = entryLower(entry);
+                                        const candidateNameLower = entryNameLower(entry);
+                                        const compositeMatch = candidateLower === lower;
+                                        const legacyMatch = !entry.includes('|') && candidateNameLower === nameLower;
+
+                                        if (!replaced && (compositeMatch || legacyMatch)) {
+                                          replaced = true;
+                                          continue;
                                         }
-                                        if (!g.includes('|') && normLower(g) === nameLower) {
-                                          return false;
-                                        }
-                                        return true;
-                                      });
+
+                                        next.push(entry);
+                                      }
+
                                       next.push(key);
                                       handleInputChange("gear", next);
                                     } else {
                                       const lower = gearKeyLower(item);
                                       const nameLower = normLower(item.name);
-                                      const next = formData.gear.filter((gear) => {
-                                        const candidateLower = entryLower(gear);
-                                        if (candidateLower === lower) {
-                                          return false;
+                                      let removed = false;
+                                      const next: string[] = [];
+
+                                      for (const entry of formData.gear) {
+                                        const candidateLower = entryLower(entry);
+                                        const candidateNameLower = entryNameLower(entry);
+                                        const compositeMatch = candidateLower === lower;
+                                        const legacyMatch = !entry.includes('|') && candidateNameLower === nameLower;
+
+                                        if (!removed && (compositeMatch || legacyMatch)) {
+                                          removed = true;
+                                          continue;
                                         }
-                                        return entryNameLower(gear) !== nameLower;
-                                      });
+
+                                        next.push(entry);
+                                      }
+
                                       handleInputChange("gear", next);
                                     }
                                   }}
