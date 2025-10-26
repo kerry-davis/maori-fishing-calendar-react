@@ -4,6 +4,8 @@ import { Button } from '@shared/components/Button';
 import { GearForm } from './GearForm';
 import { GearTypeForm } from './GearTypeForm';
 import { useFirebaseTackleBox, useFirebaseGearTypes } from '@shared/hooks/useFirebaseTackleBox';
+import { firebaseDataService } from '@shared/services/firebaseDataService';
+import { databaseService } from '@shared/services/databaseService';
 import type { ModalProps, TackleItem } from '../../shared/types';
 import ConfirmationDialog from '@shared/components/ConfirmationDialog';
 
@@ -89,11 +91,61 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
 
   const handleGearSave = async (gearData: Omit<TackleItem, 'id'> | TackleItem) => {
     try {
+      // Helpers to build composite keys consistently with selection UI
+      const norm = (v?: string) => (v || '').trim();
+      const mkKey = (it: { type: string; brand: string; name: string; colour: string }) =>
+        `${norm(it.type)}|${norm(it.brand)}|${norm(it.name)}|${norm(it.colour)}`.toLowerCase();
+
       if ('id' in gearData) {
         // Update existing gear
+        const previous = editingGear || undefined;
         await updateTackleBox(prev => prev.map(item =>
-          item.id === gearData.id ? gearData : item
+          item.id === gearData.id ? (gearData as TackleItem) : item
         ));
+
+        // If name/brand/type/colour changed, update catch records' denormalized gear labels
+        if (previous) {
+          const oldKey = mkKey(previous);
+          const newKey = mkKey(gearData as TackleItem);
+          const oldNameLc = norm(previous.name).toLowerCase();
+          const newNameKey = newKey; // use composite format for new labels
+
+          if (oldKey !== newKey || oldNameLc !== norm((gearData as TackleItem).name).toLowerCase()) {
+            // Process both cloud and guest seamlessly via data service
+            try {
+              const allFish = await firebaseDataService.getAllFishCaught();
+              let updatedCount = 0;
+              for (const f of allFish) {
+                const arr = Array.isArray((f as any).gear) ? ((f as any).gear as string[]) : [];
+                if (!arr.length) continue;
+                let changed = false;
+                const next = arr.map(g => {
+                  const s = String(g || '').toLowerCase();
+                  if (s === oldKey || s === oldNameLc) { changed = true; return newNameKey; }
+                  return g;
+                });
+                // Also ensure uniqueness and drop legacy name duplicate if both exist
+                const dedup = Array.from(new Set(next));
+                if (changed) {
+                  const updatedFish = { ...f, gear: dedup } as any;
+                  try {
+                    await firebaseDataService.updateFishCaught(updatedFish);
+                    updatedCount++;
+                  } catch (e) {
+                    // Fallback to local DB if needed
+                    await databaseService.updateFishCaught(updatedFish);
+                    updatedCount++;
+                  }
+                }
+              }
+              if (updatedCount > 0) {
+                console.log(`Updated gear labels in ${updatedCount} catch record(s) after gear rename`);
+              }
+            } catch (e) {
+              console.warn('Failed to update catch gear labels after rename:', e);
+            }
+          }
+        }
       } else {
         // Add new gear
         const newGear: TackleItem = {
@@ -133,6 +185,32 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
         updateTackleBox(prev => prev.map(item =>
           item.type === oldTypeName ? { ...item, type: newTypeName } : item
         ));
+
+        // Also update catch records' denormalized gear composite labels for this type
+        try {
+          const oldPrefix = `${oldTypeName.trim().toLowerCase()}|`;
+          const newPrefix = `${newTypeName.trim().toLowerCase()}|`;
+          const allFish = await firebaseDataService.getAllFishCaught();
+          let updatedCount = 0;
+          for (const f of allFish) {
+            const arr = Array.isArray((f as any).gear) ? ((f as any).gear as string[]) : [];
+            if (!arr.length) continue;
+            let changed = false;
+            const next = arr.map(g => {
+              const s = String(g || '');
+              if (s.toLowerCase().startsWith(oldPrefix)) { changed = true; return newPrefix + s.slice(s.indexOf('|') + 1); }
+              return g;
+            });
+            if (changed) {
+              const updatedFish = { ...f, gear: Array.from(new Set(next)) } as any;
+              try { await firebaseDataService.updateFishCaught(updatedFish); updatedCount++; }
+              catch { await databaseService.updateFishCaught(updatedFish); updatedCount++; }
+            }
+          }
+          if (updatedCount > 0) console.log(`Updated gear type labels in ${updatedCount} catch record(s)`);
+        } catch (e) {
+          console.warn('Failed to update catch labels for gear type rename:', e);
+        }
       } else if (!oldTypeName && !gearTypes.includes(newTypeName)) {
         // Add new gear type
         updateGearTypes(prev => [...prev, newTypeName]);
@@ -168,6 +246,18 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
   // Sort gear items and types for display
   const sortedGear = [...tacklebox].sort((a, b) => a.name.localeCompare(b.name));
   const sortedGearTypes = [...gearTypes].sort();
+  const groupedGearForSelect = React.useMemo(() => {
+    const groups: Record<string, TackleItem[]> = {};
+    for (const item of sortedGear) {
+      const t = item.type || 'Other';
+      if (!groups[t]) groups[t] = [];
+      groups[t].push(item);
+    }
+    Object.keys(groups).forEach(t => {
+      groups[t].sort((a, b) => a.name.localeCompare(b.name) || (a.brand || '').localeCompare(b.brand || ''));
+    });
+    return Object.fromEntries(Object.entries(groups).sort(([a], [b]) => a.localeCompare(b)));
+  }, [sortedGear]);
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} className="max-w-5xl">
@@ -201,10 +291,14 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
                   }}
                 >
                   <option value="">Select Gear...</option>
-                  {sortedGear.map(item => (
-                    <option key={item.id} value={item.id}>
-                      {item.name} ({item.type})
-                    </option>
+                  {Object.entries(groupedGearForSelect).map(([type, items]) => (
+                    <optgroup key={type} label={`${type}s`}>
+                      {items.map(item => (
+                        <option key={item.id} value={item.id}>
+                          {item.name}{item.brand ? ` - ${item.brand}` : ''}
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
               </div>

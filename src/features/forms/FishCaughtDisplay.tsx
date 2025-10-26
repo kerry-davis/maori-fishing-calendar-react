@@ -175,14 +175,23 @@ const FishCaughtCard: React.FC<FishCaughtCardProps> = ({
             <div className="flex-1">
               <span className="text-gray-500 dark:text-gray-400 block text-sm">Gear used:</span>
               <div className="flex flex-wrap gap-1 mt-1">
-                {fish.gear.map((gear, index) => (
-                  <span
-                    key={index}
-                    className="inline-block px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 text-xs rounded-full"
-                  >
-                    {gear}
-                  </span>
-                ))}
+                {fish.gear.map((gear, index) => {
+                  const raw = String(gear || '');
+                  let label = raw;
+                  const parts = raw.split('|');
+                  if (parts.length === 4) {
+                    const [_t, b, n, c] = parts.map(p => p.trim());
+                    label = [n, b, c].filter(Boolean).join(' · ') || raw;
+                  }
+                  return (
+                    <span
+                      key={index}
+                      className="inline-block px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 text-xs rounded-full"
+                    >
+                      {label}
+                    </span>
+                  );
+                })}
               </div>
             </div>
           </div>

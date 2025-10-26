@@ -108,6 +108,7 @@ Notes:
 - Gear types are primarily stored in `userSettings.gearTypes`. The `gearTypes` collection exists but is deprecated for most flows to avoid drift.
 - Sensitive fields are deterministically encrypted client-side per `SECURITY.md` (selected string fields in trips/weatherLogs/fishCaught/tackleItems).
 - Weather/Fish IDs are opaque and use a ULID-based suffix; UI should not parse IDs.
+ 
 
 ## 2) Local (Guest/Offline) Data ERD
 

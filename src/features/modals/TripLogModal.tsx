@@ -818,7 +818,23 @@ const TripCard: React.FC<TripCardProps> = ({
                           </div>
                           {fish.gear.length > 0 && (
                             <div className="text-xs mt-1" style={{ color: 'var(--secondary-text)' }}>
-                              Gear: {fish.gear.join(", ")}
+                              {(() => {
+                                const toLabel = (raw: string): string => {
+                                  const parts = String(raw || '').split('|');
+                                  if (parts.length === 4) {
+                                    const [_t, b, n, c] = parts.map(p => p.trim());
+                                    const pieces = [n, b, c].filter(Boolean);
+                                    return pieces.length ? pieces.join(' · ') : String(raw || '');
+                                  }
+                                  return String(raw || '');
+                                };
+                                const formatted = fish.gear.map(g => toLabel(g));
+                                return (
+                                  <>
+                                    Gear: {formatted.join(' | ')}
+                                  </>
+                                );
+                              })()}
                             </div>
                           )}
                           {fish.details && fish.details.trim() && (

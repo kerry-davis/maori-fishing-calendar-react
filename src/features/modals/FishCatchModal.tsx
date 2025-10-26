@@ -603,7 +603,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                 <div className="space-y-3 max-h-96 overflow-y-auto">
                   {Object.entries(filteredAndGroupedGear).map(([type, items]) => {
                     const isExpanded = expandedTypes.has(type);
-                    const selectedCount = items.filter(item => formData.gear.includes(item.name)).length;
+                    const selectedCount = items.filter(item => isSelectedGear(item)).length;
                     const totalCount = items.length;
 
                     return (
@@ -663,8 +663,8 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                                 key={item.id}
                                 className="flex items-center p-2 rounded hover:opacity-80 cursor-pointer transition-all"
                                 style={{
-                                  backgroundColor: formData.gear.includes(item.name) ? 'var(--button-primary)' : 'var(--input-background)',
-                                  border: formData.gear.includes(item.name) ? '1px solid var(--button-primary)' : '1px solid transparent'
+                                  backgroundColor: isSelectedGear(item) ? 'var(--button-primary)' : 'var(--input-background)',
+                                  border: isSelectedGear(item) ? '1px solid var(--button-primary)' : '1px solid transparent'
                                 }}
                               >
                                 <input
