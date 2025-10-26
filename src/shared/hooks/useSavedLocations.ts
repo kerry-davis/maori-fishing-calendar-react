@@ -100,7 +100,7 @@ export function useSavedLocations(): UseSavedLocationsResult {
   }, [loadSavedLocations]);
 
   useEffect(() => {
-    const handleExternalUpdate = (event: Event) => {
+    const handleExternalUpdate = () => {
       if (mutationInFlightRef.current) {
         return;
       }

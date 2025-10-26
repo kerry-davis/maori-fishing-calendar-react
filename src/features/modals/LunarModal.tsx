@@ -15,7 +15,7 @@ import {
   calculateBiteTimes,
   getSunMoonTimes,
 } from "@shared/services/lunarService";
-import type { BiteTime, UserLocation, SavedLocation } from "@shared/types";
+import type { BiteTime, UserLocation } from "@shared/types";
 import { BITE_QUALITY_COLORS } from "@shared/types";
 import { WeatherSection } from "../weather/WeatherSection";
 import { DEV_LOG, PROD_ERROR } from '../../shared/utils/loggingHelpers';
@@ -51,7 +51,6 @@ export const LunarModal: React.FC<LunarModalProps> = ({
     requestLocation,
     searchLocation,
     searchLocationSuggestions,
-    savedLocations,
   } = useLocationContext();
   const db = useDatabaseService();
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
@@ -66,7 +65,6 @@ export const LunarModal: React.FC<LunarModalProps> = ({
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [hasTripsForDate, setHasTripsForDate] = useState<boolean>(false);
-  const [selectedSavedLocationId, setSelectedSavedLocationId] = useState<string>('');
 
   // Touch/swipe handling for mobile
   const [touchStart, setTouchStart] = useState<number | null>(null);
@@ -132,31 +130,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
     };
   }, []);
 
-  useEffect(() => {
-    if (!userLocation) {
-      setSelectedSavedLocationId('');
-      return;
-    }
 
-    const hasCoords = typeof userLocation.lat === 'number' && typeof userLocation.lon === 'number';
-    const match = savedLocations.find((location) => {
-      if (hasCoords && typeof location.lat === 'number' && typeof location.lon === 'number') {
-        const latDiff = Math.abs(location.lat - (userLocation.lat ?? 0));
-        const lonDiff = Math.abs(location.lon - (userLocation.lon ?? 0));
-        if (latDiff < 1e-6 && lonDiff < 1e-6) {
-          return true;
-        }
-      }
-
-      if (userLocation.name && location.name) {
-        return location.name.trim().toLowerCase() === userLocation.name.trim().toLowerCase();
-      }
-
-      return false;
-    });
-
-    setSelectedSavedLocationId(match?.id ?? '');
-  }, [userLocation, savedLocations]);
 
   // Calculate lunar phase data for current date
   const lunarData = useMemo(() => {
@@ -214,7 +188,6 @@ export const LunarModal: React.FC<LunarModalProps> = ({
   // Location handlers
   const handleLocationRequest = useCallback(async () => {
     setIsRequestingLocation(true);
-    setSelectedSavedLocationId('');
     try {
       await requestLocation();
     } catch (error) {
@@ -231,7 +204,6 @@ export const LunarModal: React.FC<LunarModalProps> = ({
     }
 
     setIsSearchingLocation(true);
-    setSelectedSavedLocationId('');
     setLocationError(null); // Clear any previous errors
 
     try {
@@ -250,7 +222,6 @@ export const LunarModal: React.FC<LunarModalProps> = ({
   const handleLocationInputChange = useCallback(
     (value: string) => {
       setLocationInput(value);
-      setSelectedSavedLocationId('');
 
       // Clear previous timeout
       if (searchTimeoutRef.current) {
@@ -296,7 +267,6 @@ export const LunarModal: React.FC<LunarModalProps> = ({
       setShowSuggestions(false);
       setSelectedSuggestionIndex(-1);
       setLocationError(null);
-      setSelectedSavedLocationId('');
     },
     [setLocation],
   );
@@ -340,18 +310,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
     ],
   );
 
-  const handleSavedLocationSelect = useCallback((savedLocation: SavedLocation | null) => {
-    setSelectedSavedLocationId(savedLocation?.id ?? '');
-    if (savedLocation?.name) {
-      setLocationInput(savedLocation.name);
-    } else {
-      setLocationInput('');
-    }
-    setLocationSuggestions([]);
-    setShowSuggestions(false);
-    setSelectedSuggestionIndex(-1);
-    setLocationError(null);
-  }, []);
+
 
   // Trip log handler
   const handleTripLogOpen = useCallback(() => {

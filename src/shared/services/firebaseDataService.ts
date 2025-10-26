@@ -2862,8 +2862,8 @@ export class FirebaseDataService {
       if (typeof sanitized.lat === 'number' && typeof sanitized.lon === 'number') {
         const duplicate = existing.find((loc) => {
           if (typeof loc.lat === 'number' && typeof loc.lon === 'number') {
-            const latDiff = Math.abs(loc.lat - sanitized.lat);
-            const lonDiff = Math.abs(loc.lon - sanitized.lon);
+            const latDiff = Math.abs(loc.lat - (sanitized.lat ?? 0));
+            const lonDiff = Math.abs(loc.lon - (sanitized.lon ?? 0));
             return latDiff < 0.0001 && lonDiff < 0.0001;
           }
           return false;
@@ -2905,8 +2905,8 @@ export class FirebaseDataService {
     if (typeof sanitized.lat === 'number' && typeof sanitized.lon === 'number') {
       const duplicate = current.find((loc) => {
         if (typeof loc.lat === 'number' && typeof loc.lon === 'number') {
-          const latDiff = Math.abs(loc.lat - sanitized.lat);
-          const lonDiff = Math.abs(loc.lon - sanitized.lon);
+          const latDiff = Math.abs(loc.lat - (sanitized.lat ?? 0));
+          const lonDiff = Math.abs(loc.lon - (sanitized.lon ?? 0));
           return latDiff < 0.0001 && lonDiff < 0.0001;
         }
         return false;

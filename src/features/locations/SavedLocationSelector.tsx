@@ -87,7 +87,6 @@ export const SavedLocationSelector: React.FC<SavedLocationSelectorProps> = ({
   const {
     savedLocations,
     savedLocationsLoading,
-    savedLocationsError,
     createSavedLocation,
     updateSavedLocation,
     deleteSavedLocation,

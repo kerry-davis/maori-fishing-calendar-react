@@ -2,7 +2,7 @@ import React, { useState, useCallback } from "react";
 import { Button } from "@shared/components/Button";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "./Modal";
 import { useDatabaseService } from '../../app/providers/DatabaseContext';
-import type { Trip, SavedLocation } from "@shared/types";
+import type { Trip } from "@shared/types";
 
 export interface TripFormModalProps {
   isOpen: boolean;
@@ -32,7 +32,6 @@ export const TripFormModal: React.FC<TripFormModalProps> = ({
     companions: "",
     notes: "",
   });
-  const [selectedSavedLocationId, setSelectedSavedLocationId] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,7 +46,6 @@ export const TripFormModal: React.FC<TripFormModalProps> = ({
         notes: "",
       });
       setError(null);
-      setSelectedSavedLocationId("");
     }
   }, [isOpen]);
 
@@ -57,32 +55,10 @@ export const TripFormModal: React.FC<TripFormModalProps> = ({
       [field]: value,
     }));
 
-    if (field === "water" || field === "location") {
-      setSelectedSavedLocationId("");
-    }
-
     if (error) {
       setError(null);
     }
   }, [error]);
-
-  const handleSavedLocationSelect = useCallback((savedLocation: SavedLocation | null) => {
-    if (!savedLocation) {
-      setSelectedSavedLocationId("");
-      return;
-    }
-
-    setSelectedSavedLocationId(savedLocation.id);
-
-    setFormData(prev => ({
-      ...prev,
-      water: savedLocation.water ?? prev.water,
-      location: savedLocation.location ?? prev.location,
-      notes: prev.notes?.trim().length ? prev.notes : (savedLocation.notes ?? ""),
-    }));
-
-    setError(null);
-  }, []);
 
   const validateForm = (): boolean => {
     if (!formData.water.trim()) {

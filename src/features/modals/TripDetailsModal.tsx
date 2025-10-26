@@ -4,8 +4,8 @@ import { Modal, ModalHeader, ModalBody, ModalFooter } from './Modal';
 import { useAuth } from '../../app/providers/AuthContext';
 import { firebaseDataService } from '@shared/services/firebaseDataService';
 import { databaseService } from '@shared/services/databaseService';
-import { useLocationContext } from '@app/providers/LocationContext';
-import type { Trip, TripModalProps, FormValidation, SavedLocation } from '../../shared/types';
+
+import type { Trip, TripModalProps, FormValidation } from '../../shared/types';
 import { DEV_LOG, PROD_ERROR } from '../../shared/utils/loggingHelpers';
 
 /**
@@ -24,7 +24,6 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
   onCancelEdit
 }) => {
   const { user } = useAuth();
-  const { savedLocations } = useLocationContext();
   const [formData, setFormData] = useState<Omit<Trip, 'id'>>({
     date: '',
     water: '',
@@ -33,7 +32,6 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
     companions: '',
     notes: ''
   });
-  const [selectedSavedLocationId, setSelectedSavedLocationId] = useState<string>('');
 
   const [validation, setValidation] = useState<FormValidation>({
     isValid: true,
@@ -52,35 +50,11 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
     return date.toLocaleDateString("en-CA");
   };
 
-  const handleSavedLocationSelect = (savedLocation: SavedLocation | null) => {
-    if (!savedLocation) {
-      setSelectedSavedLocationId('');
-      return;
-    }
 
-    setSelectedSavedLocationId(savedLocation.id);
-    setFormData(prev => ({
-      ...prev,
-      water: savedLocation.water ?? prev.water,
-      location: savedLocation.location ?? prev.location,
-      notes: prev.notes?.trim().length ? prev.notes : (savedLocation.notes ?? ''),
-    }));
-
-    setValidation(prev => ({
-      ...prev,
-      errors: {
-        ...prev.errors,
-        water: '',
-        location: '',
-      },
-    }));
-  };
 
   // Initialize form data
   useEffect(() => {
     if (!isOpen) return;
-
-    setSelectedSavedLocationId('');
 
     if (isEditing && tripId) {
       // Load existing trip data
@@ -102,25 +76,7 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
     setError(null);
   }, [isOpen, isEditing, tripId, selectedDate]);
 
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-    if (!formData.water || !formData.location) {
-      setSelectedSavedLocationId('');
-      return;
-    }
-    const match = savedLocations.find((saved) => {
-      const waterMatch = saved.water && formData.water
-        ? saved.water.trim().toLowerCase() === formData.water.trim().toLowerCase()
-        : false;
-      const locationMatch = saved.location && formData.location
-        ? saved.location.trim().toLowerCase() === formData.location.trim().toLowerCase()
-        : false;
-      return waterMatch && locationMatch;
-    });
-    setSelectedSavedLocationId(match?.id ?? '');
-  }, [formData.water, formData.location, savedLocations, isOpen]);
+
 
   // Load trip data for editing
   const loadTripData = async (id: number) => {
@@ -200,10 +156,6 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
           [field]: ''
         }
       }));
-    }
-
-    if (field === 'water' || field === 'location') {
-      setSelectedSavedLocationId('');
     }
   };
 

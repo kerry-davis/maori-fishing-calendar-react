@@ -18,5 +18,8 @@ please save plan to file .tasks/[branch name][increment number].md; please note 
 5. Try something else
 use for context only @docs/architecture/DATA_MODEL.md ;  Previous solutions are still not working. Think harder and approach the problem from a different angle to implement a cleaner solution. Do not overcomplicate; keep the solution simple and straightforward. After you complete your implementation, validate the changes with a brief summary of the new solution and its rationale. If the solution does not address the core issue, iterate with a revised approach.
 
+6. Code review
+please review all changes on this branch and provide feedback
+
 6. Update docs
 please update @docs/architecture/DATA_MODEL.md and any other applicable docs with the changes made in the branch

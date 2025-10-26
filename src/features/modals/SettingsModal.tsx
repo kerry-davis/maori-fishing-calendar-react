@@ -26,7 +26,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     userLocation,
     tideCoverage,
     refreshTideCoverage,
-    savedLocations,
   } = useLocationContext();
   const [isExportingJSON, setIsExportingJSON] = useState(false);
   const [isExportingCSV, setIsExportingCSV] = useState(false);
