@@ -109,6 +109,13 @@ Notes:
 - Sensitive fields are deterministically encrypted client-side per `SECURITY.md` (selected string fields in trips/weatherLogs/fishCaught/tackleItems).
 - Weather/Fish IDs are opaque and use a ULID-based suffix; UI should not parse IDs.
  
+### Update semantics and guardrails (to prevent data loss)
+- FISH_CAUGHT photo fields are preserved on updates unless an explicit removal signal is provided. Clients MUST NOT clear photo-related fields by omission.
+  - To remove a photo, send one of: `photo: ''` or `photoPath: ''` or `photoUrl: ''` or `removePhoto: true`.
+  - To keep an existing photo unchanged, do not include any photo fields in the update payload.
+  - To replace a photo, set `photo` to a data URL; the service will move it to Storage and populate `photoPath` (+ `encryptedMetadata` when encrypted). For encrypted photos, `photoUrl` may remain empty by design.
+- Encrypted photos: prefer `photoPath` + `encryptedMetadata`; `photoUrl` is optional and often blank for encrypted objects (download URLs are fetched on demand).
+ 
 
 ## 2) Local (Guest/Offline) Data ERD
 

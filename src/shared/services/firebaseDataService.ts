@@ -80,15 +80,22 @@ export class FirebaseDataService {
     // Remove undefineds first
     const payload: Record<string, any> = this.stripUndefined(base);
 
-    // If client indicates photo cleared or replaced, ensure we remove storage-backed fields
-    const wantsClear = payload.photo === '' || payload.photoPath === '' || payload.photoUrl === '' || payload.encryptedMetadata === undefined;
-    if (wantsClear) {
+    // Only clear photo when explicitly requested via provided fields, not by absence
+    const explicitClear = (
+      (Object.prototype.hasOwnProperty.call(base, 'photo') && base.photo === '') ||
+      (Object.prototype.hasOwnProperty.call(base, 'photoPath') && base.photoPath === '') ||
+      (Object.prototype.hasOwnProperty.call(base, 'photoUrl') && base.photoUrl === '') ||
+      (Object.prototype.hasOwnProperty.call(base, 'removePhoto') && base.removePhoto === true)
+    );
+
+    if (explicitClear) {
       payload.photo = deleteField();
       payload.photoPath = deleteField();
       payload.photoUrl = deleteField();
       payload.photoMime = deleteField();
       payload.photoHash = deleteField();
       payload.encryptedMetadata = deleteField();
+      delete (payload as any).removePhoto;
     }
 
     return payload;

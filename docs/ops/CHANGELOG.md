@@ -18,6 +18,7 @@
 - Hooks: `useModalWithCleanup` now relies solely on `uid` (removed legacy `user.id`).
 - Data Service: encrypted photo storage returns `{ photoUrl: '' }` and `encryptedMetadata`; clients fetch URLs on demand.
 - Utils: `clearUserContext` uses a typed `WeakMap` with a dedicated guest key to avoid null issues; improved persistent cleanup logging.
+ - Data-loss guardrail: Fish catch updates preserve existing photos by default. Photo removal now requires explicit signal (`photo: ''`/`photoPath: ''`/`photoUrl: ''` or `removePhoto: true`). Updates by omission no longer clear photo fields.
 
 ## History (Lite)
 

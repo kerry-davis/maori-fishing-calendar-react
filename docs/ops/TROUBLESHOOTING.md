@@ -11,6 +11,15 @@
 | IndexedDB “VersionError” on load | Cached DB schema newer than requested | Latest build auto-recovers; refresh again if needed |
 | Storage blocked by CORS | Missing origin in bucket CORS | Add origin to `cors.json`, re-apply with `gsutil cors set` |
 
+## Photos disappear after editing a catch
+
+- Symptoms: After editing species/notes, the catch photo vanishes.
+- Cause: Update payload cleared photo fields implicitly (empty strings) or service cleared by omission.
+- Fixes/Checks:
+  - Ensure the client only modifies photo fields when user explicitly uploads or deletes a photo.
+  - On delete, send `photo: ''` or `removePhoto: true`. On keep, omit photo fields entirely.
+  - Verify Firebase rules and network logs; confirm update payload does not include blank `photoPath`/`photoUrl` unless intentional.
+
 ## Storage: CORS vs. 403 (staging photos)
 
 - If `curl -I -H "Origin: <staging-origin>" <storage-url>` returns `Access-Control-Allow-Origin` but status `403`, CORS is fine — the 403 is from Storage rules.

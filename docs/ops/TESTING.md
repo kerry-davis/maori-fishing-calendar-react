@@ -25,3 +25,10 @@ Notes:
 - See vitest.config.ts → test.exclude for the current CI-only skip list.
 
 Add new tests under `src/test/`. Prefer fast, deterministic tests; mock Firebase network where feasible.
+
+## Critical regressions to cover (data-loss prevention)
+
+- Edit fish catch must NOT remove existing photos unless explicitly deleted:
+  1) Create a catch with a photo. 2) Edit non-photo fields and save. 3) Verify photo still present. 4) Now delete photo via UI and save; verify removed.
+- Photo replacement flow: when uploading a new photo during edit, verify `photoPath`/`encryptedMetadata` get set and old photo is not removed until replacement succeeds.
+- Encrypted photo invariant: `photoUrl` may be empty; UI must render via decrypted blob or sign-in placeholder as appropriate.

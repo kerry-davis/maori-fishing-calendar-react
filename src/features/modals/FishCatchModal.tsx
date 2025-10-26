@@ -55,6 +55,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
   const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set());
   const [fileInputKey, setFileInputKey] = useState(0);
   const isEditing = fishId !== undefined;
+  const photoStatusRef = useRef<'unchanged' | 'uploaded' | 'deleted'>('unchanged');
   // Gear rename handling: ask for confirmation before removing stale gear
   const [showStaleGearConfirm, setShowStaleGearConfirm] = useState(false);
   const [staleGear, setStaleGear] = useState<string[]>([]);
@@ -128,6 +129,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
           encryptedMetadata: undefined,
         });
       }
+      photoStatusRef.current = 'unchanged';
       setError(null);
       setValidation({ isValid: true, errors: {} });
       setPhotoPreview(null);
@@ -259,7 +261,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
         }
         if (!resolvedGearIds.includes(gid)) resolvedGearIds.push(gid);
       }
-      const fishData: Omit<FishCaught, "id"> = {
+      const fishDataBase: any = {
         tripId,
         species: formData.species.trim(),
         length: formData.length.trim(),
@@ -268,37 +270,38 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
         gear: formData.gear,
         gearIds: resolvedGearIds,
         details: formData.details.trim(),
-        photo: formData.photo,
       };
 
-      // If the photo field contains a data URL, we want the server side
-      // `ensurePhotoInStorage` to move it into Storage and set `photoPath` and
-      // `encryptedMetadata`. Ensure we don't accidentally persist stale
-      // `photoPath`/`photoUrl`/`encryptedMetadata` from an earlier edit.
-      if (typeof formData.photo === 'string' && formData.photo.startsWith('data:')) {
-        // Explicitly ensure these fields are not set on the client payload so the
-        // server/data service takes ownership of storing and populating them.
-        (fishData as any).photoPath = '';
-        (fishData as any).photoUrl = '';
-        (fishData as any).encryptedMetadata = undefined;
-      }
-      // If the photo was cleared by the user, ensure storage references are removed
-      if (!formData.photo) {
-        (fishData as any).photoPath = '';
-        (fishData as any).photoUrl = '';
-        (fishData as any).encryptedMetadata = undefined;
+      // Only change photo if explicitly uploaded or deleted in this session
+      if (photoStatusRef.current === 'uploaded' && typeof formData.photo === 'string' && formData.photo.startsWith('data:')) {
+        fishDataBase.photo = formData.photo; // let service move to Storage
+      } else if (photoStatusRef.current === 'deleted') {
+        fishDataBase.photo = '';
+        fishDataBase.photoPath = '';
+        fishDataBase.photoUrl = '';
+        fishDataBase.encryptedMetadata = undefined;
       }
 
       let savedData: FishCaught;
       if (isEditing && fishId) {
-        const payload: any = { id: fishId, ...fishData };
+        let payload: any;
+        if (photoStatusRef.current === 'unchanged') {
+          try {
+            const existing = await db.getFishCaughtById(fishId);
+            payload = { ...(existing || {}), ...fishDataBase, id: fishId };
+          } catch {
+            payload = { id: fishId, ...fishDataBase };
+          }
+        } else {
+          payload = { id: fishId, ...fishDataBase };
+        }
         if (!user) {
           payload.guestSessionId = getOrCreateGuestSessionId();
         }
         await db.updateFishCaught(payload);
         savedData = { id: fishId, ...payload };
       } else {
-        const payload: any = { ...fishData };
+        const payload: any = { ...fishDataBase };
         if (!user) {
           payload.guestSessionId = getOrCreateGuestSessionId();
         }
@@ -352,6 +355,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
           if (previewUrl.startsWith('blob:')) {
             URL.revokeObjectURL(previewUrl);
           }
+          photoStatusRef.current = 'uploaded';
         };
         reader.onerror = () => {
           // Clean up the preview URL on error
@@ -390,6 +394,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
         handleInputChange("photoPath", "");
         // Keep UI preview as the local data URL for instant feedback
         setPhotoPreview(dataUrl);
+        photoStatusRef.current = 'uploaded';
 
         // Revoke the temporary blob preview URL if created
         if (previewUrl.startsWith('blob:')) {
@@ -792,6 +797,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                         setPhotoPreview(null);
                         setUploadError(null);
                         setFileInputKey((k) => k + 1);
+                        photoStatusRef.current = 'deleted';
                       }}
                       className="absolute top-2 right-2 btn btn-danger px-2 py-1 text-xs"
                     >
@@ -843,6 +849,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                         handleInputChange("encryptedMetadata", "");
                         // Force React to remount the file input so onChange binding remains intact
                         setFileInputKey((k) => k + 1);
+                        photoStatusRef.current = 'deleted';
                       }}
                       className="absolute top-2 right-2 btn btn-danger px-2 py-1 text-xs"
                     >
