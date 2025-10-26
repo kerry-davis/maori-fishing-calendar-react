@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Modal, ModalHeader, ModalBody } from "./Modal";
+import PhotoViewerModal from "./PhotoViewerModal";
 import type {
    ModalProps,
    GallerySortOrder,
@@ -63,8 +64,6 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
     failedPhotos: string[];
   } | null>(null);
   // Touch/swipe handling for mobile
-  const [touchStart, setTouchStart] = useState<number | null>(null);
-  const [touchEnd, setTouchEnd] = useState<number | null>(null);
   // Track object URLs for cleanup
   const objectUrlsRef = React.useRef<string[]>([]);
 
@@ -134,12 +133,20 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
       const isEncrypted = Boolean(fish.encryptedMetadata && typeof fish.photoPath === 'string' && fish.photoPath.includes('enc_photos'));
       const isGuest = !user;
       const hasStoragePath = Boolean(fish.photoPath);
-      const initialPhoto = (isGuest && (isEncrypted || hasStoragePath))
-        ? createSignInEncryptedPlaceholder()
-        : rawPhoto;
-      // Decide if this photo should be listed at all
-      const shouldInclude = Boolean(initialPhoto) || (isGuest && (isEncrypted || hasStoragePath));
-      if (!shouldInclude) continue;
+
+      let initialPhoto: string | undefined;
+      if (isGuest && (isEncrypted || hasStoragePath)) {
+        initialPhoto = createSignInEncryptedPlaceholder();
+      } else if (rawPhoto) {
+        initialPhoto = rawPhoto;
+      } else if (hasStoragePath) {
+        initialPhoto = createPlaceholderSVG('Loading…');
+      }
+
+      if (!initialPhoto) {
+        continue;
+      }
+
       initialItems.push({
         id: `${fish.id}-${fish.tripId}`,
         fishId: fish.id,
@@ -291,31 +298,6 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
   };
 
   // Touch handlers for swipe navigation
-  const handleTouchStart = (e: React.TouchEvent) => {
-    setTouchEnd(null);
-    setTouchStart(e.targetTouches[0].clientX);
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    setTouchEnd(e.targetTouches[0].clientX);
-  };
-
-  const handleTouchEnd = () => {
-    if (!touchStart || !touchEnd) return;
-
-    const distance = touchStart - touchEnd;
-    const isLeftSwipe = distance > 50;
-    const isRightSwipe = distance < -50;
-
-    if (isLeftSwipe && filteredAndSortedPhotos.length > 1) {
-      // Swipe left - go to next photo (forwards)
-      handleNextPhoto();
-    } else if (isRightSwipe && filteredAndSortedPhotos.length > 1) {
-      // Swipe right - go to previous photo (backwards)
-      handlePreviousPhoto();
-    }
-  };
-
   const formatDate = (dateString: string) => {
     try {
       return new Date(dateString).toLocaleDateString("en-NZ", {
@@ -634,121 +616,25 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
         </ModalBody>
       </Modal>
 
-      {/* Full-size Photo Modal */}
       {selectedPhoto && (
-        <Modal
-           isOpen={true}
-           onClose={() => setSelectedPhoto(null)}
-           maxWidth="3xl"
-         >
-          <div className="relative">
-            {/* Navigation buttons */}
-            {filteredAndSortedPhotos.length > 1 && (
-              <>
-                <button
-                  onClick={handlePreviousPhoto}
-                  className="icon-btn absolute left-4 top-1/2 transform -translate-y-1/2 z-10"
-                >
-                  <i className="fas fa-chevron-left"></i>
-                </button>
-
-                <button
-                  onClick={handleNextPhoto}
-                  className="icon-btn absolute right-4 top-1/2 transform -translate-y-1/2 z-10"
-                >
-                  <i className="fas fa-chevron-right"></i>
-                </button>
-              </>
-            )}
-
-            {/* Close button */}
-            <button
-              onClick={() => setSelectedPhoto(null)}
-              className="absolute top-4 right-4 z-10
-                       bg-gray-600 bg-opacity-70 text-white p-3 rounded-full
-                       hover:bg-opacity-90 transition-all duration-200"
-            >
-              <i className="fas fa-times"></i>
-            </button>
-
-            {/* Photo */}
-            <div
-              className="flex items-center justify-center bg-gray-50 dark:bg-gray-600 p-2 overflow-auto"
-              style={{ maxHeight: '70vh' }}
-              onTouchStart={handleTouchStart}
-              onTouchMove={handleTouchMove}
-              onTouchEnd={handleTouchEnd}
-            >
-              <img
-                src={selectedPhoto.photo}
-                alt={`${selectedPhoto.species} - ${selectedPhoto.length}`}
-                className="block object-contain bg-white dark:bg-gray-700 rounded-lg shadow-lg"
-                style={{ maxWidth: '90vw', maxHeight: '68vh', width: 'auto', height: 'auto' }}
-                loading="eager"
-                onError={(e) => {
-                  const target = e.target as HTMLImageElement;
-                  const originalSrc = target.src;
-
-                  if (!originalSrc.includes('data:image/svg+xml')) {
-                    const fixedSrc = fixPhotoData(originalSrc);
-                    if (fixedSrc && fixedSrc !== originalSrc && !fixedSrc.includes('data:image/svg+xml')) {
-                      target.src = fixedSrc;
-                    } else {
-                      target.src = createPlaceholderSVG('Image not available');
-                    }
-                  }
-                }}
-              />
-              {selectedPhoto.requiresAuth && (
-                <div className="absolute top-3 left-3 z-20 px-2 py-1 rounded text-xs font-medium"
-                     style={{ backgroundColor: 'rgba(17,24,39,0.7)', color: 'white' }}>
-                  🔒 Sign in to view
-                </div>
-              )}
-            </div>
-
-            {/* Photo info */}
-            <div className="bg-gray-800 dark:bg-gray-900 text-white p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <h3 className="text-xl font-bold mb-2">
-                    {selectedPhoto.species}
-                  </h3>
-                  <div className="space-y-1 text-sm">
-                    <p>
-                      <span className="text-gray-300">Length:</span>{" "}
-                      {selectedPhoto.length}
-                    </p>
-                    <p>
-                      <span className="text-gray-300">Weight:</span>{" "}
-                      {selectedPhoto.weight}
-                    </p>
-                    <p>
-                      <span className="text-gray-300">Time:</span>{" "}
-                      {selectedPhoto.time}
-                    </p>
-                  </div>
-                </div>
-                <div>
-                  <div className="space-y-1 text-sm">
-                    <p>
-                      <span className="text-gray-300">Date:</span>{" "}
-                      {formatDate(selectedPhoto.date)}
-                    </p>
-                    <p>
-                      <span className="text-gray-300">Location:</span>{" "}
-                      {selectedPhoto.location}
-                    </p>
-                    <p>
-                      <span className="text-gray-300">Water:</span>{" "}
-                      {selectedPhoto.water}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </Modal>
+        <PhotoViewerModal
+          isOpen={true}
+          photoSrc={selectedPhoto.photo}
+          requiresAuth={selectedPhoto.requiresAuth}
+          onClose={() => setSelectedPhoto(null)}
+          onNext={filteredAndSortedPhotos.length > 1 ? handleNextPhoto : undefined}
+          onPrevious={filteredAndSortedPhotos.length > 1 ? handlePreviousPhoto : undefined}
+          resolveImageSrc={fixPhotoData}
+          metadata={{
+            species: selectedPhoto.species,
+            length: selectedPhoto.length,
+            weight: selectedPhoto.weight,
+            time: selectedPhoto.time,
+            date: formatDate(selectedPhoto.date),
+            location: selectedPhoto.location,
+            water: selectedPhoto.water,
+          }}
+        />
       )}
     </>
   );

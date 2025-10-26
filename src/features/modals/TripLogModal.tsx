@@ -13,6 +13,7 @@ import { createSignInEncryptedPlaceholder } from '@shared/utils/photoPreviewUtil
 import { getOrCreateGuestSessionId } from '@shared/services/guestSessionService';
 import { useFirebaseTackleBox } from '@shared/hooks/useFirebaseTackleBox';
 import { subscribeGearMaintenance } from '@shared/services/gearLabelMaintenanceService';
+import PhotoViewerModal from './PhotoViewerModal';
 
 export interface TripLogModalProps extends DateModalProps {
   onEditTrip?: (tripId: number) => void;
@@ -56,6 +57,19 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
   const db = useDatabaseService();
   const { user } = useAuth();
   const [tackleBox] = useFirebaseTackleBox();
+  const [photoViewer, setPhotoViewer] = useState<{
+    photoSrc?: string;
+    requiresAuth: boolean;
+    metadata: {
+      species?: string;
+      length?: string;
+      weight?: string;
+      time?: string;
+      date?: string;
+      location?: string;
+      water?: string;
+    };
+  } | null>(null);
 
   // Format date for display and database queries
   const formatDateForDisplay = (date: Date): string => {
@@ -410,6 +424,12 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
     };
   }, [canonicalizeGearEntries, isOpen, loadFishCatches]);
 
+  useEffect(() => {
+    if (!isOpen) {
+      setPhotoViewer(null);
+    }
+  }, [isOpen]);
+
   // Handle trip deletion - show confirmation first
   const handleDeleteTrip = useCallback(async (tripId: number, firebaseDocId?: string) => {
     DEV_LOG('handleDeleteTrip called with tripId:', tripId, 'firebaseDocId:', firebaseDocId);
@@ -600,12 +620,13 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
   }, []);
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      maxWidth="2xl"
-      className="trip-log-modal"
-    >
+    <>
+      <Modal
+        isOpen={isOpen}
+        onClose={onClose}
+        maxWidth="2xl"
+        className="trip-log-modal"
+      >
       <ModalHeader
         title="Trip Log"
         subtitle={selectedDate ? formatDateForDisplay(selectedDate) : ""}
@@ -665,6 +686,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
                 weatherLogs={weatherLogs.filter(log => log.tripId === trip.id)}
                 fishCatches={fishCatches.filter(fish => fish.tripId === trip.id)}
                 photoPreviews={photoPreviews}
+                onPhotoClick={(payload) => setPhotoViewer(payload)}
               />
             ))}
           </div>
@@ -729,6 +751,17 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
         overlayStyle="blur"
       />
     </Modal>
+
+    {photoViewer && (
+      <PhotoViewerModal
+        isOpen={true}
+        photoSrc={photoViewer.photoSrc}
+        requiresAuth={photoViewer.requiresAuth}
+        metadata={photoViewer.metadata}
+        onClose={() => setPhotoViewer(null)}
+      />
+    )}
+  </>
   );
 };
 
@@ -746,6 +779,19 @@ interface TripCardProps {
   weatherLogs: WeatherLog[];
   fishCatches: FishCaught[];
   photoPreviews: Record<string, string>;
+  onPhotoClick: (payload: {
+    photoSrc?: string;
+    requiresAuth: boolean;
+    metadata: {
+      species?: string;
+      length?: string;
+      weight?: string;
+      time?: string;
+      date?: string;
+      location?: string;
+      water?: string;
+    };
+  }) => void;
 }
 
 const TripCard: React.FC<TripCardProps> = ({
@@ -760,10 +806,22 @@ const TripCard: React.FC<TripCardProps> = ({
   onDeleteFish,
   weatherLogs,
   fishCatches,
-  photoPreviews
+  photoPreviews,
+  onPhotoClick
 }) => {
   const { user } = useAuth();
   const currentGuestSessionId = getOrCreateGuestSessionId();
+  const formattedTripDate = React.useMemo(() => {
+    try {
+      return new Date(trip.date).toLocaleDateString('en-NZ', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    } catch {
+      return trip.date;
+    }
+  }, [trip.date]);
   const formatHours = (hours?: number): string => {
     if (typeof hours !== 'number' || !isFinite(hours) || hours <= 0) return '';
     if (hours === 1) return "1 hour";
@@ -962,29 +1020,45 @@ const TripCard: React.FC<TripCardProps> = ({
                   <div key={fish.id} className="p-3 rounded" style={{ backgroundColor: 'var(--card-background)', border: '1px solid var(--border-color)' }}>
                     <div className="flex items-start justify-between">
                       <div className="flex items-start gap-3 flex-1">
-                          {(() => {
+                        {(() => {
                             const previewSrc = photoPreviews[fish.id] || fish.photoUrl || fish.photo;
                             const isEncrypted = Boolean(fish.encryptedMetadata && typeof fish.photoPath === 'string' && fish.photoPath.includes('enc_photos'));
                             const hasStoragePath = Boolean(fish.photoPath);
                             const requiresAuth = !user && (isEncrypted || hasStoragePath);
                             if (!previewSrc && !requiresAuth) return null;
+
+                            const metadata = {
+                              species: fish.species,
+                              length: fish.length,
+                              weight: fish.weight,
+                              time: fish.time,
+                              date: formattedTripDate,
+                              location: trip.location,
+                              water: trip.water,
+                            };
+
                             return (
-                              <div className="relative w-8 h-8 flex-shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => onPhotoClick({ photoSrc: previewSrc, requiresAuth, metadata })}
+                                className="relative w-10 h-10 flex-shrink-0 rounded border overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--secondary-background)' }}
+                                title="View photo"
+                              >
                                 {previewSrc && (
                                   <img
                                     src={previewSrc}
                                     alt={`${fish.species} photo`}
-                                    className="w-8 h-8 object-cover rounded border"
-                                    style={{ borderColor: 'var(--border-color)' }}
+                                    className="absolute inset-0 w-full h-full object-cover"
                                   />
                                 )}
                                 {requiresAuth && (
                                   <div className="absolute inset-0 flex items-center justify-center rounded border"
-                                       style={{ backgroundColor: 'var(--secondary-background)', borderColor: 'var(--border-color)' }}>
-                                    <span className="text-[10px]">🔒 Sign in</span>
+                                       style={{ backgroundColor: 'rgba(17,24,39,0.65)', borderColor: 'var(--border-color)' }}>
+                                    <span className="text-[10px] text-white">🔒 Sign in</span>
                                   </div>
                                 )}
-                              </div>
+                              </button>
                             );
                           })()}
                         <div className="flex-1 min-w-0">

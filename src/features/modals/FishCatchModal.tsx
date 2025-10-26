@@ -1,5 +1,4 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
-import { firebaseDataService } from "@shared/services/firebaseDataService";
 import { Button } from "@shared/components/Button";
 import ConfirmationDialog from '@shared/components/ConfirmationDialog';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "./Modal";
@@ -9,9 +8,10 @@ import { useFirebaseTackleBox } from "@shared/hooks/useFirebaseTackleBox";
 import { storage } from "@shared/services/firebase";
 import { ref, deleteObject } from "firebase/storage";
 import type { FishCaught } from "@shared/types";
-import { createSignInEncryptedPlaceholder } from "@shared/utils/photoPreviewUtils";
+import { getFishPhotoPreview } from "@shared/utils/photoPreviewUtils";
 import { getOrCreateGuestSessionId } from "@shared/services/guestSessionService";
 import { buildPhotoRemovalFields } from "@shared/utils/photoUpdateHelpers";
+import PhotoViewerModal from './PhotoViewerModal';
 
 export interface FishCatchModalProps {
   isOpen: boolean;
@@ -58,8 +58,23 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set());
   const [fileInputKey, setFileInputKey] = useState(0);
+  const [photoViewer, setPhotoViewer] = useState<{
+    photoSrc?: string;
+    requiresAuth: boolean;
+    metadata: {
+      species?: string;
+      length?: string;
+      weight?: string;
+      time?: string;
+      date?: string;
+      location?: string;
+      water?: string;
+    };
+  } | null>(null);
+  const [tripDetails, setTripDetails] = useState<{ date?: string; location?: string; water?: string } | null>(null);
   const isEditing = fishId !== undefined;
   const photoStatusRef = useRef<'unchanged' | 'uploaded' | 'deleted'>('unchanged');
+  const requiresAuthForExistingPhoto = !user && Boolean(formData.photoPath || formData.encryptedMetadata);
   // Gear rename handling: ask for confirmation before removing stale gear
   const [showStaleGearConfirm, setShowStaleGearConfirm] = useState(false);
   const [staleGear, setStaleGear] = useState<string[]>([]);
@@ -280,6 +295,37 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
     }
   }, [isOpen, isEditing, fishId, loadFishData]);
 
+  useEffect(() => {
+    let isMounted = true;
+    const fetchTripDetails = async () => {
+      try {
+        const trip = await db.getTripById(tripId);
+        if (isMounted) {
+          setTripDetails(trip ? { date: trip.date, location: trip.location, water: trip.water } : null);
+        }
+      } catch {
+        if (isMounted) {
+          setTripDetails(null);
+        }
+      }
+    };
+
+    if (isOpen) {
+      fetchTripDetails();
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [db, isOpen, tripId]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setPhotoViewer(null);
+      setTripDetails(null);
+    }
+  }, [isOpen]);
+
   // Cleanup photo preview URL when preview changes or component unmounts
   useEffect(() => {
     return () => {
@@ -289,38 +335,84 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
     };
   }, [photoPreview]);
 
-  // Async decryption for encrypted photos
   useEffect(() => {
-    let isMounted = true;
-    const tryDecryptPhoto = async () => {
-      if (formData.encryptedMetadata && formData.photoPath) {
-        setIsPhotoLoading(true);
-        try {
-          // If guest (unauthenticated), show sign-in placeholder instead of attempting decrypt
-          if (!user) {
-            if (isMounted) setPhotoPreview(createSignInEncryptedPlaceholder());
-          } else {
-            const result = await firebaseDataService.getDecryptedPhoto(formData.photoPath, formData.encryptedMetadata);
-            if (isMounted && result && result.data) {
-              const blob = new Blob([result.data], { type: result.mimeType });
-              const url = URL.createObjectURL(blob);
-              setPhotoPreview(url);
-            } else if (isMounted) {
-              setPhotoPreview(createSignInEncryptedPlaceholder());
-            }
-          }
-        } catch (err) {
-          if (isMounted) setPhotoPreview(createSignInEncryptedPlaceholder());
-        } finally {
-          if (isMounted) setIsPhotoLoading(false);
+    if (!isOpen) {
+      return;
+    }
+
+    if (photoStatusRef.current === 'uploaded') {
+      setIsPhotoLoading(false);
+      return;
+    }
+
+    if (photoStatusRef.current === 'deleted') {
+      setPhotoPreview(null);
+      setIsPhotoLoading(false);
+      return;
+    }
+
+    const hasPhotoSource = Boolean(formData.photoPath || formData.photoUrl || formData.photo);
+    if (!hasPhotoSource) {
+      setPhotoPreview(null);
+      setIsPhotoLoading(false);
+      return;
+    }
+
+    let isActive = true;
+    const fallbackSrc = formData.photoUrl || formData.photo || null;
+
+    const fetchPreview = async () => {
+      setIsPhotoLoading(true);
+
+      const fishForPreview: FishCaught = {
+        id: fishId ?? `${tripId}-preview`,
+        tripId,
+        species: '',
+        length: '',
+        weight: '',
+        time: '',
+        gear: [],
+        details: '',
+        photo: formData.photo || undefined,
+        photoUrl: formData.photoUrl || undefined,
+        photoPath: formData.photoPath || undefined,
+        photoHash: formData.photoHash || undefined,
+        photoMime: formData.photoMime || undefined,
+        encryptedMetadata: formData.encryptedMetadata || undefined,
+      };
+
+      try {
+        const preview = await getFishPhotoPreview(fishForPreview);
+        if (!isActive) return;
+        setPhotoPreview(preview ?? fallbackSrc);
+      } catch {
+        if (!isActive) return;
+        setPhotoPreview(fallbackSrc);
+      } finally {
+        if (isActive) {
+          setIsPhotoLoading(false);
         }
-      } else {
-        setIsPhotoLoading(false);
       }
     };
-    tryDecryptPhoto();
-    return () => { isMounted = false; };
-  }, [formData.encryptedMetadata, formData.photoPath, user]);
+
+    void fetchPreview();
+
+    return () => {
+      isActive = false;
+    };
+  }, [
+    isOpen,
+    isEditing,
+    fishId,
+    tripId,
+    formData.photoPath,
+    formData.photoUrl,
+    formData.photo,
+    formData.photoHash,
+    formData.photoMime,
+    formData.encryptedMetadata,
+    user
+  ]);
 
   const handleInputChange = useCallback((field: string, value: string | string[] | undefined) => {
     setFormData(prev => ({ ...prev, [field]: value as any }));
@@ -339,6 +431,39 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
     // Clear general error
     if (error) setError(null);
   }, [error, validation.errors]);
+
+  const openPhotoViewer = useCallback((src?: string | null, requiresAuthFlag?: boolean) => {
+    if (!src && !requiresAuthFlag) {
+      return;
+    }
+    const formattedDate = (() => {
+      const raw = tripDetails?.date;
+      if (!raw) return undefined;
+      try {
+        return new Date(raw).toLocaleDateString('en-NZ', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+        });
+      } catch {
+        return raw;
+      }
+    })();
+
+    setPhotoViewer({
+      photoSrc: src ?? undefined,
+      requiresAuth: Boolean(requiresAuthFlag),
+      metadata: {
+        species: formData.species,
+        length: formData.length,
+        weight: formData.weight,
+        time: formData.time,
+        date: formattedDate,
+        location: tripDetails?.location,
+        water: tripDetails?.water,
+      },
+    });
+  }, [formData.length, formData.species, formData.time, formData.weight, tripDetails]);
 
   const validateForm = useCallback(() => {
     const errors: Record<string, string> = {};
@@ -1014,13 +1139,25 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                 <div className="mt-2">
                   <div className="text-sm font-medium mb-2" style={{ color: 'var(--secondary-text)' }}>Current Photo</div>
                   <div className="relative inline-block">
-                    <img src={formData.photo} alt="Current catch" className="w-32 h-32 object-cover rounded" style={{ border: '1px solid var(--border-color)' }} />
-                    {!user && (formData.photoPath || formData.encryptedMetadata) && (
-                      <div className="absolute inset-0 flex items-center justify-center rounded"
-                           style={{ backgroundColor: 'rgba(17,24,39,0.6)', color: 'white', border: '1px solid var(--border-color)' }}>
-                        <span className="text-[10px] font-medium">🔒 Sign in</span>
-                      </div>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => openPhotoViewer(formData.photo || formData.photoUrl, requiresAuthForExistingPhoto)}
+                      className="relative block w-32 h-32 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      style={{ border: '1px solid var(--border-color)', overflow: 'hidden' }}
+                      title="View photo"
+                    >
+                      <img
+                        src={formData.photo}
+                        alt="Current catch"
+                        className="w-full h-full object-cover"
+                      />
+                      {requiresAuthForExistingPhoto && (
+                        <div className="absolute inset-0 flex items-center justify-center"
+                             style={{ backgroundColor: 'rgba(17,24,39,0.6)', color: 'white', border: '1px solid var(--border-color)' }}>
+                          <span className="text-[10px] font-medium">🔒 Sign in</span>
+                        </div>
+                      )}
+                    </button>
                     {(user || !formData.photoPath) && (
                     <button
                       type="button"
@@ -1056,7 +1193,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
               {/* Photo Preview for newly selected or decrypted photos */}
               <div className="mt-2">
                 {(isPhotoLoading || isUploadingPhoto || uploadError || photoPreview) && (
-                  <div className="text-sm font-medium mb-2" style={{ color: 'var(--secondary-text)' }}>
+                <div className="text-sm font-medium mb-2" style={{ color: 'var(--secondary-text)' }}>
                     {isPhotoLoading || isUploadingPhoto ? 'Loading Photo...' : uploadError ? 'Upload Failed' : photoPreview ? 'Selected Photo' : ''}
                   </div>
                 )}
@@ -1066,30 +1203,35 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
                     </div>
                   ) : photoPreview ? (
-                    <img
-                      src={photoPreview}
-                      alt="Selected catch"
-                      className={`w-32 h-32 object-cover rounded ${uploadError ? 'opacity-50' : ''}`}
-                      style={{ border: `1px solid ${uploadError ? 'var(--error-border)' : 'var(--border-color)'}` }}
-                    />
+                    <button
+                      type="button"
+                      onClick={() => openPhotoViewer(photoPreview, requiresAuthForExistingPhoto)}
+                      className={`relative block w-32 h-32 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${uploadError ? 'opacity-50' : ''}`}
+                      style={{ border: `1px solid ${uploadError ? 'var(--error-border)' : 'var(--border-color)'}`, overflow: 'hidden' }}
+                      title="View photo"
+                    >
+                      <img
+                        src={photoPreview}
+                        alt="Selected catch"
+                        className="w-full h-full object-cover"
+                      />
+                      {requiresAuthForExistingPhoto && (
+                        <div className="absolute inset-0 flex items-center justify-center"
+                             style={{ backgroundColor: 'rgba(17,24,39,0.6)', color: 'white', border: '1px solid var(--border-color)' }}>
+                          <span className="text-[10px] font-medium">🔒 Sign in</span>
+                        </div>
+                      )}
+                    </button>
                   ) : null}
-                  {!user && (formData.photoPath || formData.encryptedMetadata) && (
-                    <div className="absolute inset-0 flex items-center justify-center rounded"
-                         style={{ backgroundColor: 'rgba(17,24,39,0.6)', color: 'white', border: '1px solid var(--border-color)' }}>
-                      <span className="text-[10px] font-medium">🔒 Sign in</span>
-                    </div>
-                  )}
                   {photoPreview && !isPhotoLoading && (
                     <button
                       type="button"
                       onClick={() => {
-                        // Clean up the preview URL to prevent memory leaks
                         if (photoPreview && photoPreview.startsWith('blob:')) {
                           URL.revokeObjectURL(photoPreview);
                         }
                         setPhotoPreview(null);
                         setUploadError(null);
-                        // Also clear selected photo from form state so it won't be saved
                         const removal = buildPhotoRemovalFields();
                         handleInputChange("photo", removal.photo);
                         handleInputChange("photoPath", removal.photoPath);
@@ -1097,7 +1239,6 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                         handleInputChange("photoHash", removal.photoHash);
                         handleInputChange("photoMime", removal.photoMime);
                         handleInputChange("encryptedMetadata", removal.encryptedMetadata);
-                        // Force React to remount the file input so onChange binding remains intact
                         setFileInputKey((k) => k + 1);
                         photoStatusRef.current = 'deleted';
                       }}
@@ -1183,6 +1324,16 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
         variant="warning"
         overlayStyle="blur"
       />
+
+      {photoViewer && (
+        <PhotoViewerModal
+          isOpen={true}
+          photoSrc={photoViewer.photoSrc}
+          requiresAuth={photoViewer.requiresAuth}
+          metadata={photoViewer.metadata}
+          onClose={() => setPhotoViewer(null)}
+        />
+      )}
     </>
   );
 };
