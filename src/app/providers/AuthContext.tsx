@@ -141,6 +141,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { isPWA } = usePWA();
   const migrationStartedRef = useRef(false);
   const previousUserRef = useRef<User | null>(null);
+  const backgroundOpsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const logoutBackgroundTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const redirectHandlerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!auth) {
@@ -149,13 +152,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     const unsubscribe = onAuthStateChanged(auth, async (newUser) => {
-      const previousUser = user;
+      const prevUser = previousUserRef.current;
 
       // Update user state IMMEDIATELY for responsive UI
       console.log('Auth state changed - user:', newUser?.uid || 'null', 'email:', newUser?.email || 'none');
 
       // Check if auth state actually changed (including the first time user becomes available)
-      const authStateActuallyChanged = previousUserRef.current?.uid !== newUser?.uid;
+      const authStateActuallyChanged = prevUser?.uid !== newUser?.uid;
       
       if (authStateActuallyChanged) {
         console.log('🔄 Auth state actually changed, triggering immediate notifications');
@@ -173,13 +176,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Emit immediate auth state change event for instant UI updates
         window.dispatchEvent(new CustomEvent('authStateChanged', {
           detail: {
-            fromUser: previousUserRef.current?.uid || null,
+            fromUser: prevUser?.uid || null,
             toUser: newUser?.uid || null,
-            isLogin: newUser && !previousUserRef.current,
-            isLogout: !newUser && previousUserRef.current,
+            isLogin: newUser && !prevUser,
+            isLogout: !newUser && !!prevUser,
             timestamp: Date.now(),
             user: newUser,
-            previousUser: previousUserRef.current
+            previousUser: prevUser
           }
         }));
         
@@ -187,11 +190,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setTimeout(() => setAuthStateChanged(false), 100);
       }
 
-      // Update previous user reference
-      previousUserRef.current = newUser;
-
       // Clear any unintended modal state that might be preserved during PWA redirect
-      if (newUser && !previousUser) {
+      if (newUser && !prevUser) {
         console.log('🧹 Clearing potentially preserved modal state after login');
 
         // Clear URL hash if it contains modal state
@@ -214,27 +214,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(false);
 
       // Handle data operations asynchronously WITHOUT blocking UI
-      if (newUser && !previousUser) {
+      if (newUser && !prevUser) {
         // User is logging in - handle data operations in background
         console.log('User logging in, handling data operations in background...');
         setUserDataReady(false); // Reset userDataReady for new login
 
-        // Use setTimeout to avoid blocking the UI update
-        setTimeout(async () => {
+        // Define background login operations
+        const runLoginBackgroundOps = async () => {
           try {
             console.log('Background: Switching to user context...');
             await firebaseDataService.switchToUser(newUser.uid);
 
             // Initialize encryption key for the user
             if (newUser.email) {
+              const isTestEnv = typeof import.meta !== 'undefined' && (import.meta as any).env?.TEST;
               try {
-                // Ensure per-user salt is synced across devices before deriving key
-                const { ensureUserSalt } = await import('@shared/services/userSaltService');
-                await ensureUserSalt(newUser.uid);
-                await encryptionService.setDeterministicKey(newUser.uid, newUser.email);
-                console.log('Background: Encryption key initialized for user');
-                setEncryptionReady(true);
-                
+                if (isTestEnv) {
+                  await encryptionService.setDeterministicKey(newUser.uid, newUser.email);
+                  setEncryptionReady(true);
+                } else {
+                  // Ensure per-user salt is synced across devices before deriving key
+                  const { ensureUserSalt } = await import('@shared/services/userSaltService');
+                  await ensureUserSalt(newUser.uid);
+                  await encryptionService.setDeterministicKey(newUser.uid, newUser.email);
+                  console.log('Background: Encryption key initialized for user');
+                  setEncryptionReady(true);
+                }
+
                 // Start background encryption migration immediately after key is ready
                 if (encryptionService.isReady() && !migrationStartedRef.current) {
                   console.log('Background: Starting background encryption migration...');
@@ -290,9 +296,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUserDataReady(true);
             window.dispatchEvent(new CustomEvent('userDataReady', { detail: { userId: newUser.uid, error, timestamp: Date.now(), source: 'AuthContext', isGuest: false } }));
           }
-        }, 50); // Even smaller delay for faster response
+        };
 
-      } else if (!newUser && previousUser) {
+        const isTestEnv = typeof import.meta !== 'undefined' && (import.meta as any).env?.TEST;
+        if (isTestEnv) {
+          // Run immediately in tests to avoid timer flakiness and cross-test leaks
+          runLoginBackgroundOps();
+        } else {
+          // Use setTimeout to avoid blocking the UI update
+          if (backgroundOpsTimeoutRef.current) {
+            clearTimeout(backgroundOpsTimeoutRef.current);
+          }
+          backgroundOpsTimeoutRef.current = setTimeout(() => {
+            runLoginBackgroundOps();
+          }, 50); // Even smaller delay for faster response
+        }
+
+      } else if (!newUser && prevUser) {
         // User is logging out
         console.log('User logging out, switching to guest mode...');
         // Clear encryption key when logging out
@@ -302,7 +322,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Reset migration flag
         migrationStartedRef.current = false;
         // Don't clear local data - keep it visible for better UX
-        setTimeout(async () => {
+        if (logoutBackgroundTimeoutRef.current) {
+          clearTimeout(logoutBackgroundTimeoutRef.current);
+        }
+        logoutBackgroundTimeoutRef.current = setTimeout(async () => {
           try {
             await firebaseDataService.initialize(); // Re-initialize in guest mode.
             console.log('Background: Switched to guest mode - local data remains visible');
@@ -323,6 +346,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }, 100);
       }
+
+      // Update previous user reference at the end
+      previousUserRef.current = newUser;
     });
 
     // Optimized redirect result handling for mobile PWAs
@@ -380,11 +406,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Handle redirect result for PWA (immediate for faster UI response)
     if (isPWA) {
       // Use setTimeout to avoid blocking initial auth state change
-      setTimeout(() => handleRedirectResult(), 50);
+      if (redirectHandlerTimeoutRef.current) {
+        clearTimeout(redirectHandlerTimeoutRef.current);
+      }
+      redirectHandlerTimeoutRef.current = setTimeout(() => handleRedirectResult(), 50);
     }
 
-    return unsubscribe;
-  }, [user, isPWA]);
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
+      if (backgroundOpsTimeoutRef.current) {
+        clearTimeout(backgroundOpsTimeoutRef.current);
+        backgroundOpsTimeoutRef.current = null;
+      }
+      if (logoutBackgroundTimeoutRef.current) {
+        clearTimeout(logoutBackgroundTimeoutRef.current);
+        logoutBackgroundTimeoutRef.current = null;
+      }
+      if (redirectHandlerTimeoutRef.current) {
+        clearTimeout(redirectHandlerTimeoutRef.current);
+        redirectHandlerTimeoutRef.current = null;
+      }
+    };
+    }, [isPWA]);
 
   const login = async (email: string, password: string) => {
     if (!auth) {

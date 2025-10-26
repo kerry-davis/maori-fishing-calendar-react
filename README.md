@@ -6,10 +6,11 @@ Modern offline-first fishing planner grounded in traditional Māori lunar knowle
 
 - [Architecture overview](docs/architecture/OVERVIEW.md)
 - [Technology stack](docs/architecture/TECH_STACK.md)
+- [Data model & ERDs](docs/architecture/DATA_MODEL.md)
 - [Security & encryption](docs/security/SECURITY.md)
 - Tide integration & NIWA proxy: [Tide comparison](docs/tide/TIDE_COMPARISON_ANALYSIS.md), [NIWA proxy deployment](docs/deployment/NIWA_PROXY_DEPLOYMENT.md)
 - Deployment: [Deployment](docs/deployment/DEPLOYMENT.md), [Checklist](docs/deployment/DEPLOYMENT_CHECKLIST.md)
-- Data migration: [Migration guide](docs/migration/MIGRATION_GUIDE.md), [Migration summary](docs/migration/MIGRATION_SUMMARY.md)
+- Data migration: [Migration guide](docs/migration/MIGRATION_GUIDE.md), [Migration summary](docs/migration/MIGRATION_SUMMARY.md), [Migrate your data (end‑user)](docs/migration/MIGRATE_YOUR_DATA.md)
 - [Testing](docs/ops/TESTING.md)
 - [Troubleshooting](docs/ops/TROUBLESHOOTING.md)
 - [Changelog](docs/ops/CHANGELOG.md)
@@ -26,6 +27,7 @@ Helps anglers plan and review fishing activity using lunar phases, weather, and 
 | Gear  | Tackle box & gear type management |
 | Weather | Capture conditions (manual + integration) |
 | Analytics | Basic success pattern exploration (charts) |
+| Photos | Encrypted photo storage (Firebase Storage) and gallery; included in export/import |
 | Import / Export | CSV / zipped data flows & legacy migration |
 | Offline | Local persistence + queued writes + PWA install |
 | Encryption | Deterministic field-level obfuscation (AES-GCM) |
@@ -44,6 +46,9 @@ npm run dev
 npm test        # interactive
 npm run test:run
 
+# CI-like run (skips known-flaky integration suites)
+CI=1 npm run test:run
+
 # Production build
 npm run build
 npm run preview
@@ -59,6 +64,8 @@ VITE_FIREBASE_STORAGE_BUCKET=...
 VITE_FIREBASE_MESSAGING_SENDER_ID=...
 VITE_FIREBASE_APP_ID=...
 VITE_KEY_PEPPER=some-long-random-pepper
+# Optional: enforce encrypted photos only (no plaintext fallback)
+# VITE_PHOTO_ENCRYPTION_STRICT=true
 ```
 
 ## Deployment & Operations

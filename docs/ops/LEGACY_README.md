@@ -171,6 +171,13 @@ VITE_KEY_PEPPER=some-long-random-pepper
 
 Supporting utility scripts under `scripts/` handle: adding test data, migration validation, image compression, secret scanning, preview deploy.
 
+Photo compression preset:
+- Global preset for imports and uploads: max dimension 1080px, JPEG quality ~0.85.
+- Imports: photos are standardized to this preset for smaller backups and faster loads.
+- Uploads: photos are compressed with the same preset before encryption and Storage upload.
+- Gear rename propagation runs via a background queue; modern builds surface progress in the Tackle Box UI instead of blocking edits and fire `gear-rename-applied` / `gear-type-rename-applied` events so open modals refresh denormalized labels immediately.
+- Gallery previews may use smaller, temporary downscaled images for faster rendering.
+
 ---
 ## 9. Testing Strategy
 | Area | Coverage |
@@ -231,7 +238,8 @@ If you use Firebase Storage for photo binary data, configure CORS to allow your 
       "http://localhost:5173",
       "https://maori-fishing-calendar-react.web.app",
       "https://maori-fishing-calendar-react.firebaseapp.com",
-      "https://maori-fishing-calendar-react.pages.dev"
+      "https://maori-fishing-calendar-react.pages.dev",
+      "https://staging-maori-fishing-calendar.pages.dev"
     ],
     "method": ["GET", "HEAD", "OPTIONS", "POST", "PUT", "DELETE"],
     "responseHeader": ["*"],
@@ -265,6 +273,14 @@ After editing `cors.json`, re-run:
 gsutil cors set cors.json gs://maori-fishing-calendar-react.firebasestorage.app
 gsutil cors get gs://maori-fishing-calendar-react.firebasestorage.app
 ```
+
+Verification & private photos note:
+- Verify CORS for staging:
+  ```
+  curl -I -H "Origin: https://staging-maori-fishing-calendar.pages.dev" \
+    "https://firebasestorage.googleapis.com/v0/b/maori-fishing-calendar-react.firebasestorage.app/o/<path>?alt=media"
+  ```
+- If you see 403 with ACAO present, use tokenized URLs via SDK `getDownloadURL(ref(storage, 'users/<uid>/enc_photos/<file>.enc'))` or copy the Download URL (includes `?token=...`).
 
 ---
 ## 11. Data & Migration Notes

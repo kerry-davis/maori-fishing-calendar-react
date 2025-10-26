@@ -1,4 +1,5 @@
 import type { Trip, WeatherLog, FishCaught, ImportProgress } from "../types";
+import { generateULID } from "../utils/ulid";
 import { firestore, storage } from "@shared/services/firebase";
 import { encryptionService, ENCRYPTION_COLLECTION_FIELD_MAP, isPossiblyEncrypted } from './encryptionService';
 import { photoEncryptionService } from './photoEncryptionService';
@@ -16,12 +17,14 @@ import {
   where,
   orderBy,
   serverTimestamp,
-  writeBatch
+  writeBatch,
+  deleteField
 } from "firebase/firestore";
 import type { DocumentReference } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL, getMetadata, listAll, deleteObject, getBlob } from "firebase/storage";
 import type { StorageReference } from "firebase/storage";
 import { DEV_LOG, DEV_WARN, PROD_ERROR } from "../utils/loggingHelpers";
+import { compressImage } from "../utils/imageCompression";
 
 type QueuedSyncOperation = {
   id?: number;
@@ -47,6 +50,7 @@ export class FirebaseDataService {
   private hasLoggedStorageUnavailable = false;
   private isProcessingQueue = false;
   private queueRetryTimeout: ReturnType<typeof setTimeout> | null = null;
+  private readonly PHOTO_ENCRYPTION_STRICT = (import.meta as any)?.env?.VITE_PHOTO_ENCRYPTION_STRICT === 'true';
 
   constructor() {
     // Monitor online/offline status
@@ -62,6 +66,39 @@ export class FirebaseDataService {
     // Add emergency clear method to window for debugging
     (window as any).clearFirebaseSync = () => this.clearSyncQueue();
     (window as any).debugIdMappings = () => this.debugIdMappings();
+  }
+
+  private stripUndefined<T extends Record<string, any>>(obj: T): T {
+    const copy: Record<string, any> = { ...obj };
+    Object.keys(copy).forEach((k) => {
+      if (copy[k] === undefined) delete copy[k];
+    });
+    return copy as T;
+  }
+
+  private sanitizeFishUpdatePayload(base: Record<string, any>): Record<string, any> {
+    // Remove undefineds first
+    const payload: Record<string, any> = this.stripUndefined(base);
+
+    // Only clear photo when explicitly requested via provided fields, not by absence
+    const explicitClear = (
+      (Object.prototype.hasOwnProperty.call(base, 'photo') && base.photo === '') ||
+      (Object.prototype.hasOwnProperty.call(base, 'photoPath') && base.photoPath === '') ||
+      (Object.prototype.hasOwnProperty.call(base, 'photoUrl') && base.photoUrl === '') ||
+      (Object.prototype.hasOwnProperty.call(base, 'removePhoto') && base.removePhoto === true)
+    );
+
+    if (explicitClear) {
+      payload.photo = deleteField();
+      payload.photoPath = deleteField();
+      payload.photoUrl = deleteField();
+      payload.photoMime = deleteField();
+      payload.photoHash = deleteField();
+      payload.encryptedMetadata = deleteField();
+      delete (payload as any).removePhoto;
+    }
+
+    return payload;
   }
 
   private ensureServiceReady(): void {
@@ -156,6 +193,17 @@ export class FirebaseDataService {
     | { inlinePhoto: string; photoHash: string }
   >
   {
+    // Compress before hashing/encryption to store smaller files
+    try {
+      const compressed = await compressImage(bytes, mime, {
+        maxDimension: 1080,
+        quality: 0.85,
+        convertTo: 'image/jpeg',
+      });
+      bytes = compressed.bytes;
+      mime = compressed.mime || mime;
+    } catch {/* fallback to original */}
+
     const hash = await this.sha256Hex(bytes);
     const storageService = this.storageInstance;
 
@@ -190,23 +238,20 @@ export class FirebaseDataService {
           }
         });
 
-        let url = '';
-        try {
-          url = await getDownloadURL(ref);
-        } catch {
-          // ignore; URL can be fetched later on demand
-        }
-
+        // Do not persist long-lived download URLs for encrypted photos; fetch on demand
         return {
           photoHash: hash,
           photoPath: encryptionResult.storagePath,
           photoMime: mime,
-          photoUrl: url,
+          photoUrl: '',
           encryptedMetadata: photoEncryptionService.serializeMetadata(encryptionResult.metadata)
         };
       } catch (encryptionError) {
         DEV_WARN('[Photo Encryption] Encryption failed, falling back to unencrypted storage:', encryptionError);
-        // Fall through to unencrypted storage
+        if (this.PHOTO_ENCRYPTION_STRICT) {
+          throw new Error('Photo encryption failed and strict mode is enabled');
+        }
+        // Fall through to unencrypted storage when not strict
       }
     }
 
@@ -327,6 +372,7 @@ export class FirebaseDataService {
       length: fish.length,
       weight: fish.weight,
       time: fish.time,
+      gearIds: Array.isArray((fish as any).gearIds) ? [...(fish as any).gearIds].sort() : undefined,
       gear: Array.isArray(fish.gear) ? [...fish.gear].sort() : fish.gear,
       details: fish.details,
       photoHash: fish.photoHash || null,
@@ -757,22 +803,50 @@ export class FirebaseDataService {
 
           if (this.isOnline) {
             try {
-              const firebaseId = await this.getFirebaseId('trips', trip.id.toString());
-              if (firebaseId) {
-                const docRef = doc(firestore, 'trips', firebaseId);
-                await updateDoc(docRef, {
-                  ...operationPayload,
-                  updatedAt: serverTimestamp()
-                });
-                DEV_LOG('Trip updated in Firestore with validation:', firebaseId);
+              // 1) Try mapping
+              const mappedId = await this.getFirebaseId('trips', trip.id.toString());
+              if (mappedId) {
+                const docRef = doc(firestore, 'trips', mappedId);
+                await updateDoc(docRef, { ...operationPayload, updatedAt: serverTimestamp() });
+                DEV_LOG('Trip updated in Firestore with validation:', mappedId);
                 return;
               }
+
+              // 2) Resolve by querying (userId + id)
+              try {
+                const q = query(
+                  collection(firestore, 'trips'),
+                  where('userId', '==', this.userId),
+                  where('id', '==', trip.id)
+                );
+                const snapshot = await getDocs(q);
+                if (!snapshot.empty) {
+                  const existing = snapshot.docs[0];
+                  await updateDoc(existing.ref, { ...operationPayload, updatedAt: serverTimestamp() });
+                  await this.storeLocalMapping('trips', trip.id.toString(), existing.id);
+                  DEV_LOG('Trip updated in Firestore via query resolution:', existing.id);
+                  return;
+                }
+              } catch (e) {
+                DEV_WARN('Trip update query failed, falling back to create:', e);
+              }
+
+              // 3) Create new if not found, then store mapping
+              const createdRef = await addDoc(collection(firestore, 'trips'), {
+                ...operationPayload,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+              });
+              await this.storeLocalMapping('trips', trip.id.toString(), createdRef.id);
+              DEV_LOG('Trip created in Firestore during update fallback:', createdRef.id);
+              return;
             } catch (error) {
               DEV_WARN('Firestore update failed, falling back to local:', error);
             }
           }
 
           await databaseService.updateTrip(trip);
+          // Only queue when offline or Firestore path failed entirely
           this.queueOperation('update', 'trips', operationPayload);
         }, 'updateTrip');
       }
@@ -938,7 +1012,7 @@ export class FirebaseDataService {
       async () => {
         this.validateWeatherLogData(weatherData);
 
-        const localId = `${weatherData.tripId}-${Date.now()}`;
+        const localId = `${weatherData.tripId}-${generateULID()}`;
         let weatherWithIds: any = { ...weatherData, id: localId, userId: this.userId };
         try { weatherWithIds = await encryptionService.encryptFields('weatherLogs', weatherWithIds); } catch (e) { DEV_WARN('[encryption] weather encrypt failed', e); }
 
@@ -1257,7 +1331,7 @@ export class FirebaseDataService {
           details: fishData.details ? this.sanitizeString(fishData.details) : fishData.details,
         };
 
-        const localId = `${fishData.tripId}-${Date.now()}`;
+        const localId = `${fishData.tripId}-${generateULID()}`;
         let fishWithIds: any = { ...sanitizedFishData, id: localId, userId: this.userId };
         try { fishWithIds = await encryptionService.encryptFields('fishCaught', fishWithIds); } catch (e) { DEV_WARN('[encryption] fish encrypt failed', e); }
 
@@ -1564,6 +1638,9 @@ export class FirebaseDataService {
             }
           }
         }
+
+        // Sanitize payload for Firestore (remove undefined; clear photo-related fields when requested)
+        const cleanUpdatePayload = this.sanitizeFishUpdatePayload(fishWithUser);
         DEV_LOG('[Fish Update] Starting update for fish ID:', fishCaught.id);
 
         if (this.isOnline) {
@@ -1574,7 +1651,7 @@ export class FirebaseDataService {
             if (firebaseId) {
               const docRef = doc(firestore, 'fishCaught', firebaseId);
               await updateDoc(docRef, {
-                ...fishWithUser,
+                ...cleanUpdatePayload,
                 updatedAt: serverTimestamp()
               });
               DEV_LOG('Fish caught updated in Firestore:', firebaseId);
@@ -1583,7 +1660,7 @@ export class FirebaseDataService {
 
             DEV_LOG('No Firebase ID mapping found for fish catch, creating new document');
             const docRef = await addDoc(collection(firestore, 'fishCaught'), {
-              ...fishWithUser,
+              ...this.stripUndefined(fishWithUser),
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp()
             });
@@ -1597,7 +1674,7 @@ export class FirebaseDataService {
         }
 
         await databaseService.updateFishCaught(fishCaught);
-        this.queueOperation('update', 'fishCaught', fishWithUser);
+        this.queueOperation('update', 'fishCaught', this.stripUndefined(fishWithUser));
       }
     );
   }
@@ -1746,7 +1823,6 @@ export class FirebaseDataService {
       DEV_WARN("Cannot merge local data in guest mode or without a user.");
       return;
     }
-
     DEV_LOG("Starting local data merge for user:", this.userId);
 
     const localTrips = await databaseService.getAllTrips();
@@ -1760,299 +1836,55 @@ export class FirebaseDataService {
 
     DEV_LOG(`Found ${localTrips.length} trips, ${localWeatherLogs.length} weather logs, and ${localFishCaught.length} fish caught locally.`);
 
-    const batch = writeBatch(firestore);
-    const tripIdMap = new Map<number, string>();
-
-    // Helper function to clean data for Firebase (remove undefined values)
-    const cleanForFirebase = (obj: any) => {
-      const cleaned: any = {};
-      Object.keys(obj).forEach(key => {
-        if (obj[key] !== undefined) {
-          cleaned[key] = obj[key];
-        }
-      });
-      return cleaned;
-    };
-
-    // Helper function to check if a trip already exists in Firestore
-    const getExistingTripFirebaseId = async (localTripId: number): Promise<string | null> => {
-      try {
-        // First check if we have a Firebase ID mapping for this local trip ID
-        const firebaseId = await this.getFirebaseId('trips', localTripId.toString());
-        if (firebaseId) {
-          // Verify the document still exists in Firestore
-          const docRef = doc(firestore, 'trips', firebaseId);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            return firebaseId;
-          } else {
-            // Document doesn't exist, remove the stale mapping
-            DEV_WARN(`Stale ID mapping found for trip ${localTripId}, removing mapping`);
-            const key = `idMapping_${this.userId}_trips_${localTripId}`;
-            localStorage.removeItem(key);
+    const validTripIds = new Set(localTrips.map(t => t.id));
+    const chunk = async <T>(arr: T[], size: number, fn: (item: T, idx: number) => Promise<void>) => {
+      for (let i = 0; i < arr.length; i += size) {
+        const slice = arr.slice(i, i + size);
+        for (let j = 0; j < slice.length; j++) {
+          try {
+            await fn(slice[j], i + j);
+          } catch (e) {
+            DEV_WARN('Merge item failed', e);
           }
         }
-
-        // Fallback: query by local ID field in case the mapping is missing
-        const existingTripsQuery = query(
-          collection(firestore, 'trips'),
-          where('userId', '==', this.userId),
-          where('id', '==', localTripId)
-        );
-        const existingTripsSnapshot = await getDocs(existingTripsQuery);
-        if (!existingTripsSnapshot.empty) {
-          const existingDoc = existingTripsSnapshot.docs[0];
-          // Store the mapping for future lookups
-          await this.storeLocalMapping('trips', localTripId.toString(), existingDoc.id);
-          return existingDoc.id;
-        }
-        return null;
-      } catch (error) {
-        DEV_WARN('Error checking for existing trip:', error);
-        return null;
+        // Yield to UI
+        await new Promise(r => setTimeout(r, 0));
       }
     };
 
-    // Helper function to check if a weather log already exists in Firestore
-    const getExistingWeatherLogFirebaseId = async (localId: string): Promise<string | null> => {
-      try {
-        // First check if we have a Firebase ID mapping for this local weather log ID
-        const firebaseId = await this.getFirebaseId('weatherLogs', localId);
-        if (firebaseId) {
-          // Verify the document still exists in Firestore
-          const docRef = doc(firestore, 'weatherLogs', firebaseId);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            return firebaseId;
-          } else {
-            // Document doesn't exist, remove the stale mapping
-            DEV_WARN(`Stale ID mapping found for weather log ${localId}, removing mapping`);
-            const key = `idMapping_${this.userId}_weatherLogs_${localId}`;
-            localStorage.removeItem(key);
-          }
-        }
-
-        // Fallback: query by local ID field in case the mapping is missing
-        const existingWeatherQuery = query(
-          collection(firestore, 'weatherLogs'),
-          where('userId', '==', this.userId),
-          where('id', '==', localId)
-        );
-        const existingWeatherSnapshot = await getDocs(existingWeatherQuery);
-        if (!existingWeatherSnapshot.empty) {
-          const existingDoc = existingWeatherSnapshot.docs[0];
-          // Store the mapping for future lookups
-          await this.storeLocalMapping('weatherLogs', localId, existingDoc.id);
-          return existingDoc.id;
-        }
-        return null;
-      } catch (error) {
-        DEV_WARN('Error checking for existing weather log:', error);
-        return null;
-      }
-    };
-
-    // Helper function to check if a fish caught already exists in Firestore
-    const getExistingFishCaughtFirebaseId = async (localId: string): Promise<string | null> => {
-      try {
-        // First check if we have a Firebase ID mapping for this local fish caught ID
-        const firebaseId = await this.getFirebaseId('fishCaught', localId);
-        if (firebaseId) {
-          // Verify the document still exists in Firestore
-          const docRef = doc(firestore, 'fishCaught', firebaseId);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            return firebaseId;
-          } else {
-            // Document doesn't exist, remove the stale mapping
-            DEV_WARN(`Stale ID mapping found for fish caught ${localId}, removing mapping`);
-            const key = `idMapping_${this.userId}_fishCaught_${localId}`;
-            localStorage.removeItem(key);
-          }
-        }
-
-        // Fallback: query by local ID field in case the mapping is missing
-        const existingFishQuery = query(
-          collection(firestore, 'fishCaught'),
-          where('userId', '==', this.userId),
-          where('id', '==', localId)
-        );
-        const existingFishSnapshot = await getDocs(existingFishQuery);
-        if (!existingFishSnapshot.empty) {
-          const existingDoc = existingFishSnapshot.docs[0];
-          // Store the mapping for future lookups
-          await this.storeLocalMapping('fishCaught', localId, existingDoc.id);
-          return existingDoc.id;
-        }
-        return null;
-      } catch (error) {
-        DEV_WARN('Error checking for existing fish caught:', error);
-        return null;
-      }
-    };
-
-    // Merge trips - check for existing ones first
-    for (const trip of localTrips) {
-      const { id: localId, ...tripData } = trip;
-
-      // Check if trip already exists in Firestore
-      const existingFirebaseId = await getExistingTripFirebaseId(localId);
-
-      // Prepare trip data with encryption for Firestore
-      let tripWithData = { ...tripData, id: localId, userId: this.userId };
-      try {
-        tripWithData = await encryptionService.encryptFields('trips', tripWithData);
-      } catch (e) { 
-        DEV_WARN('[encryption] merge trip encrypt failed', e); 
-      }
-
-      if (existingFirebaseId) {
-        // Trip already exists, update it
-        DEV_LOG(`Trip ${localId} already exists in Firestore, updating...`);
-        const tripRef = doc(firestore, 'trips', existingFirebaseId);
-        const cleanTrip = cleanForFirebase(tripWithData);
-        batch.update(tripRef, { ...cleanTrip, updatedAt: serverTimestamp() });
-        tripIdMap.set(localId, existingFirebaseId);
-      } else {
-        // Trip doesn't exist, create new one
-        DEV_LOG(`Trip ${localId} doesn't exist in Firestore, creating...`);
-        const newTripRef = doc(collection(firestore, 'trips'));
-        const cleanTrip = cleanForFirebase(tripWithData);
-        batch.set(newTripRef, { ...cleanTrip, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-        tripIdMap.set(localId, newTripRef.id);
-      }
-    }
-
-    // Create a set of valid trip IDs for validation
-    const validTripIds = new Set(localTrips.map(trip => trip.id));
-
-    // Merge weather logs with new trip IDs (only those associated with valid trips)
-    const validWeatherLogs = localWeatherLogs.filter(log => {
-      if (!log.tripId || !validTripIds.has(log.tripId)) {
-        DEV_LOG(`Skipping orphaned weather log with tripId: ${log.tripId}`);
-        return false;
-      }
-      return true;
+    // Upsert trips via import-safe path (ensures mapping + encryption)
+    await chunk(localTrips, 50, async (trip) => {
+      await this.upsertTripFromImport(trip);
     });
 
-    for (const log of validWeatherLogs) {
-      const { id: localId, tripId: localTripId, ...logData } = log;
-      // Keep the original local trip ID - don't replace with Firebase document ID
-      const originalTripId = localTripId;
-
-      if (originalTripId) {
-        // Check if weather log already exists in Firestore
-        const existingFirebaseId = await getExistingWeatherLogFirebaseId(localId);
-
-        // Prepare weather log data with encryption for Firestore
-        let logWithData = { ...logData, id: localId, tripId: originalTripId, userId: this.userId };
-        try {
-          logWithData = await encryptionService.encryptFields('weatherLogs', logWithData);
-        } catch (e) { 
-          DEV_WARN('[encryption] merge weather log encrypt failed', e); 
-        }
-
-        if (existingFirebaseId) {
-          // Weather log already exists, update it
-          DEV_LOG(`Weather log ${localId} already exists in Firestore, updating...`);
-          const logRef = doc(firestore, 'weatherLogs', existingFirebaseId);
-          const cleanLog = cleanForFirebase(logWithData);
-          batch.update(logRef, { ...cleanLog, updatedAt: serverTimestamp() });
-        } else {
-          // Weather log doesn't exist, create new one
-          DEV_LOG(`Weather log ${localId} doesn't exist in Firestore, creating...`);
-          const newLogRef = doc(collection(firestore, 'weatherLogs'));
-          const cleanLog = cleanForFirebase(logWithData);
-          batch.set(newLogRef, { ...cleanLog, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-        }
-      }
-    }
-
-    // Merge fish caught with new trip IDs (only those associated with valid trips)
-    const validFishCaught = localFishCaught.filter(fish => {
-      if (!fish.tripId || !validTripIds.has(fish.tripId)) {
-        DEV_LOG(`Skipping orphaned fish caught with tripId: ${fish.tripId}`);
-        return false;
-      }
-      return true;
+    // Upsert weather logs (only those with valid trip)
+    const validWeather = localWeatherLogs.filter(w => !!w.tripId && validTripIds.has(w.tripId));
+    await chunk(validWeather, 100, async (w) => {
+      await this.upsertWeatherLogFromImport(w);
     });
 
-    for (const fish of validFishCaught) {
-      const { id: localId, tripId: localTripId, ...fishData } = fish;
-      // Keep the original local trip ID - don't replace with Firebase document ID
-      const originalTripId = localTripId;
+    // Upsert fish catches (only those with valid trip)
+    const validFish = localFishCaught.filter(f => !!f.tripId && validTripIds.has(f.tripId));
+    await chunk(validFish, 50, async (f) => {
+      await this.upsertFishCaughtFromImport(f);
+    });
 
-      if (originalTripId) {
-        // Check if fish caught already exists in Firestore
-        const existingFirebaseId = await getExistingFishCaughtFirebaseId(localId);
+    DEV_LOG(`Merged ${localTrips.length} trips, ${validWeather.length} weather logs, and ${validFish.length} fish caught.`);
 
-        // Prepare fish data with encryption for Firestore
-        let fishWithData = { ...fishData, id: localId, tripId: originalTripId, userId: this.userId };
-        try {
-          fishWithData = await encryptionService.encryptFields('fishCaught', fishWithData);
-        } catch (e) {
-          DEV_WARN('[encryption] merge fish encrypt failed', e);
-        }
-
-        // Preserve encryptedMetadata if present in local data
-        if (fish.encryptedMetadata) {
-          fishWithData.encryptedMetadata = fish.encryptedMetadata;
-        }
-
-        if (existingFirebaseId) {
-          // Fish caught already exists, update it
-          DEV_LOG(`Fish caught ${localId} already exists in Firestore, updating...`);
-          const fishRef = doc(firestore, 'fishCaught', existingFirebaseId);
-          const cleanFish = cleanForFirebase(fishWithData);
-          batch.update(fishRef, { ...cleanFish, updatedAt: serverTimestamp() });
-        } else {
-          // Fish caught doesn't exist, create new one
-          DEV_LOG(`Fish caught ${localId} doesn't exist in Firestore, creating...`);
-          const newFishRef = doc(collection(firestore, 'fishCaught'));
-          const cleanFish = cleanForFirebase(fishWithData);
-          batch.set(newFishRef, { ...cleanFish, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-        }
-      }
+    // Clean up orphaned local records (not associated with any local trip)
+    const orphanedWeather = localWeatherLogs.filter(w => !w.tripId || !validTripIds.has(w.tripId));
+    const orphanedFish = localFishCaught.filter(f => !f.tripId || !validTripIds.has(f.tripId));
+    if (orphanedWeather.length || orphanedFish.length) {
+      DEV_LOG(`Cleaning up ${orphanedWeather.length} orphaned weather logs and ${orphanedFish.length} orphaned fish caught from local storage.`);
+      for (const w of orphanedWeather) { try { await databaseService.deleteWeatherLog(w.id); } catch {} }
+      for (const f of orphanedFish) { try { await databaseService.deleteFishCaught(f.id); } catch {} }
     }
 
-    DEV_LOG(`Merging ${localTrips.length} trips, ${validWeatherLogs.length} valid weather logs, and ${validFishCaught.length} valid fish caught.`);
+    // Final cleanup of potential orphans in Firestore
+    await this.cleanupOrphanedFirestoreData();
 
-    // Clean up orphaned data from local storage
-    const orphanedWeatherLogs = localWeatherLogs.length - validWeatherLogs.length;
-    const orphanedFishCaught = localFishCaught.length - validFishCaught.length;
-
-    if (orphanedWeatherLogs > 0 || orphanedFishCaught > 0) {
-      DEV_LOG(`Cleaning up ${orphanedWeatherLogs} orphaned weather logs and ${orphanedFishCaught} orphaned fish caught records from local storage.`);
-
-      // Remove orphaned weather logs
-      for (const log of localWeatherLogs) {
-        if (!log.tripId || !validTripIds.has(log.tripId)) {
-          await databaseService.deleteWeatherLog(log.id);
-        }
-      }
-
-      // Remove orphaned fish caught
-      for (const fish of localFishCaught) {
-        if (!fish.tripId || !validTripIds.has(fish.tripId)) {
-          await databaseService.deleteFishCaught(fish.id);
-        }
-      }
-    }
-
-    try {
-      await batch.commit();
-      DEV_LOG("Successfully merged local data to Firestore.");
-
-      // Clean up any existing orphaned data in Firestore
-      await this.cleanupOrphanedFirestoreData();
-
-      // Keep local data visible for better UX - don't clear after merge
-      // await databaseService.clearAllData();
-      DEV_LOG("Local data backed up successfully - keeping visible for continuity");
-    } catch (error) {
-      PROD_ERROR("Failed to merge local data to Firestore:", error);
-      // Not clearing local data if merge fails, so we can retry later.
-    }
+    // Keep local data visible for continuity (do not clear here)
+    DEV_LOG("Local data backed up successfully - keeping visible for continuity");
   }
 
   // UTILITY METHODS
@@ -2103,7 +1935,8 @@ export class FirebaseDataService {
     const storageRefsToDelete: StorageReference[] = [];
     const storagePaths = [
       `users/${this.userId}/catches`,
-      `users/${this.userId}/images`
+      `users/${this.userId}/images`,
+      `users/${this.userId}/enc_photos`
     ];
 
     const includeStorage = !!this.storageInstance;
@@ -2115,10 +1948,16 @@ export class FirebaseDataService {
       }
     }
 
-    const collectionsToWipe = ['trips', 'weatherLogs', 'fishCaught'];
+    const collectionsToWipe = ['trips', 'weatherLogs', 'fishCaught', 'tackleItems', 'gearTypes', 'userSettings'];
     const collectionPlans: Array<{ name: string; refs: DocumentReference[] }> = [];
 
     for (const coll of collectionsToWipe) {
+      if (coll === 'userSettings') {
+        // userSettings is keyed by userId; avoid querying (which can be blocked by rules)
+        const userSettingsRef = doc(firestore, 'userSettings', this.userId);
+        collectionPlans.push({ name: coll, refs: [userSettingsRef] });
+        continue;
+      }
       const q = query(collection(firestore, coll), where('userId', '==', this.userId));
       const snapshot = await getDocs(q);
       const refs = snapshot.docs.map(d => d.ref);
@@ -2506,6 +2345,66 @@ export class FirebaseDataService {
     }
   }
 
+  /**
+   * Aggressively attempts to drain the sync queue by resolving IDs via queries,
+   * converting missing updates into creates, and treating missing deletes as success.
+   * If entries still cannot be applied, moves them to a quarantine key and clears the queue
+   * so the UI can proceed without being blocked.
+   */
+  async drainSyncQueueAggressive(): Promise<{ attempted: number; remaining: number; quarantinedKey?: string }> {
+    if (this.isGuest || !this.userId) {
+      return { attempted: 0, remaining: 0 };
+    }
+
+    // First, run a normal processing pass
+    await this.processSyncQueue();
+
+    if (this.syncQueue.length === 0) {
+      return { attempted: 0, remaining: 0 };
+    }
+
+    // Attempt aggressive application per-entry
+    const remaining: QueuedSyncOperation[] = [];
+    for (const entry of this.syncQueue) {
+      try {
+        const ok = await this.applyQueuedOperation(entry);
+        if (!ok) {
+          // If still not ok, try converting update->create for missing mappings
+          if (entry.operation === 'update') {
+            const clone: QueuedSyncOperation = { ...entry, operation: 'create' };
+            const ok2 = await this.applyQueuedOperation(clone);
+            if (!ok2) remaining.push(entry);
+          } else if (entry.operation === 'delete') {
+            // Treat missing target deletes as success
+            continue;
+          } else {
+            remaining.push(entry);
+          }
+        }
+      } catch {
+        remaining.push(entry);
+      }
+    }
+
+    this.syncQueue = remaining;
+    this.saveSyncQueue(false);
+
+    // If still remaining, quarantine and clear to unblock UI
+    if (this.syncQueue.length > 0) {
+      const key = `syncQuarantine_${this.userId}_${Date.now()}`;
+      try {
+        localStorage.setItem(key, JSON.stringify(this.syncQueue));
+      } catch {}
+      this.syncQueue = [];
+      this.saveSyncQueue(false);
+      this.notifySyncQueueCleared();
+      return { attempted: remaining.length, remaining: 0, quarantinedKey: key };
+    }
+
+    this.notifySyncQueueCleared();
+    return { attempted: 0, remaining: 0 };
+  }
+
   private scheduleQueueRetry(): void {
     if (this.queueRetryTimeout || !this.isOnline) {
       return;
@@ -2514,7 +2413,7 @@ export class FirebaseDataService {
     this.queueRetryTimeout = setTimeout(() => {
       this.queueRetryTimeout = null;
       void this.processSyncQueue();
-    }, 5_000);
+    }, 1_000);
   }
 
   private async applyQueuedOperation(entry: QueuedSyncOperation): Promise<boolean> {
@@ -2694,14 +2593,14 @@ export class FirebaseDataService {
     if (operationType === 'create') {
       if (firebaseId) {
         await updateDoc(doc(firestore, 'fishCaught', firebaseId), {
-          ...basePayload,
+          ...this.sanitizeFishUpdatePayload(basePayload),
           updatedAt: serverTimestamp()
         });
         return true;
       }
 
       const docRef = await addDoc(collection(firestore, 'fishCaught'), {
-        ...basePayload,
+        ...this.stripUndefined(basePayload),
         createdAt: serverTimestamp()
       });
       await this.storeLocalMapping('fishCaught', localId, docRef.id);
@@ -2713,7 +2612,7 @@ export class FirebaseDataService {
     }
 
     await updateDoc(doc(firestore, 'fishCaught', firebaseId), {
-      ...basePayload,
+      ...this.sanitizeFishUpdatePayload(basePayload),
       updatedAt: serverTimestamp()
     });
     return true;
@@ -3177,6 +3076,7 @@ export class FirebaseDataService {
 
   /**
    * Get all gear types from Firestore
+   * @deprecated Prefer userSettings.gearTypes for source of truth to avoid drift.
    */
   async getAllGearTypes(): Promise<string[]> {
     if (!this.isReady()) {
@@ -3198,6 +3098,7 @@ export class FirebaseDataService {
 
   /**
    * Create a new gear type in Firestore
+   * @deprecated Prefer updating userSettings.gearTypes; this collection path is being phased out.
    */
   async createGearType(name: string): Promise<string> {
     if (!this.isReady()) {
@@ -3222,6 +3123,7 @@ export class FirebaseDataService {
 
   /**
    * Update a gear type in Firestore
+   * @deprecated Prefer updating userSettings.gearTypes; this collection path is being phased out.
    */
   async updateGearType(id: string, newName: string): Promise<void> {
     if (!this.isReady()) {
@@ -3242,6 +3144,7 @@ export class FirebaseDataService {
 
   /**
    * Delete a gear type from Firestore
+   * @deprecated Prefer updating userSettings.gearTypes; this collection path is being phased out.
    */
   async deleteGearType(id: string): Promise<void> {
     if (!this.isReady()) {

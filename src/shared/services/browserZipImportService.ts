@@ -9,6 +9,7 @@
 
 import type { Trip, WeatherLog, FishCaught, ImportProgress } from "../types";
 import { firebaseDataService } from "./firebaseDataService";
+import { compressImage as coreCompressImage } from "../utils/imageCompression";
 import { databaseService } from "./databaseService";
 import { photoCacheService } from "./photoCacheService";
 import { auth, firestore } from "./firebase";
@@ -191,7 +192,7 @@ export class BrowserZipImportService {
   const strategy: ImportStrategy = options?.strategy ?? 'wipe';
   performance.mark('import-start');
   onProgress?.({ phase: 'importing', current: 0, total: 1, percent: 0, message: 'Writing data…' });
-  const importResult = await this.importLegacyData(extractResult.data, isAuthenticated, strategy);
+  const importResult = await this.importLegacyData(extractResult.data, isAuthenticated, strategy, onProgress);
   performance.mark('import-end');
 
       result.success = importResult.success;
@@ -559,7 +560,7 @@ export class BrowserZipImportService {
    * @param legacyData - The legacy data to import
    * @param isAuthenticated - Whether the user is authenticated
    */
-  private async importLegacyData(legacyData: LegacyDataStructure, isAuthenticated: boolean, strategy: ImportStrategy): Promise<ZipImportResult> {
+  private async importLegacyData(legacyData: LegacyDataStructure, isAuthenticated: boolean, strategy: ImportStrategy, onProgress?: (p: ImportProgress) => void): Promise<ZipImportResult> {
     const result: ZipImportResult = {
       success: true,
       tripsImported: 0,
@@ -615,6 +616,11 @@ export class BrowserZipImportService {
             }
 
             // Replace tackleItems with imported items to avoid duplicates
+            const keyToGearId = new Map<string, string>();
+            const nameToIds = new Map<string, string[]>();
+            const norm = (v?: string) => (v || '').trim().toLowerCase();
+            const mkKey = (d: any) => [norm(d.type), norm(d.brand), norm(d.name), norm(d.colour)].join('|');
+
             if (Array.isArray(legacyData.tacklebox) && legacyData.tacklebox.length > 0) {
               const q = query(collection(firestore, 'tackleItems'), where('userId', '==', uid));
               const snapshot = await getDocs(q);
@@ -634,21 +640,41 @@ export class BrowserZipImportService {
                   const rest = { ...(item || {}) } as Record<string, unknown>;
                   delete (rest as any).id;
                   const ref = doc(collection(firestore, 'tackleItems'));
-                  batch.set(ref, {
+                  const payload: any = {
                     ...rest,
                     userId: uid,
+                    gearId: ref.id,
                     createdAt: serverTimestamp(),
                     updatedAt: serverTimestamp(),
-                  });
+                  };
+                  batch.set(ref, payload);
+                  const key = mkKey(payload);
+                  if (key && !keyToGearId.has(key)) keyToGearId.set(key, ref.id);
+                  const nm = norm((payload as any).name);
+                  const arr = nameToIds.get(nm) || [];
+                  if (!arr.includes(ref.id)) arr.push(ref.id);
+                  nameToIds.set(nm, arr);
                 }
                 await batch.commit();
               }
+              // Attach mapping to legacyData for later fish mapping
+              (legacyData as any).__gearKeyToId = keyToGearId;
+              (legacyData as any).__nameToIds = nameToIds;
             }
           }
         }
       } catch (e) {
         DEV_WARN('Failed to persist gear types or tacklebox during legacy import:', e);
       }
+
+      // Compute totals for progress reporting across trips, weather logs, and fish catches
+      const totalUnits = (tripsToImport?.length || 0) + (weatherLogsToImport?.length || 0) + (fishCatchesToImport?.length || 0);
+      let doneUnits = 0;
+      const tick = (phase: string, message: string) => {
+        const current = Math.min(++doneUnits, totalUnits || 1);
+        const percent = totalUnits > 0 ? Math.round((current / totalUnits) * 100) : 100;
+        onProgress?.({ phase, current, total: totalUnits || 1, percent, message });
+      };
 
       if (isAuthenticated) {
         // Authenticated user - store in Firebase
@@ -668,6 +694,7 @@ export class BrowserZipImportService {
             }
             await firebaseDataService.upsertTripFromImport(trip as any);
             result.tripsImported++;
+            tick('importing', `Writing trips… (${result.tripsImported}/${tripsToImport.length})`);
           } catch (error) {
             result.errors.push(`Failed to import trip: ${error instanceof Error ? error.message : 'Unknown error'}`);
           }
@@ -678,6 +705,7 @@ export class BrowserZipImportService {
           try {
             await firebaseDataService.upsertWeatherLogFromImport(weatherLog as any);
             result.weatherLogsImported++;
+            tick('importing', `Writing weather… (${result.weatherLogsImported}/${weatherLogsToImport.length})`);
           } catch (error) {
             result.errors.push(`Failed to import weather log: ${error instanceof Error ? error.message : 'Unknown error'}`);
           }
@@ -686,6 +714,27 @@ export class BrowserZipImportService {
         // Import fish catches with photo data (ALWAYS upsert)
         for (const fishCatch of fishCatchesToImport) {
           try {
+            // Map legacy gear to gearIds using imported tackle
+            try {
+              const keyToGearId: Map<string, string> | undefined = (legacyData as any).__gearKeyToId;
+              const nameToIds: Map<string, string[]> | undefined = (legacyData as any).__nameToIds;
+              const norm = (v?: string) => (v || '').trim().toLowerCase();
+              const hashFNV1a = (str: string) => { let h=0x811c9dc5; for (let i=0;i<str.length;i++){ h^=str.charCodeAt(i); h=Math.imul(h,0x01000193);} return ('0000000'+(h>>>0).toString(16)).slice(-8); };
+              const selected: string[] = Array.isArray((fishCatch as any).gear) ? (fishCatch as any).gear : [];
+              const gearIds: string[] = [];
+              for (const g of selected) {
+                const s = norm(String(g));
+                let gid: string | undefined;
+                if (s.includes('|') && keyToGearId) gid = keyToGearId.get(s);
+                else if (nameToIds) {
+                  const ids = nameToIds.get(s) || [];
+                  gid = ids.length === 1 ? ids[0] : (ids[0] || undefined);
+                }
+                if (!gid) gid = `local-${hashFNV1a(s)}`;
+                if (!gearIds.includes(gid)) gearIds.push(gid);
+              }
+              if (gearIds.length) (fishCatch as any).gearIds = gearIds;
+            } catch {/* ignore */}
             // If fish catch has a photo reference, try to find and attach the actual photo data
             if (fishCatch.photo && typeof fishCatch.photo === 'string') {
               // Look for the photo in the imported photos collection
@@ -704,6 +753,7 @@ export class BrowserZipImportService {
 
             await firebaseDataService.upsertFishCaughtFromImport(fishCatch as any);
             result.fishCatchesImported++;
+            tick('importing', `Writing fish… (${result.fishCatchesImported}/${fishCatchesToImport.length})`);
           } catch (error) {
             result.errors.push(`Failed to import fish catch: ${error instanceof Error ? error.message : 'Unknown error'}`);
           }
@@ -727,6 +777,7 @@ export class BrowserZipImportService {
 
             await databaseService.createTrip(trip);
             result.tripsImported++;
+            tick('importing', `Writing trips… (${result.tripsImported}/${tripsToImport.length})`);
           } catch (error) {
             result.errors.push(`Failed to import trip: ${error instanceof Error ? error.message : 'Unknown error'}`);
           }
@@ -737,6 +788,7 @@ export class BrowserZipImportService {
           try {
             await databaseService.createWeatherLog(weatherLog);
             result.weatherLogsImported++;
+            tick('importing', `Writing weather… (${result.weatherLogsImported}/${weatherLogsToImport.length})`);
           } catch (error) {
             result.errors.push(`Failed to import weather log: ${error instanceof Error ? error.message : 'Unknown error'}`);
           }
@@ -745,6 +797,38 @@ export class BrowserZipImportService {
         // Import fish catches with photo data
         for (const fishCatch of fishCatchesToImport) {
           try {
+            // Map legacy gear to local gearIds for guest mode
+            try {
+              const items = Array.isArray(legacyData.tacklebox) ? legacyData.tacklebox : [];
+              const norm = (v?: string) => (v || '').trim().toLowerCase();
+              const mkKey = (d: any) => [norm(d.type), norm(d.brand), norm(d.name), norm(d.colour)].join('|');
+              const hashFNV1a = (str: string) => { let h=0x811c9dc5; for (let i=0;i<str.length;i++){ h^=str.charCodeAt(i); h=Math.imul(h,0x01000193);} return ('0000000'+(h>>>0).toString(16)).slice(-8); };
+              const keyToId = new Map<string, string>();
+              const nameToIds = new Map<string, string[]>();
+              for (const it of items) {
+                const key = mkKey(it);
+                const gid = (it as any).gearId || `local-${hashFNV1a(key)}`;
+                if (!keyToId.has(key)) keyToId.set(key, gid);
+                const nm = norm((it as any).name);
+                const arr = nameToIds.get(nm) || [];
+                if (!arr.includes(gid)) arr.push(gid);
+                nameToIds.set(nm, arr);
+              }
+              const selected: string[] = Array.isArray((fishCatch as any).gear) ? (fishCatch as any).gear : [];
+              const gearIds: string[] = [];
+              for (const g of selected) {
+                const s = norm(String(g));
+                let gid: string | undefined;
+                if (s.includes('|')) gid = keyToId.get(s);
+                else {
+                  const ids = nameToIds.get(s) || [];
+                  gid = ids.length === 1 ? ids[0] : (ids[0] || undefined);
+                }
+                if (!gid) gid = `local-${hashFNV1a(s)}`;
+                if (!gearIds.includes(gid)) gearIds.push(gid);
+              }
+              if (gearIds.length) (fishCatch as any).gearIds = gearIds;
+            } catch {/* ignore */}
             // If fish catch has a photo reference, try to find and attach the actual photo data
             if (fishCatch.photo && typeof fishCatch.photo === 'string') {
               // Look for the photo in the imported photos collection
@@ -763,6 +847,7 @@ export class BrowserZipImportService {
 
             await databaseService.createFishCaught(fishCatch);
             result.fishCatchesImported++;
+            tick('importing', `Writing fish… (${result.fishCatchesImported}/${fishCatchesToImport.length})`);
           } catch (error) {
             result.errors.push(`Failed to import fish catch: ${error instanceof Error ? error.message : 'Unknown error'}`);
           }
@@ -1168,7 +1253,7 @@ export class BrowserZipImportService {
       quality?: number;
       format?: 'jpeg' | 'png' | 'webp';
     } = {}
-  ): Promise<{ compressedData: Uint8Array; originalSize: number; compressedSize: number; compressionRatio: number }> {
+  ): Promise<{ compressedData: Uint8Array; originalSize: number; compressedSize: number; compressionRatio: number; mimeType: string }> {
 
     const defaultOptions = {
       maxWidth: 1080,
@@ -1179,148 +1264,39 @@ export class BrowserZipImportService {
 
     const config = { ...defaultOptions, ...options };
 
-    // Fallback for non-DOM environments (e.g., Vitest jsdom without Canvas/Image)
-    if (typeof document === 'undefined' || typeof Image === 'undefined') {
-      // Return original data unchanged; caching still benefits perf in tests
-      const originalSize = imageData.length;
-      const compressedSize = imageData.length;
-      return Promise.resolve({
-        compressedData: imageData,
+    const originalSize = imageData.length;
+    const inputMime = this.getMimeType(fileName);
+
+    try {
+      const maxDim = Math.min(config.maxWidth, config.maxHeight);
+      const targetMime = `image/${config.format}` as const;
+      const { bytes, mime } = await coreCompressImage(imageData, inputMime, {
+        maxDimension: maxDim,
+        quality: config.quality,
+        convertTo: targetMime as any,
+      });
+      const compressedSize = bytes.length;
+      const compressionRatio = ((originalSize - compressedSize) / originalSize) * 100;
+      return {
+        compressedData: bytes,
         originalSize,
         compressedSize,
-        compressionRatio: 0,
-      });
-    }
-
-    return new Promise((resolve) => {
-      const resolveIdentity = () => {
-        const originalSize = imageData.length;
-        const compressedSize = imageData.length;
-        resolve({
-          compressedData: imageData,
-          originalSize,
-          compressedSize,
-          compressionRatio: 0,
-        });
+        compressionRatio,
+        mimeType: mime || targetMime,
       };
-
-      try {
-        // Create blob from image data
-        const blob = new Blob([imageData as unknown as ArrayBuffer], { type: this.getMimeType(fileName) });
-
-        // Create image element for processing
-        const img = new Image();
-        const canvas = document.createElement('canvas');
-        let ctx: CanvasRenderingContext2D | null = null;
-        try {
-          ctx = canvas.getContext('2d');
-        } catch {
-          // jsdom may throw "Not implemented"; fall back to identity
-          return resolveIdentity();
-        }
-
-        if (!ctx) return resolveIdentity();
-
-        img.onload = () => {
-          try {
-            // Calculate new dimensions
-            const { width: newWidth, height: newHeight } = this.calculateDimensions(
-              img.width,
-              img.height,
-              config.maxWidth,
-              config.maxHeight
-            );
-
-            // Set canvas dimensions
-            canvas.width = newWidth;
-            canvas.height = newHeight;
-
-            // Draw and compress image
-            ctx.drawImage(img, 0, 0, newWidth, newHeight);
-
-            // Convert to desired format
-            const compressedBlob = canvas.toDataURL(`image/${config.format}`, config.quality);
-
-            // Convert back to Uint8Array
-            const base64Data = compressedBlob.split(',')[1];
-            const binaryString = atob(base64Data);
-            const compressedArray = new Uint8Array(binaryString.length);
-
-            for (let i = 0; i < binaryString.length; i++) {
-              compressedArray[i] = binaryString.charCodeAt(i);
-            }
-
-            const originalSize = imageData.length;
-            const compressedSize = compressedArray.length;
-            const compressionRatio = ((originalSize - compressedSize) / originalSize) * 100;
-
-            console.log(`Image compressed: ${fileName}`);
-            console.log(`  Original: ${(originalSize / 1024).toFixed(2)} KB`);
-            console.log(`  Compressed: ${(compressedSize / 1024).toFixed(2)} KB`);
-            console.log(`  Ratio: ${compressionRatio.toFixed(1)}% reduction`);
-            console.log(`  Dimensions: ${img.width}x${img.height} → ${newWidth}x${newHeight}`);
-
-            resolve({
-              compressedData: compressedArray,
-              originalSize,
-              compressedSize,
-              compressionRatio
-            });
-
-          } catch {
-            return resolveIdentity();
-          }
-        };
-
-        img.onerror = () => resolveIdentity();
-
-        // Create object URL for the image
-        const objectUrl = URL.createObjectURL(blob);
-        img.src = objectUrl;
-
-        // Clean up object URL after processing
-        setTimeout(() => {
-          URL.revokeObjectURL(objectUrl);
-        }, 1000);
-
-      } catch {
-        // Any setup failure -> identity
-        return resolveIdentity();
-      }
-    });
+    } catch {
+      // Fallback to identity
+      return {
+        compressedData: imageData,
+        originalSize,
+        compressedSize: originalSize,
+        compressionRatio: 0,
+        mimeType: inputMime,
+      };
+    }
   }
 
-  /**
-   * Calculate optimal dimensions maintaining aspect ratio
-   */
-  private calculateDimensions(
-    originalWidth: number,
-    originalHeight: number,
-    maxWidth: number,
-    maxHeight: number
-  ): { width: number; height: number } {
-
-    // If image is already within bounds, return original dimensions
-    if (originalWidth <= maxWidth && originalHeight <= maxHeight) {
-      return { width: originalWidth, height: originalHeight };
-    }
-
-    const aspectRatio = originalWidth / originalHeight;
-
-    let newWidth = maxWidth;
-    let newHeight = maxWidth / aspectRatio;
-
-    // If calculated height exceeds maxHeight, recalculate based on height
-    if (newHeight > maxHeight) {
-      newHeight = maxHeight;
-      newWidth = maxHeight * aspectRatio;
-    }
-
-    return {
-      width: Math.round(newWidth),
-      height: Math.round(newHeight)
-    };
-  }
+  // calculateDimensions removed (now handled by shared imageCompression)
 
   /**
    * Process images with compression
@@ -1403,7 +1379,7 @@ export class BrowserZipImportService {
 
             // Convert compressed data to base64
             const base64Data = this.arrayBufferToBase64(compressionResult.compressedData);
-            const mimeType = `image/${compressionOptions.format}`;
+            const mimeType = compressionResult.mimeType || `image/${compressionOptions.format}`;
             const dataUri = `data:${mimeType};base64,${base64Data}`;
 
             // Store in cache

@@ -364,17 +364,24 @@ class PhotoMigrationService {
       let mimeType = 'image/jpeg';
 
       if (fish.photo && fish.photo.startsWith('data:')) {
-        // Inline photo - convert to binary
-        const dataUrlMatch = fish.photo.match(/^data:([^;]+);base64,(.+)$/);
-        if (dataUrlMatch) {
-          mimeType = dataUrlMatch[1];
-          const base64Data = dataUrlMatch[2];
-          const binaryString = atob(base64Data);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
+        // Inline data URL handling (supports both base64 and utf8/plain)
+        const commaIndex = fish.photo.indexOf(',');
+        if (commaIndex > -1) {
+          const header = fish.photo.slice(5, commaIndex); // strip "data:"
+          const payload = fish.photo.slice(commaIndex + 1);
+          const headerParts = header.split(';');
+          mimeType = headerParts[0] || mimeType;
+
+          if (/;base64/i.test(header)) {
+            const binaryString = atob(payload);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+            photoData = bytes.buffer;
+          } else {
+            // Treat as UTF-8 text (e.g., data:image/svg+xml;utf8,<svg ...>)
+            const encoder = new TextEncoder();
+            photoData = encoder.encode(payload).buffer;
           }
-          photoData = bytes.buffer;
         }
       } else if (fish.photoPath) {
         // Firebase Storage photo - download and decrypt if needed

@@ -8,6 +8,9 @@ import { guestDataRetentionService } from '@shared/services/guestDataRetentionSe
 // Mock Firebase and other services
 vi.mock('@shared/services/firebase', () => ({
   auth: null, // Mock as null to simulate guest mode
+  firestore: undefined as any,
+  storage: undefined as any,
+  app: undefined as any,
 }));
 
 vi.mock('../src/services/firebaseDataService', () => ({

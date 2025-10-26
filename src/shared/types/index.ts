@@ -238,6 +238,8 @@ export interface FishCaught {
   weight: string;
   time: string;
   gear: string[];
+  // New stable references to gear items (Firestore doc IDs or generated IDs)
+  gearIds?: string[];
   details: string;
   // Legacy inline/base64 photo or URL (kept for backward compatibility)
   photo?: string;
@@ -252,6 +254,8 @@ export interface FishCaught {
 
 export interface TackleItem {
   id: number;
+  // Stable gear identifier (Firestore doc id for authenticated users; generated for guests)
+  gearId?: string;
   name: string;
   brand: string;
   type: string;

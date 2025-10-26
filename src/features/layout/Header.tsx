@@ -2,7 +2,7 @@ import type { FC, KeyboardEvent, ReactNode } from 'react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useThemeContext, useAuth } from '@app/providers';
 import { LoginModal } from '@features/auth';
-import { Container } from '@shared/components';
+import { Container, DataSyncStatus } from '@shared/components';
 import ContextualConfirmation from '@shared/components/ContextualConfirmation';
 import { useLogoutGuard } from '@shared/hooks/useLogoutGuard';
 
@@ -306,6 +306,9 @@ const Header: FC<HeaderProps> = ({
             >
               <i className={`fas ${isDark ? 'fa-sun' : 'fa-moon'} text-xs sm:text-sm`} />
             </button>
+            <div className="ml-2 px-2 py-1 rounded-md border hidden md:flex items-center" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--secondary-background)' }}>
+              <DataSyncStatus />
+            </div>
             <div className="relative" ref={authDropdownRef}>
               <button
                 ref={authTriggerRef}

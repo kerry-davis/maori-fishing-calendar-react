@@ -1,6 +1,6 @@
-import React, { useState, useCallback, useEffect } from "react";
-import { firebaseDataService } from "@shared/services/firebaseDataService";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { Button } from "@shared/components/Button";
+import ConfirmationDialog from '@shared/components/ConfirmationDialog';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "./Modal";
 import { useDatabaseService } from '../../app/providers/DatabaseContext';
 import { useAuth } from '../../app/providers/AuthContext';
@@ -8,6 +8,10 @@ import { useFirebaseTackleBox } from "@shared/hooks/useFirebaseTackleBox";
 import { storage } from "@shared/services/firebase";
 import { ref, deleteObject } from "firebase/storage";
 import type { FishCaught } from "@shared/types";
+import { getFishPhotoPreview } from "@shared/utils/photoPreviewUtils";
+import { getOrCreateGuestSessionId } from "@shared/services/guestSessionService";
+import { buildPhotoRemovalFields } from "@shared/utils/photoUpdateHelpers";
+import PhotoViewerModal from './PhotoViewerModal';
 
 export interface FishCatchModalProps {
   isOpen: boolean;
@@ -36,6 +40,9 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
     details: "",
     photo: "",
     photoPath: "",
+    photoUrl: "",
+    photoHash: "",
+    photoMime: "",
     encryptedMetadata: undefined as string | undefined,
   });
   const [validation, setValidation] = useState({
@@ -50,7 +57,186 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set());
+  const [fileInputKey, setFileInputKey] = useState(0);
+  const [photoViewer, setPhotoViewer] = useState<{
+    photoSrc?: string;
+    requiresAuth: boolean;
+    metadata: {
+      species?: string;
+      length?: string;
+      weight?: string;
+      time?: string;
+      date?: string;
+      location?: string;
+      water?: string;
+    };
+  } | null>(null);
+  const [tripDetails, setTripDetails] = useState<{ date?: string; location?: string; water?: string } | null>(null);
   const isEditing = fishId !== undefined;
+  const photoStatusRef = useRef<'unchanged' | 'uploaded' | 'deleted'>('unchanged');
+  const requiresAuthForExistingPhoto = !user && Boolean(formData.photoPath || formData.encryptedMetadata);
+  // Gear rename handling: ask for confirmation before removing stale gear
+  const [showStaleGearConfirm, setShowStaleGearConfirm] = useState(false);
+  const [staleGear, setStaleGear] = useState<string[]>([]);
+  const lastPromptSignatureRef = useRef<string | null>(null);
+
+  // Gear composite key helpers (type|brand|name|colour)
+  const norm = (v?: string) => (v || '').trim();
+  const normLower = (v?: string) => norm(v).toLowerCase();
+  const gearKey = (item: { type: string; brand: string; name: string; colour: string }) =>
+    `${norm(item.type)}|${norm(item.brand)}|${norm(item.name)}|${norm(item.colour)}`;
+  const gearKeyLower = (item: { type: string; brand: string; name: string; colour: string }) => gearKey(item).toLowerCase();
+  const entryLower = (value: string) => {
+    const str = String(value || '');
+    if (str.includes('|')) {
+      return str
+        .split('|')
+        .map(part => part.trim().toLowerCase())
+        .join('|');
+    }
+    return str.trim().toLowerCase();
+  };
+  const entryNameLower = (value: string) => {
+    const parts = String(value || '').split('|');
+    if (parts.length === 4) {
+      return parts[2]?.trim().toLowerCase() ?? '';
+    }
+    return normLower(value);
+  };
+  const selectedGearLookup = React.useMemo(() => {
+    const compositeSelections = new Set<string>();
+    const legacyNameCounts = new Map<string, number>();
+
+    for (const entry of formData.gear) {
+      if (!entry) continue;
+      const normalized = entryLower(entry);
+      if (!normalized) continue;
+      if (entry.includes('|')) {
+        compositeSelections.add(normalized);
+      } else {
+        const nameLower = normLower(entry);
+        legacyNameCounts.set(nameLower, (legacyNameCounts.get(nameLower) ?? 0) + 1);
+      }
+    }
+
+    const assignedNameCounts = new Map<string, number>();
+    const lookup = new Map<string, boolean>();
+
+    for (const item of tackleBox) {
+      const keyLower = gearKeyLower(item);
+      if (compositeSelections.has(keyLower)) {
+        lookup.set(keyLower, true);
+        continue;
+      }
+
+      const nameLower = normLower(item.name);
+      const totalForName = legacyNameCounts.get(nameLower) ?? 0;
+      if (totalForName > 0) {
+        const used = assignedNameCounts.get(nameLower) ?? 0;
+        if (used < totalForName) {
+          assignedNameCounts.set(nameLower, used + 1);
+          lookup.set(keyLower, true);
+          continue;
+        }
+      }
+
+      if (!lookup.has(keyLower)) {
+        lookup.set(keyLower, false);
+      }
+    }
+
+    return lookup;
+  }, [formData.gear, tackleBox]);
+
+  const isSelectedGear = useCallback((item: { type: string; brand: string; name: string; colour: string }) => {
+    const keyLower = gearKeyLower(item);
+    return selectedGearLookup.get(keyLower) ?? false;
+  }, [selectedGearLookup]);
+
+  const gearDisplayLookup = React.useMemo(() => {
+    const compositeMap = new Map<string, { name: string; brand: string; colour: string }>();
+    const nameMap = new Map<string, string>();
+
+    for (const item of tackleBox) {
+      const compositeLower = gearKeyLower(item);
+      compositeMap.set(compositeLower, {
+        name: norm(item.name),
+        brand: norm(item.brand),
+        colour: norm(item.colour),
+      });
+      const nameLower = normLower(item.name);
+      if (!nameMap.has(nameLower)) {
+        nameMap.set(nameLower, norm(item.name));
+      }
+    }
+
+    return { compositeMap, nameMap };
+  }, [tackleBox]);
+
+  const formatGearLabel = (raw: string): string => {
+    const value = String(raw || '');
+    if (!value) return '';
+
+    const normalizeComposite = (val: string) =>
+      val
+        .split('|')
+        .map(part => part.trim().toLowerCase())
+        .join('|');
+
+    const normalizeName = (val: string) => {
+      const parts = val.split('|');
+      if (parts.length === 4) {
+        return (parts[2] || '').trim().toLowerCase();
+      }
+      return val.trim().toLowerCase();
+    };
+
+    if (value.includes('|')) {
+      const compositeMatch = gearDisplayLookup.compositeMap.get(normalizeComposite(value));
+      if (compositeMatch) {
+        return [compositeMatch.name, compositeMatch.brand, compositeMatch.colour].filter(Boolean).join(' · ') || compositeMatch.name;
+      }
+    }
+
+    const nameMatch = gearDisplayLookup.nameMap.get(normalizeName(value));
+    if (nameMatch) {
+      return nameMatch;
+    }
+
+    if (value.includes('|')) {
+      const parts = value.split('|').map(part => part.trim());
+      if (parts.length === 4) {
+        const [, brand, name, colour] = parts;
+        return [name, brand, colour].filter(Boolean).join(' · ') || value.trim();
+      }
+    }
+
+    return value.trim();
+  };
+
+  useEffect(() => {
+    if (!formData.gear?.length) return;
+    const validNames = new Set(tackleBox.map(g => normLower(g.name)));
+    const validKeys = new Set(tackleBox.map(g => gearKeyLower(g)));
+    const invalid = formData.gear.filter((g) => {
+      const lower = entryLower(g);
+      if (validKeys.has(lower)) {
+        return false;
+      }
+      const nameLower = entryNameLower(g);
+      return !validNames.has(nameLower);
+    });
+    if (invalid.length > 0) {
+      const sig = invalid.slice().sort().join('|');
+      if (lastPromptSignatureRef.current !== sig) {
+        lastPromptSignatureRef.current = sig;
+        setStaleGear(invalid);
+        setShowStaleGearConfirm(true);
+      }
+    } else {
+      lastPromptSignatureRef.current = null;
+    }
+  }, [tackleBox, formData.gear]);
 
   const loadFishData = useCallback(async (id: string) => {
     setError(null);
@@ -66,8 +252,12 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
           details: fish.details,
           photo: fish.photo || "",
           photoPath: fish.photoPath || "",
+          photoUrl: fish.photoUrl || "",
+          photoHash: fish.photoHash || "",
+          photoMime: fish.photoMime || "",
           encryptedMetadata: fish.encryptedMetadata ?? undefined,
         });
+        photoStatusRef.current = 'unchanged';
       } else {
         setError('Fish catch not found');
       }
@@ -91,15 +281,50 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
           details: "",
           photo: "",
           photoPath: "",
+          photoUrl: "",
+          photoHash: "",
+          photoMime: "",
           encryptedMetadata: undefined,
         });
       }
+      photoStatusRef.current = 'unchanged';
       setError(null);
       setValidation({ isValid: true, errors: {} });
       setPhotoPreview(null);
       setUploadError(null);
     }
   }, [isOpen, isEditing, fishId, loadFishData]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchTripDetails = async () => {
+      try {
+        const trip = await db.getTripById(tripId);
+        if (isMounted) {
+          setTripDetails(trip ? { date: trip.date, location: trip.location, water: trip.water } : null);
+        }
+      } catch {
+        if (isMounted) {
+          setTripDetails(null);
+        }
+      }
+    };
+
+    if (isOpen) {
+      fetchTripDetails();
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [db, isOpen, tripId]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setPhotoViewer(null);
+      setTripDetails(null);
+    }
+  }, [isOpen]);
 
   // Cleanup photo preview URL when preview changes or component unmounts
   useEffect(() => {
@@ -110,40 +335,87 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
     };
   }, [photoPreview]);
 
-  // Async decryption for encrypted photos
   useEffect(() => {
-    let isMounted = true;
-    const tryDecryptPhoto = async () => {
-      if (formData.encryptedMetadata && formData.photoPath) {
-        setIsPhotoLoading(true);
-        try {
-          const result = await firebaseDataService.getDecryptedPhoto(formData.photoPath, formData.encryptedMetadata);
-          if (isMounted && result && result.data) {
-            const blob = new Blob([result.data], { type: result.mimeType });
-            const url = URL.createObjectURL(blob);
-            setPhotoPreview(url);
-          } else if (isMounted) {
-            setPhotoPreview(null);
-            setUploadError('Failed to decrypt photo.');
-          }
-        } catch (err) {
-          if (isMounted) {
-            setPhotoPreview(null);
-            setUploadError('Failed to decrypt photo.');
-          }
-        } finally {
-          if (isMounted) setIsPhotoLoading(false);
+    if (!isOpen) {
+      return;
+    }
+
+    if (photoStatusRef.current === 'uploaded') {
+      setIsPhotoLoading(false);
+      return;
+    }
+
+    if (photoStatusRef.current === 'deleted') {
+      setPhotoPreview(null);
+      setIsPhotoLoading(false);
+      return;
+    }
+
+    const hasPhotoSource = Boolean(formData.photoPath || formData.photoUrl || formData.photo);
+    if (!hasPhotoSource) {
+      setPhotoPreview(null);
+      setIsPhotoLoading(false);
+      return;
+    }
+
+    let isActive = true;
+    const fallbackSrc = formData.photoUrl || formData.photo || null;
+
+    const fetchPreview = async () => {
+      setIsPhotoLoading(true);
+
+      const fishForPreview: FishCaught = {
+        id: fishId ?? `${tripId}-preview`,
+        tripId,
+        species: '',
+        length: '',
+        weight: '',
+        time: '',
+        gear: [],
+        details: '',
+        photo: formData.photo || undefined,
+        photoUrl: formData.photoUrl || undefined,
+        photoPath: formData.photoPath || undefined,
+        photoHash: formData.photoHash || undefined,
+        photoMime: formData.photoMime || undefined,
+        encryptedMetadata: formData.encryptedMetadata || undefined,
+      };
+
+      try {
+        const preview = await getFishPhotoPreview(fishForPreview);
+        if (!isActive) return;
+        setPhotoPreview(preview ?? fallbackSrc);
+      } catch {
+        if (!isActive) return;
+        setPhotoPreview(fallbackSrc);
+      } finally {
+        if (isActive) {
+          setIsPhotoLoading(false);
         }
-      } else {
-        setIsPhotoLoading(false);
       }
     };
-    tryDecryptPhoto();
-    return () => { isMounted = false; };
-  }, [formData.encryptedMetadata, formData.photoPath]);
 
-  const handleInputChange = useCallback((field: string, value: string | string[]) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    void fetchPreview();
+
+    return () => {
+      isActive = false;
+    };
+  }, [
+    isOpen,
+    isEditing,
+    fishId,
+    tripId,
+    formData.photoPath,
+    formData.photoUrl,
+    formData.photo,
+    formData.photoHash,
+    formData.photoMime,
+    formData.encryptedMetadata,
+    user
+  ]);
+
+  const handleInputChange = useCallback((field: string, value: string | string[] | undefined) => {
+    setFormData(prev => ({ ...prev, [field]: value as any }));
 
     // Clear validation error for this field
     if (validation.errors[field]) {
@@ -159,6 +431,39 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
     // Clear general error
     if (error) setError(null);
   }, [error, validation.errors]);
+
+  const openPhotoViewer = useCallback((src?: string | null, requiresAuthFlag?: boolean) => {
+    if (!src && !requiresAuthFlag) {
+      return;
+    }
+    const formattedDate = (() => {
+      const raw = tripDetails?.date;
+      if (!raw) return undefined;
+      try {
+        return new Date(raw).toLocaleDateString('en-NZ', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+        });
+      } catch {
+        return raw;
+      }
+    })();
+
+    setPhotoViewer({
+      photoSrc: src ?? undefined,
+      requiresAuth: Boolean(requiresAuthFlag),
+      metadata: {
+        species: formData.species,
+        length: formData.length,
+        weight: formData.weight,
+        time: formData.time,
+        date: formattedDate,
+        location: tripDetails?.location,
+        water: tripDetails?.water,
+      },
+    });
+  }, [formData.length, formData.species, formData.time, formData.weight, tripDetails]);
 
   const validateForm = useCallback(() => {
     const errors: Record<string, string> = {};
@@ -186,42 +491,135 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
     setError(null);
 
     try {
-      const fishData: Omit<FishCaught, "id"> = {
+      const hashFNV1a = (str: string) => {
+        let hash = 0x811c9dc5;
+        for (let i = 0; i < str.length; i++) {
+          hash ^= str.charCodeAt(i);
+          hash = Math.imul(hash, 0x01000193);
+        }
+        return ('0000000' + (hash >>> 0).toString(16)).slice(-8);
+      };
+      const compositeToId = new Map<string, string>();
+      const compositeToDisplay = new Map<string, string>();
+      const nameToIds = new Map<string, string[]>();
+      const nameToDisplay = new Map<string, string>();
+      for (const it of tackleBox) {
+        const composite = gearKey(it);
+        const compositeLower = gearKeyLower(it);
+        const gid = it.gearId || `local-${hashFNV1a(compositeLower)}`;
+        if (!compositeToId.has(compositeLower)) compositeToId.set(compositeLower, gid);
+        if (!compositeToDisplay.has(compositeLower)) compositeToDisplay.set(compositeLower, composite);
+        const nmLower = normLower(it.name);
+        const arr = nameToIds.get(nmLower) || [];
+        if (!arr.includes(gid)) arr.push(gid);
+        nameToIds.set(nmLower, arr);
+        if (!nameToDisplay.has(nmLower)) {
+          nameToDisplay.set(nmLower, norm(it.name));
+        }
+      }
+
+      const canonicalGearEntries: string[] = [];
+      const resolvedGearIds: string[] = [];
+      const seenGearEntries = new Set<string>();
+      const seenGearIds = new Set<string>();
+
+      for (const rawEntry of formData.gear) {
+        if (!rawEntry) continue;
+        const normalizedValue = entryLower(rawEntry);
+        const nameLower = entryNameLower(rawEntry);
+
+        let canonicalEntry = rawEntry.includes('|')
+          ? (compositeToDisplay.get(normalizedValue) || rawEntry.split('|').map(part => part.trim()).join('|'))
+          : (nameToDisplay.get(nameLower) || norm(rawEntry));
+
+        const canonicalLower = entryLower(canonicalEntry);
+        if (!seenGearEntries.has(canonicalLower)) {
+          canonicalGearEntries.push(canonicalEntry);
+          seenGearEntries.add(canonicalLower);
+        }
+
+        let gid: string | undefined;
+        if (rawEntry.includes('|')) {
+          gid = compositeToId.get(normalizedValue);
+        } else {
+          const ids = nameToIds.get(nameLower) || [];
+          gid = ids.length === 1 ? ids[0] : (ids[0] || undefined);
+        }
+        if (!gid) {
+          gid = `local-${hashFNV1a(normalizedValue || nameLower)}`;
+        }
+        if (!seenGearIds.has(gid)) {
+          resolvedGearIds.push(gid);
+          seenGearIds.add(gid);
+        }
+      }
+      const fishDataBase: any = {
         tripId,
         species: formData.species.trim(),
         length: formData.length.trim(),
         weight: formData.weight.trim(),
         time: formData.time.trim(),
-        gear: formData.gear,
+        gear: canonicalGearEntries,
+        gearIds: resolvedGearIds,
         details: formData.details.trim(),
-        photo: formData.photo,
       };
 
-      // If the photo field contains a data URL, we want the server side
-      // `ensurePhotoInStorage` to move it into Storage and set `photoPath` and
-      // `encryptedMetadata`. Ensure we don't accidentally persist stale
-      // `photoPath`/`photoUrl`/`encryptedMetadata` from an earlier edit.
-      if (typeof formData.photo === 'string' && formData.photo.startsWith('data:')) {
-        // Explicitly ensure these fields are not set on the client payload so the
-        // server/data service takes ownership of storing and populating them.
-        (fishData as any).photoPath = '';
-        (fishData as any).photoUrl = '';
-        (fishData as any).encryptedMetadata = undefined;
-      }
-      // If the photo was cleared by the user, ensure storage references are removed
-      if (!formData.photo) {
-        (fishData as any).photoPath = '';
-        (fishData as any).photoUrl = '';
-        (fishData as any).encryptedMetadata = undefined;
+      // Only change photo if explicitly uploaded or deleted in this session
+      if (photoStatusRef.current === 'uploaded' && typeof formData.photo === 'string' && formData.photo.startsWith('data:')) {
+        fishDataBase.photo = formData.photo; // let service move to Storage
+      } else if (photoStatusRef.current === 'deleted') {
+        fishDataBase.photo = '';
+        fishDataBase.photoPath = '';
+        fishDataBase.photoUrl = '';
+        fishDataBase.photoHash = undefined;
+        fishDataBase.photoMime = undefined;
+        fishDataBase.encryptedMetadata = undefined;
+      } else {
+        if (typeof formData.photo === 'string' && formData.photo.trim() !== '') {
+          fishDataBase.photo = formData.photo;
+        }
+        if (typeof formData.photoPath === 'string' && formData.photoPath.trim() !== '') {
+          fishDataBase.photoPath = formData.photoPath;
+        }
+        if (typeof formData.photoUrl === 'string' && formData.photoUrl.trim() !== '') {
+          fishDataBase.photoUrl = formData.photoUrl;
+        }
+        if (typeof formData.photoHash === 'string' && formData.photoHash.trim() !== '') {
+          fishDataBase.photoHash = formData.photoHash;
+        }
+        if (typeof formData.photoMime === 'string' && formData.photoMime.trim() !== '') {
+          fishDataBase.photoMime = formData.photoMime;
+        }
+        if (typeof formData.encryptedMetadata === 'string' && formData.encryptedMetadata.trim() !== '') {
+          fishDataBase.encryptedMetadata = formData.encryptedMetadata;
+        }
       }
 
       let savedData: FishCaught;
       if (isEditing && fishId) {
-        await db.updateFishCaught({ id: fishId, ...fishData });
-        savedData = { id: fishId, ...fishData };
+        const payload: any = { id: fishId, ...fishDataBase };
+        if (!user) {
+          payload.guestSessionId = getOrCreateGuestSessionId();
+        }
+        Object.keys(payload).forEach((key) => {
+          if (payload[key] === undefined) {
+            delete payload[key];
+          }
+        });
+        await db.updateFishCaught(payload);
+        savedData = { id: fishId, ...payload };
       } else {
-        const newId = await db.createFishCaught(fishData);
-        savedData = { id: newId.toString(), ...fishData };
+        const payload: any = { ...fishDataBase };
+        if (!user) {
+          payload.guestSessionId = getOrCreateGuestSessionId();
+        }
+        Object.keys(payload).forEach((key) => {
+          if (payload[key] === undefined) {
+            delete payload[key];
+          }
+        });
+        const newId = await db.createFishCaught(payload);
+        savedData = { id: newId.toString(), ...payload };
       }
 
       if (onFishCaught) onFishCaught(savedData);
@@ -266,10 +664,15 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
           const dataUrl = reader.result as string;
           handleInputChange("photo", dataUrl);
           handleInputChange("photoPath", "");
+          handleInputChange("photoUrl", "");
+          handleInputChange("photoHash", "");
+          handleInputChange("photoMime", "");
+          handleInputChange("encryptedMetadata", undefined);
           setPhotoPreview(dataUrl);
           if (previewUrl.startsWith('blob:')) {
             URL.revokeObjectURL(previewUrl);
           }
+          photoStatusRef.current = 'uploaded';
         };
         reader.onerror = () => {
           // Clean up the preview URL on error
@@ -306,8 +709,13 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
 
         // Clear any existing storage-backed fields when replacing a photo
         handleInputChange("photoPath", "");
+        handleInputChange("photoUrl", "");
+        handleInputChange("photoHash", "");
+        handleInputChange("photoMime", "");
+        handleInputChange("encryptedMetadata", undefined);
         // Keep UI preview as the local data URL for instant feedback
         setPhotoPreview(dataUrl);
+        photoStatusRef.current = 'uploaded';
 
         // Revoke the temporary blob preview URL if created
         if (previewUrl.startsWith('blob:')) {
@@ -373,15 +781,31 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
 
   const selectAllInType = (type: string) => {
     const typeItems = filteredAndGroupedGear[type] || [];
-    const typeItemNames = typeItems.map(item => item.name);
-    const newSelection = [...new Set([...formData.gear, ...typeItemNames])];
-    handleInputChange("gear", newSelection);
+    const existing = new Set(formData.gear.map(entryLower));
+    const next = [...formData.gear];
+    for (const item of typeItems) {
+      const key = gearKey(item);
+      const lower = gearKeyLower(item);
+      if (!existing.has(lower)) {
+        next.push(key);
+        existing.add(lower);
+      }
+    }
+    handleInputChange("gear", next);
   };
 
   const clearAllInType = (type: string) => {
     const typeItems = filteredAndGroupedGear[type] || [];
-    const typeItemNames = typeItems.map(item => item.name);
-    const newSelection = formData.gear.filter(gear => !typeItemNames.includes(gear));
+    const keysLower = new Set(typeItems.map(item => gearKeyLower(item)));
+    const namesLower = new Set(typeItems.map(item => normLower(item.name)));
+    const newSelection = formData.gear.filter((gear) => {
+      const lower = entryLower(gear);
+      if (keysLower.has(lower)) {
+        return false;
+      }
+      const gearNameLower = entryNameLower(gear);
+      return !namesLower.has(gearNameLower);
+    });
     handleInputChange("gear", newSelection);
   };
 
@@ -520,7 +944,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                 <div className="space-y-3 max-h-96 overflow-y-auto">
                   {Object.entries(filteredAndGroupedGear).map(([type, items]) => {
                     const isExpanded = expandedTypes.has(type);
-                    const selectedCount = items.filter(item => formData.gear.includes(item.name)).length;
+                    const selectedCount = items.filter(item => isSelectedGear(item)).length;
                     const totalCount = items.length;
 
                     return (
@@ -580,32 +1004,72 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                                 key={item.id}
                                 className="flex items-center p-2 rounded hover:opacity-80 cursor-pointer transition-all"
                                 style={{
-                                  backgroundColor: formData.gear.includes(item.name) ? 'var(--button-primary)' : 'var(--input-background)',
-                                  border: formData.gear.includes(item.name) ? '1px solid var(--button-primary)' : '1px solid transparent'
+                                  backgroundColor: isSelectedGear(item) ? 'var(--button-primary)' : 'var(--input-background)',
+                                  border: isSelectedGear(item) ? '1px solid var(--button-primary)' : '1px solid transparent'
                                 }}
                               >
                                 <input
                                   type="checkbox"
-                                  checked={formData.gear.includes(item.name)}
+                                  checked={isSelectedGear(item)}
                                   onChange={(e) => {
                                     if (e.target.checked) {
-                                      handleInputChange("gear", [...formData.gear, item.name]);
+                                      const key = gearKey(item);
+                                      const lower = gearKeyLower(item);
+                                      const nameLower = normLower(item.name);
+                                      let replaced = false;
+                                      const next: string[] = [];
+
+                                      for (const entry of formData.gear) {
+                                        const candidateLower = entryLower(entry);
+                                        const candidateNameLower = entryNameLower(entry);
+                                        const compositeMatch = candidateLower === lower;
+                                        const legacyMatch = !entry.includes('|') && candidateNameLower === nameLower;
+
+                                        if (!replaced && (compositeMatch || legacyMatch)) {
+                                          replaced = true;
+                                          continue;
+                                        }
+
+                                        next.push(entry);
+                                      }
+
+                                      next.push(key);
+                                      handleInputChange("gear", next);
                                     } else {
-                                      handleInputChange("gear", formData.gear.filter(gear => gear !== item.name));
+                                      const lower = gearKeyLower(item);
+                                      const nameLower = normLower(item.name);
+                                      let removed = false;
+                                      const next: string[] = [];
+
+                                      for (const entry of formData.gear) {
+                                        const candidateLower = entryLower(entry);
+                                        const candidateNameLower = entryNameLower(entry);
+                                        const compositeMatch = candidateLower === lower;
+                                        const legacyMatch = !entry.includes('|') && candidateNameLower === nameLower;
+
+                                        if (!removed && (compositeMatch || legacyMatch)) {
+                                          removed = true;
+                                          continue;
+                                        }
+
+                                        next.push(entry);
+                                      }
+
+                                      handleInputChange("gear", next);
                                     }
                                   }}
                                   className="mr-3 w-4 h-4 text-white bg-transparent border-2 rounded focus:ring-0"
                                   style={{
-                                    borderColor: formData.gear.includes(item.name) ? 'white' : 'var(--border-color)',
-                                    backgroundColor: formData.gear.includes(item.name) ? 'var(--button-primary)' : 'transparent'
+                                    borderColor: isSelectedGear(item) ? 'white' : 'var(--border-color)',
+                                    backgroundColor: isSelectedGear(item) ? 'var(--button-primary)' : 'transparent'
                                   }}
                                 />
                                 <div className="flex-1">
-                                  <div className="text-sm font-medium" style={{ color: formData.gear.includes(item.name) ? 'white' : 'var(--primary-text)' }}>
-                                    {item.name}
+                                  <div className="text-sm font-medium" style={{ color: isSelectedGear(item) ? 'white' : 'var(--primary-text)' }}>
+                                    {item.name} {item.brand ? `· ${item.brand}` : ''} {item.colour ? `· ${item.colour}` : ''}
                                   </div>
-                                  <div className="text-xs" style={{ color: formData.gear.includes(item.name) ? 'rgba(255,255,255,0.8)' : 'var(--secondary-text)' }}>
-                                    {item.brand}
+                                  <div className="text-xs" style={{ color: isSelectedGear(item) ? 'rgba(255,255,255,0.8)' : 'var(--secondary-text)' }}>
+                                    {item.type}
                                   </div>
                                 </div>
                               </label>
@@ -647,7 +1111,10 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                         className="inline-flex items-center px-2 py-1 rounded-full text-xs"
                         style={{ backgroundColor: 'var(--chip-background)', color: 'var(--chip-text)' }}
                       >
-                        {gearItem}
+                        {(() => {
+                          const label = formatGearLabel(gearItem);
+                          return label || gearItem;
+                        })()}
                         <button
                           type="button"
                           onClick={() => handleInputChange("gear", formData.gear.filter((_, i) => i !== index))}
@@ -672,11 +1139,30 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                 <div className="mt-2">
                   <div className="text-sm font-medium mb-2" style={{ color: 'var(--secondary-text)' }}>Current Photo</div>
                   <div className="relative inline-block">
-                    <img src={formData.photo} alt="Current catch" className="w-32 h-32 object-cover rounded" style={{ border: '1px solid var(--border-color)' }} />
+                    <button
+                      type="button"
+                      onClick={() => openPhotoViewer(formData.photo || formData.photoUrl, requiresAuthForExistingPhoto)}
+                      className="relative block w-32 h-32 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      style={{ border: '1px solid var(--border-color)', overflow: 'hidden' }}
+                      title="View photo"
+                    >
+                      <img
+                        src={formData.photo}
+                        alt="Current catch"
+                        className="w-full h-full object-cover"
+                      />
+                      {requiresAuthForExistingPhoto && (
+                        <div className="absolute inset-0 flex items-center justify-center"
+                             style={{ backgroundColor: 'rgba(17,24,39,0.6)', color: 'white', border: '1px solid var(--border-color)' }}>
+                          <span className="text-[10px] font-medium">🔒 Sign in</span>
+                        </div>
+                      )}
+                    </button>
+                    {(user || !formData.photoPath) && (
                     <button
                       type="button"
                       onClick={async () => {
-                        if (formData.photoPath) {
+                        if (user && formData.photoPath) {
                           try {
                             const storageRef = ref(storage, formData.photoPath);
                             await deleteObject(storageRef);
@@ -684,67 +1170,77 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                             console.warn('Failed to delete photo from storage:', err);
                           }
                         }
-                        handleInputChange("photo", "");
-                        handleInputChange("photoPath", "");
+                        const removal = buildPhotoRemovalFields();
+                        handleInputChange("photo", removal.photo);
+                        handleInputChange("photoPath", removal.photoPath);
+                        handleInputChange("photoUrl", removal.photoUrl);
+                        handleInputChange("photoHash", removal.photoHash);
+                        handleInputChange("photoMime", removal.photoMime);
+                        handleInputChange("encryptedMetadata", removal.encryptedMetadata);
                         setPhotoPreview(null);
                         setUploadError(null);
+                        setFileInputKey((k) => k + 1);
+                        photoStatusRef.current = 'deleted';
                       }}
                       className="absolute top-2 right-2 btn btn-danger px-2 py-1 text-xs"
                     >
                       Delete Photo
-                    </button>
+                    </button>)}
                   </div>
                 </div>
               )}
 
               {/* Photo Preview for newly selected or decrypted photos */}
               <div className="mt-2">
+                {(isPhotoLoading || isUploadingPhoto || uploadError || photoPreview) && (
                 <div className="text-sm font-medium mb-2" style={{ color: 'var(--secondary-text)' }}>
-                  {isPhotoLoading || isUploadingPhoto
-                    ? 'Loading Photo...'
-                    : uploadError
-                    ? 'Upload Failed'
-                    : photoPreview
-                    ? 'Selected Photo'
-                    : 'No Photo'}
-                </div>
+                    {isPhotoLoading || isUploadingPhoto ? 'Loading Photo...' : uploadError ? 'Upload Failed' : photoPreview ? 'Selected Photo' : ''}
+                  </div>
+                )}
                 <div className="relative inline-block">
                   {isPhotoLoading ? (
                     <div className="flex items-center justify-center w-32 h-32 bg-gray-100 dark:bg-gray-700 rounded">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
                     </div>
                   ) : photoPreview ? (
-                    <img
-                      src={photoPreview}
-                      alt="Selected catch"
-                      className={`w-32 h-32 object-cover rounded ${uploadError ? 'opacity-50' : ''}`}
-                      style={{ border: `1px solid ${uploadError ? 'var(--error-border)' : 'var(--border-color)'}` }}
-                    />
-                  ) : (
-                    <div className="flex items-center justify-center w-32 h-32 bg-gray-100 dark:bg-gray-700 rounded">
-                      <span className="text-gray-400">No photo</span>
-                    </div>
-                  )}
+                    <button
+                      type="button"
+                      onClick={() => openPhotoViewer(photoPreview, requiresAuthForExistingPhoto)}
+                      className={`relative block w-32 h-32 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${uploadError ? 'opacity-50' : ''}`}
+                      style={{ border: `1px solid ${uploadError ? 'var(--error-border)' : 'var(--border-color)'}`, overflow: 'hidden' }}
+                      title="View photo"
+                    >
+                      <img
+                        src={photoPreview}
+                        alt="Selected catch"
+                        className="w-full h-full object-cover"
+                      />
+                      {requiresAuthForExistingPhoto && (
+                        <div className="absolute inset-0 flex items-center justify-center"
+                             style={{ backgroundColor: 'rgba(17,24,39,0.6)', color: 'white', border: '1px solid var(--border-color)' }}>
+                          <span className="text-[10px] font-medium">🔒 Sign in</span>
+                        </div>
+                      )}
+                    </button>
+                  ) : null}
                   {photoPreview && !isPhotoLoading && (
                     <button
                       type="button"
                       onClick={() => {
-                        // Clean up the preview URL to prevent memory leaks
                         if (photoPreview && photoPreview.startsWith('blob:')) {
                           URL.revokeObjectURL(photoPreview);
                         }
                         setPhotoPreview(null);
                         setUploadError(null);
-                        // Also clear selected photo from form state so it won't be saved
-                        handleInputChange("photo", "");
-                        handleInputChange("photoPath", "");
-                        // Clear the file input properly
-                        const fileInput = document.getElementById('photo-upload') as HTMLInputElement;
-                        if (fileInput) {
-                          fileInput.value = '';
-                          // Force re-render to ensure file input is cleared across all browsers
-                          fileInput.replaceWith(fileInput.cloneNode(true));
-                        }
+                        const removal = buildPhotoRemovalFields();
+                        handleInputChange("photo", removal.photo);
+                        handleInputChange("photoPath", removal.photoPath);
+                        handleInputChange("photoUrl", removal.photoUrl);
+                        handleInputChange("photoHash", removal.photoHash);
+                        handleInputChange("photoMime", removal.photoMime);
+                        handleInputChange("encryptedMetadata", removal.encryptedMetadata);
+                        setFileInputKey((k) => k + 1);
+                        photoStatusRef.current = 'deleted';
                       }}
                       className="absolute top-2 right-2 btn btn-danger px-2 py-1 text-xs"
                     >
@@ -770,7 +1266,7 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                     <div className="text-sm" style={{ color: 'var(--secondary-text)' }}>{isUploadingPhoto ? "Uploading..." : "Upload New Photo"}</div>
                   </div>
                 </button>
-                <input type="file" id="photo-upload" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+                <input key={fileInputKey} type="file" id="photo-upload" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
               </div>
             </div>
 
@@ -807,6 +1303,37 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
           </div>
         </ModalFooter>
       </Modal>
+
+      <ConfirmationDialog
+        isOpen={showStaleGearConfirm}
+        title="Remove unavailable gear?"
+        message={staleGear.length > 1
+          ? `The following gear item names are no longer in your tackle box: ${staleGear.join(', ')}. Remove them from this catch?`
+          : `"${staleGear[0] || ''}" is no longer in your tackle box. Remove it from this catch?`}
+        confirmText="Remove"
+        cancelText="Keep"
+        onConfirm={() => {
+          setFormData(prev => ({ ...prev, gear: prev.gear.filter(g => !staleGear.includes(g)) }));
+          setShowStaleGearConfirm(false);
+          setStaleGear([]);
+        }}
+        onCancel={() => {
+          setShowStaleGearConfirm(false);
+          setStaleGear([]);
+        }}
+        variant="warning"
+        overlayStyle="blur"
+      />
+
+      {photoViewer && (
+        <PhotoViewerModal
+          isOpen={true}
+          photoSrc={photoViewer.photoSrc}
+          requiresAuth={photoViewer.requiresAuth}
+          metadata={photoViewer.metadata}
+          onClose={() => setPhotoViewer(null)}
+        />
+      )}
     </>
   );
 };

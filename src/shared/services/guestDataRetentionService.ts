@@ -107,7 +107,7 @@ class GuestDataRetentionService {
   /**
    * Attempt to save to IndexedDB, fallback to localStorage
    */
-  private async saveToStorage(state: GuestStorageState): Promise<boolean> {
+  private async saveToStorage(state: GuestStorageState, options?: { replace?: boolean }): Promise<boolean> {
     try {
       // Try IndexedDB first - save individual sessions for better performance
       if (this.db) {
@@ -151,7 +151,30 @@ class GuestDataRetentionService {
     // Fallback to localStorage with quota check
     try {
       if (window.localStorage) {
-        const saveResult = saveToLocalStorage(this.storageKey, state);
+        const replace = options?.replace === true;
+        let stateToPersist = state;
+        if (!replace) {
+          // Merge with any existing state to reduce race conditions from concurrent saves
+          try {
+            const existingRaw = window.localStorage.getItem(this.storageKey);
+            if (existingRaw) {
+              const existing = JSON.parse(existingRaw) as GuestStorageState;
+              if (existing && typeof existing === 'object') {
+                const mergedSessions = { ...(existing.sessions || {}), ...(state.sessions || {}) };
+                const mergedOrder = Array.from(new Set([...(existing.sessionOrder || []), ...(state.sessionOrder || [])]));
+                stateToPersist = {
+                  activeSessionId: state.activeSessionId ?? existing.activeSessionId ?? null,
+                  sessions: mergedSessions,
+                  sessionOrder: mergedOrder,
+                };
+              }
+            }
+          } catch {
+            // ignore merge issues, fall back to provided state
+          }
+        }
+
+        const saveResult = saveToLocalStorage(this.storageKey, stateToPersist);
         if (saveResult.success) {
           DEV_LOG('[Guest Data Retention] Data saved to localStorage');
           return true;
@@ -354,7 +377,7 @@ class GuestDataRetentionService {
       state.activeSessionId = null;
     }
     
-    await this.saveToStorage(state);
+    await this.saveToStorage(state, { replace: true });
   }
 
   /**

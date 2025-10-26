@@ -29,6 +29,7 @@ import {
   PWAInstallPrompt,
   PWAUpdateNotification,
   OfflineIndicator,
+  SyncToast,
 } from "@features/pwa";
 import { SuccessToast } from "@features/auth";
 import { EncryptionMigrationStatus } from '@features/encryption';
@@ -465,6 +466,9 @@ function AppContent() {
 
         {/* Authentication Success Toast */}
         <SuccessToast />
+
+        {/* Sync completion toast */}
+        <SyncToast />
 
         {/* Development Debug Components */}
         {/* Uncomment for migration verification debugging */}

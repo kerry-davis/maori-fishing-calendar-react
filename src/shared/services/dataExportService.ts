@@ -22,6 +22,35 @@ import {
  * Maintains compatibility with existing vanilla JS data formats
  */
 export class DataExportService {
+  // Lightweight async pool to limit concurrency
+  private async runWithConcurrency<T>(items: T[], limit: number, worker: (item: T, index: number) => Promise<void>): Promise<void> {
+    const queue = items.map((item, index) => ({ item, index }));
+    const runners: Promise<void>[] = [];
+    const runNext = async (): Promise<void> => {
+      const next = queue.shift();
+      if (!next) return;
+      try {
+        await worker(next.item, next.index);
+      } finally {
+        await runNext();
+      }
+    };
+    const size = Math.max(1, Math.min(limit, queue.length || limit));
+    for (let i = 0; i < size; i++) {
+      runners.push(runNext());
+    }
+    await Promise.all(runners);
+  }
+
+  private arrayBufferToBase64(buffer: ArrayBuffer): string {
+    let binary = '';
+    const bytes = new Uint8Array(buffer);
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  }
+
   // class body
   // Utility to emit progress with ETA based on start time and completed units
   private emitProgress(
@@ -44,8 +73,10 @@ export class DataExportService {
   /**
    * Export all data as a ZIP file containing JSON data and photos
    */
-  async exportDataAsZip(): Promise<Blob> {
+  async exportDataAsZip(onProgress?: (p: import("../types").ImportProgress) => void): Promise<Blob> {
     DEV_LOG("Exporting data as a zip file...");
+    const start = performance.now?.() ?? Date.now();
+    this.emitProgress(onProgress, 'collecting', 0, 3, start, 'Collecting data…');
 
     try {
       // Get all data from Firebase (primary) with fallback to IndexedDB
@@ -54,10 +85,45 @@ export class DataExportService {
         firebaseDataService.isReady() ? firebaseDataService.getAllWeatherLogs() : databaseService.getAllWeatherLogs(),
         firebaseDataService.isReady() ? firebaseDataService.getAllFishCaught() : databaseService.getAllFishCaught(),
       ]);
+      this.emitProgress(onProgress, 'collecting', 1, 3, start, 'Collected data');
 
-      // Get tackle box data from Firebase hooks (with localStorage fallback)
-      const tacklebox = this.getLocalStorageData("tacklebox", []);
+      // Get tackle box data
       const gearTypes = this.getLocalStorageData("gearTypes", []);
+      const uid = auth?.currentUser?.uid;
+      const norm = (v?: string) => (v || '').trim().toLowerCase();
+      const mkKey = (d: any) => [norm(d.type), norm(d.brand), norm(d.name), norm(d.colour)].join('|');
+      const hashFNV1a = (str: string) => { let h=0x811c9dc5; for (let i=0;i<str.length;i++){ h^=str.charCodeAt(i); h=Math.imul(h,0x01000193);} return ('0000000'+(h>>>0).toString(16)).slice(-8); };
+      const stableNumericId = (str: string) => { let h=0x811c9dc5; for (let i=0;i<str.length;i++){ h^=str.charCodeAt(i); h=Math.imul(h,0x01000193);} return (h>>>0); };
+
+      let tacklebox: any[] = [];
+      try {
+        if (uid && firestore) {
+          // Authenticated export: read tackle items directly from Firestore to include gearId (doc.id)
+          const snapshot = await getDocs(query(collection(firestore, 'tackleItems'), where('userId', '==', uid)));
+          tacklebox = snapshot.docs.map(d => {
+            const data: any = d.data();
+            return {
+              id: stableNumericId(d.id),
+              gearId: d.id,
+              name: data.name || '',
+              brand: data.brand || '',
+              type: data.type || '',
+              colour: data.colour || ''
+            };
+          });
+        } else {
+          // Guest export: use localStorage and synthesize stable gearId matching catch gearIds
+          const local = this.getLocalStorageData('tacklebox', []);
+          tacklebox = Array.isArray(local) ? local.map((it: any) => ({
+            ...it,
+            gearId: it.gearId || `local-${hashFNV1a(mkKey(it))}`
+          })) : [];
+        }
+      } catch (e) {
+        // Fallback to localStorage if Firestore read fails
+        const local = this.getLocalStorageData('tacklebox', []);
+        tacklebox = Array.isArray(local) ? local : [];
+      }
 
       // Create export data container matching original format
       const exportDataContainer = {
@@ -76,32 +142,65 @@ export class DataExportService {
       const zip = new JSZip();
       const photosFolder = zip.folder("photos");
 
-      // Add photos to ZIP if they exist
+      // Add photos to ZIP if they exist (supports inline, Storage-backed, and encrypted photos)
       if (fishCaught && photosFolder) {
-        fishCaught.forEach((fish, index) => {
-          if (fish.photo && fish.photo.startsWith("data:image")) {
-            try {
-              // Extract base64 data and determine file extension
-              const [header, base64Data] = fish.photo.split(",");
+        const concurrency = 4;
+        let done = 0;
+        const total = fishCaught.length;
+        await this.runWithConcurrency(fishCaught, concurrency, async (fish, index) => {
+          try {
+            // 1) Inline data URL
+            if (fish.photo && typeof fish.photo === 'string' && fish.photo.startsWith('data:image')) {
+              const [header, base64Data] = fish.photo.split(',');
               const mimeMatch = header.match(/data:image\/([^;]+)/);
-              const extension = mimeMatch ? mimeMatch[1] : "jpg";
-
-              // Create filename
+              const extension = mimeMatch ? mimeMatch[1] : 'jpg';
               const filename = `fish_${fish.id || index}_${Date.now()}.${extension}`;
-
-              // Add photo to ZIP
               photosFolder.file(filename, base64Data, { base64: true });
-
-              // Update fish record to reference photo filename
-              fish.photo = filename;
-            } catch (error) {
-              DEV_LOG(
-                `Failed to process photo for fish ${fish.id}:`,
-                error,
-              );
-              // Remove invalid photo data
-              delete fish.photo;
+              (fish as any).photo = filename;
+              return;
             }
+
+            // 2) Storage-backed (possibly encrypted)
+            const path = (fish as any).photoPath as string | undefined;
+            const encryptedMetadata = (fish as any).encryptedMetadata as string | undefined;
+            if (path) {
+              try {
+                const res = await firebaseDataService.getDecryptedPhoto(path, encryptedMetadata);
+                if (res && res.data) {
+                  const base64 = this.arrayBufferToBase64(res.data);
+                  const mime = res.mimeType || 'image/jpeg';
+                  const extension = mime.split('/')[1] || 'jpg';
+                  const filename = `fish_${fish.id || index}_${Date.now()}.${extension}`;
+                  photosFolder.file(filename, base64, { base64: true });
+                  (fish as any).photo = filename;
+                  return;
+                }
+              } catch (e) {
+                // fall through to photoUrl fetch
+              }
+            }
+
+            // 3) Public URL fallback
+            const url = (fish as any).photoUrl as string | undefined;
+            if (url) {
+              try {
+                const resp = await fetch(url);
+                if (resp.ok) {
+                  const buf = await resp.arrayBuffer();
+                  const contentType = resp.headers.get('content-type') || 'image/jpeg';
+                  const base64 = this.arrayBufferToBase64(buf);
+                  const extension = contentType.split('/')[1] || 'jpg';
+                  const filename = `fish_${fish.id || index}_${Date.now()}.${extension}`;
+                  photosFolder.file(filename, base64, { base64: true });
+                  (fish as any).photo = filename;
+                  return;
+                }
+              } catch {/* ignore */}
+            }
+          } catch (error) {
+            DEV_LOG(`Failed to process photo for fish ${fish.id}:`, error);
+          } finally {
+            done++; this.emitProgress(onProgress, 'photos', done, total, start, `Packing photos… (${done}/${total})`);
           }
         });
       }
@@ -110,7 +209,11 @@ export class DataExportService {
       zip.file("data.json", JSON.stringify(exportDataContainer, null, 2));
 
       // Generate ZIP blob
-      const content = await zip.generateAsync({ type: "blob" });
+      const content = await zip.generateAsync({ type: "blob" }, (meta) => {
+        const pct = Math.max(0, Math.min(100, Math.round(meta.percent || 0)));
+        this.emitProgress(onProgress, 'zipping', pct, 100, start, `Zipping… ${pct}%`);
+      });
+      this.emitProgress(onProgress, 'finalizing', 1, 1, start, 'Done');
 
       DEV_LOG("Data export completed successfully");
       return content;
@@ -125,8 +228,10 @@ export class DataExportService {
   /**
    * Export all data as CSV files in a ZIP archive
    */
-  async exportDataAsCSV(): Promise<Blob> {
+  async exportDataAsCSV(onProgress?: (p: import("../types").ImportProgress) => void): Promise<Blob> {
     DEV_LOG("Exporting data as CSV...");
+    const start = performance.now?.() ?? Date.now();
+    this.emitProgress(onProgress, 'collecting', 0, 3, start, 'Collecting data…');
 
     try {
       // Get all data from Firebase (primary) with fallback to IndexedDB
@@ -135,6 +240,7 @@ export class DataExportService {
         firebaseDataService.isReady() ? firebaseDataService.getAllWeatherLogs() : databaseService.getAllWeatherLogs(),
         firebaseDataService.isReady() ? firebaseDataService.getAllFishCaught() : databaseService.getAllFishCaught(),
       ]);
+      this.emitProgress(onProgress, 'collecting', 1, 3, start, 'Collected data');
 
       // Create ZIP file
       const zip = new JSZip();
@@ -152,59 +258,84 @@ export class DataExportService {
         zip.file("weather.csv", weatherCsv);
       }
 
-      // Export fish caught as CSV (with photo handling)
+      // Export fish caught as CSV (with photo handling from inline, Storage, or URL)
       if (fishCaught.length > 0) {
-        const fishDataForCsv = fishCaught.map((fish, index) => {
-          const fishCopy = { ...fish };
+        // Preprocess photos with limited concurrency
+        const concurrency = 4;
+        const processed: any[] = new Array(fishCaught.length);
 
-          // Handle gear array - convert to string
+        let done = 0;
+        const total = fishCaught.length;
+        await this.runWithConcurrency(fishCaught, concurrency, async (fish, index) => {
+          const fishCopy: any = { ...fish };
+          // Gear stringification
           if (Array.isArray(fishCopy.gear)) {
-            (fishCopy as any).gear = fishCopy.gear.join(", ");
+            fishCopy.gear = fishCopy.gear.join(', ');
           }
 
-          // Handle photos
-          if (
-            fishCopy.photo &&
-            fishCopy.photo.startsWith("data:image") &&
-            photosFolder
-          ) {
-            try {
-              // Extract base64 data and determine file extension
-              const [header, base64Data] = fishCopy.photo.split(",");
+          let fileAdded = false;
+          try {
+            if (fishCopy.photo && typeof fishCopy.photo === 'string' && fishCopy.photo.startsWith('data:image') && photosFolder) {
+              const [header, base64Data] = fishCopy.photo.split(',');
               const mimeMatch = header.match(/data:image\/([^;]+)/);
-              const extension = mimeMatch ? mimeMatch[1] : "jpg";
-
-              // Create filename
+              const extension = mimeMatch ? mimeMatch[1] : 'jpg';
               const filename = `fish_${fish.id || index}_${Date.now()}.${extension}`;
-
-              // Add photo to ZIP
               photosFolder.file(filename, base64Data, { base64: true });
-
-              // Set photo filename in CSV data
-              (fishCopy as any).photo_filename = filename;
-            } catch (error) {
-              DEV_LOG(
-                `Failed to process photo for fish ${fish.id}:`,
-                error,
-              );
-              (fishCopy as any).photo_filename = "";
+              fishCopy.photo_filename = filename;
+              fileAdded = true;
+            } else if (photosFolder) {
+              const path = fishCopy.photoPath as string | undefined;
+              const enc = fishCopy.encryptedMetadata as string | undefined;
+              if (path) {
+                try {
+                  const res = await firebaseDataService.getDecryptedPhoto(path, enc);
+                  if (res && res.data) {
+                    const base64 = this.arrayBufferToBase64(res.data);
+                    const mime = res.mimeType || 'image/jpeg';
+                    const extension = mime.split('/')[1] || 'jpg';
+                    const filename = `fish_${fish.id || index}_${Date.now()}.${extension}`;
+                    photosFolder.file(filename, base64, { base64: true });
+                    fishCopy.photo_filename = filename;
+                    fileAdded = true;
+                  }
+                } catch {/* ignore */}
+              }
+              if (!fileAdded && fishCopy.photoUrl) {
+                try {
+                  const resp = await fetch(fishCopy.photoUrl);
+                  if (resp.ok) {
+                    const buf = await resp.arrayBuffer();
+                    const ct = resp.headers.get('content-type') || 'image/jpeg';
+                    const base64 = this.arrayBufferToBase64(buf);
+                    const extension = ct.split('/')[1] || 'jpg';
+                    const filename = `fish_${fish.id || index}_${Date.now()}.${extension}`;
+                    photosFolder.file(filename, base64, { base64: true });
+                    fishCopy.photo_filename = filename;
+                    fileAdded = true;
+                  }
+                } catch {/* ignore */}
+              }
             }
-          } else {
-            (fishCopy as any).photo_filename = "";
+          } catch (e) {
+            DEV_LOG(`Failed to process photo for fish ${fish.id}:`, e);
           }
 
-          // Remove the large base64 string from CSV
-          delete fishCopy.photo;
-
-          return fishCopy;
+          if (!fileAdded) fishCopy.photo_filename = '';
+          delete fishCopy.photo; // remove inline base64 from CSV
+          processed[index] = fishCopy;
+          done++; this.emitProgress(onProgress, 'photos', done, total, start, `Packing photos… (${done}/${total})`);
         });
 
-        const fishCsv = Papa.unparse(fishDataForCsv);
-        zip.file("fish.csv", fishCsv);
+        const fishCsv = Papa.unparse(processed);
+        zip.file('fish.csv', fishCsv);
       }
 
       // Generate ZIP blob
-      const content = await zip.generateAsync({ type: "blob" });
+      const content = await zip.generateAsync({ type: "blob" }, (meta) => {
+        const pct = Math.max(0, Math.min(100, Math.round(meta.percent || 0)));
+        this.emitProgress(onProgress, 'zipping', pct, 100, start, `Zipping… ${pct}%`);
+      });
+      this.emitProgress(onProgress, 'finalizing', 1, 1, start, 'Done');
 
       DEV_LOG("CSV export completed successfully");
       return content;
@@ -553,6 +684,15 @@ export class DataExportService {
     }
 
     // If tacklebox items are present, mirror them into Firestore for authenticated users
+    // Build a composite-key -> gearId mapping while inserting tackle items
+    const keyToGearId = new Map<string, string>();
+    const norm = (v?: string) => (v || '').trim().toLowerCase();
+    const mkKey = (d: any) => [norm(d.type), norm(d.brand), norm(d.name), norm(d.colour)].join('|');
+    const hashFNV1a = (str: string) => {
+      let hash = 0x811c9dc5;
+      for (let i = 0; i < str.length; i++) { hash ^= str.charCodeAt(i); hash = Math.imul(hash, 0x01000193); }
+      return ('0000000' + (hash >>> 0).toString(16)).slice(-8);
+    };
     try {
       const uid = auth?.currentUser?.uid;
       const items: any[] | undefined = data.localStorage?.tacklebox;
@@ -579,12 +719,16 @@ export class DataExportService {
             const rest = { ...(item || {}) } as Record<string, unknown>;
             delete (rest as any).id;
             const ref = doc(collection(firestore, "tackleItems"));
-            batch.set(ref, {
+            const payload = {
               ...rest,
               userId: uid,
+              gearId: ref.id,
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
-            });
+            } as any;
+            batch.set(ref, payload);
+            const key = mkKey(payload);
+            if (key && !keyToGearId.has(key)) keyToGearId.set(key, ref.id);
           }
           await batch.commit();
         }
@@ -631,6 +775,31 @@ export class DataExportService {
 
     if (dbData.fish_caught && Array.isArray(dbData.fish_caught)) {
       for (const fish of dbData.fish_caught) {
+        // Map legacy gear strings/composites to gearIds using newly inserted tackle items
+        try {
+          const selected: string[] = Array.isArray(fish.gear) ? fish.gear : [];
+          const gearIds: string[] = [];
+          for (const g of selected) {
+            const s = norm(String(g));
+            let gid: string | undefined;
+            if (s.includes('|')) {
+              // incoming composite may be name-first; normalize to type|brand|name|colour used by mkKey
+              const parts = s.split('|').map(p => norm(p));
+              const key = parts.length === 4 ? [parts[0], parts[1], parts[2], parts[3]].join('|')
+                : s;
+              gid = keyToGearId.get(key);
+            } else {
+              // name-only: find first matching by name across key map
+              for (const [k, id] of keyToGearId.entries()) {
+                const name = k.split('|')[2];
+                if (name === s) { gid = id; break; }
+              }
+            }
+            if (!gid) gid = `local-${hashFNV1a(s)}`;
+            if (!gearIds.includes(gid)) gearIds.push(gid);
+          }
+          if (gearIds.length) (fish as any).gearIds = gearIds;
+        } catch {/* ignore mapping failures */}
         await ((firebaseDataService as any).upsertFishCaughtFromImport?.(fish) ?? firebaseDataService.createFishCaught(fish));
         doneUnits++;
         this.emitProgress(onProgress, 'importing', doneUnits, totalUnits || 1, startTs ?? (performance.now?.() ?? Date.now()), 'Writing fish…');
@@ -703,7 +872,40 @@ export class DataExportService {
     }
 
     if (dbData.fish_caught && Array.isArray(dbData.fish_caught)) {
+      // Build local tackle mapping from provided tacklebox
+      const items: any[] = Array.isArray(data.localStorage?.tacklebox) ? data.localStorage.tacklebox : [];
+      const keyToGearId = new Map<string, string>();
+      const nameToIds = new Map<string, string[]>();
+      const norm = (v?: string) => (v || '').trim().toLowerCase();
+      const mkKey = (d: any) => [norm(d.type), norm(d.brand), norm(d.name), norm(d.colour)].join('|');
+      const hashFNV1a = (str: string) => { let hash = 0x811c9dc5; for (let i=0;i<str.length;i++){ hash ^= str.charCodeAt(i); hash = Math.imul(hash,0x01000193);} return ('0000000'+(hash>>>0).toString(16)).slice(-8); };
+      for (const it of items) {
+        const key = mkKey(it);
+        const gid = it.gearId || `local-${hashFNV1a(key)}`;
+        if (!keyToGearId.has(key)) keyToGearId.set(key, gid);
+        const nm = norm(it.name);
+        const arr = nameToIds.get(nm) || [];
+        if (!arr.includes(gid)) arr.push(gid);
+        nameToIds.set(nm, arr);
+      }
       for (const fish of dbData.fish_caught) {
+        try {
+          const selected: string[] = Array.isArray(fish.gear) ? fish.gear : [];
+          const gearIds: string[] = [];
+          for (const g of selected) {
+            const s = norm(String(g));
+            let gid: string | undefined;
+            if (s.includes('|')) {
+              gid = keyToGearId.get(s);
+            } else {
+              const ids = nameToIds.get(s) || [];
+              gid = ids.length === 1 ? ids[0] : (ids[0] || undefined);
+            }
+            if (!gid) gid = `local-${hashFNV1a(s)}`;
+            if (!gearIds.includes(gid)) gearIds.push(gid);
+          }
+          if (gearIds.length) (fish as any).gearIds = gearIds;
+        } catch {/* ignore mapping failures */}
         if (typeof fish.id === 'string') {
           await databaseService.updateFishCaught(fish);
         } else {

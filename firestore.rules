@@ -1,70 +1,56 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper function to check if user is authenticated
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-
-    // Helper function to check if user owns the document
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
+    // Helper: user is authenticated
+    function isAuthenticated() { return request.auth != null; }
+    // Helper: auth uid matches provided uid (path param)
+    function isOwnerUid(uid) { return isAuthenticated() && request.auth.uid == uid; }
+    // Helper: auth uid matches resource.data.userId (existing doc)
+    function isOwnerResource() { return isAuthenticated() && request.auth.uid == resource.data.userId; }
+    // Helper: auth uid matches request.resource.data.userId (incoming write)
+    function isOwnerRequest() { return isAuthenticated() && request.auth.uid == request.resource.data.userId; }
 
     // Trips collection - users can only access their own trips
     match /trips/{document} {
-      allow create: if isAuthenticated() &&
-        request.auth.uid == request.resource.data.userId;
-      allow read, update, delete: if isAuthenticated() &&
-        request.auth.uid == resource.data.userId;
+      allow create: if isOwnerRequest();
+      // NOTE: `read` covers both single-document gets and queries (list)
+      allow read, update, delete: if isOwnerResource();
     }
 
     // Weather logs collection - users can only access their own weather logs
     match /weatherLogs/{document} {
-      allow create: if isAuthenticated() &&
-        request.auth.uid == request.resource.data.userId;
-      allow read, update, delete: if isAuthenticated() &&
-        request.auth.uid == resource.data.userId;
+      allow create: if isOwnerRequest();
+      allow read, update, delete: if isOwnerResource();
     }
 
     // Fish caught collection - users can only access their own fish records
     match /fishCaught/{document} {
-      allow create: if isAuthenticated() &&
-        request.auth.uid == request.resource.data.userId;
-      allow read, update, delete: if isAuthenticated() &&
-        request.auth.uid == resource.data.userId;
+      allow create: if isOwnerRequest();
+      allow read, update, delete: if isOwnerResource();
     }
 
     // Tackle items collection - users can only access their own tackle box
     match /tackleItems/{document} {
-      allow create: if isAuthenticated() &&
-        request.auth.uid == request.resource.data.userId;
-      allow read, update, delete: if isAuthenticated() &&
-        request.auth.uid == resource.data.userId;
+      allow create: if isOwnerRequest();
+      allow read, update, delete: if isOwnerResource();
     }
 
     // User settings collection - users can only access their own settings
     // Use path param for read so it works even if the document doesn't exist yet
     match /userSettings/{userId} {
-      // Read allowed for the owner by path (works even when doc doesn't yet exist)
-      allow read: if isAuthenticated() && request.auth.uid == userId;
-
-      // Create requires the userId in the payload to match the path and auth user
-      allow create: if isAuthenticated() &&
-        request.auth.uid == userId && request.resource.data.userId == userId;
-
-      // Update/Delete requires ownership and consistent userId in payload
-      allow update, delete: if isAuthenticated() &&
-        request.auth.uid == userId && request.resource.data.userId == userId;
+      // Reads allowed by path ownership (doc may not exist yet)
+      allow read: if isOwnerUid(userId);
+      // Create/update require path ownership AND consistent userId in payload
+      allow create: if isOwnerUid(userId) && request.resource.data.userId == userId;
+      allow update: if isOwnerUid(userId) && request.resource.data.userId == userId;
+      // Delete allowed by path ownership (covers legacy docs without userId field)
+      allow delete: if isOwnerUid(userId);
     }
 
     // Gear types collection - users can only access their own gear types
     match /gearTypes/{document} {
-      allow create: if isAuthenticated() &&
-        request.auth.uid == request.resource.data.userId;
-      allow get, update, delete: if isAuthenticated() &&
-        request.auth.uid == resource.data.userId;
-      allow list: if isAuthenticated();
+      allow create: if isOwnerRequest();
+      allow read, update, delete: if isOwnerResource();
     }
 
     // Allow read access to public data (if any)

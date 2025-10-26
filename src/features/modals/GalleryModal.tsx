@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Modal, ModalHeader, ModalBody } from "./Modal";
+import PhotoViewerModal from "./PhotoViewerModal";
 import type {
    ModalProps,
    GallerySortOrder,
 } from "@shared/types";
 import { useDatabaseService } from '../../app/providers/DatabaseContext';
-import { firebaseDataService } from "@shared/services/firebaseDataService";
 import { photoMigrationService } from "@shared/services/photoMigrationService";
+import { useAuth } from '../../app/providers/AuthContext';
+import { getFishPhotoPreview, createPlaceholderSVG, createSignInEncryptedPlaceholder } from "@shared/utils/photoPreviewUtils";
 
 
 interface PhotoItem {
@@ -14,6 +16,7 @@ interface PhotoItem {
   fishId: string;
   tripId: number;
   photo: string;
+  requiresAuth?: boolean;
   species: string;
   length: string;
   weight: string;
@@ -47,6 +50,7 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
 }) => {
   // Remove duplicate declarations from previous patch
   const db = useDatabaseService();
+  const { user } = useAuth();
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,15 +64,17 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
     failedPhotos: string[];
   } | null>(null);
   // Touch/swipe handling for mobile
-  const [touchStart, setTouchStart] = useState<number | null>(null);
-  const [touchEnd, setTouchEnd] = useState<number | null>(null);
   // Track object URLs for cleanup
   const objectUrlsRef = React.useRef<string[]>([]);
 
   // Cleanup object URLs on unmount only
   useEffect(() => {
     return () => {
-      objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      objectUrlsRef.current.forEach((url) => {
+        if (typeof url === 'string' && url.startsWith('blob:')) {
+          URL.revokeObjectURL(url);
+        }
+      });
       objectUrlsRef.current = [];
     };
   }, []);
@@ -115,54 +121,81 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
       db.getAllTrips(),
       db.getAllFishCaught(),
     ]);
-    // Create photo items from fish catches that have photos
-    const photoItems: PhotoItem[] = [];
-  // Do not revoke object URLs here; cleanup is handled on unmount only
 
+    const tripsById = new Map(trips.map((t: any) => [t.id, t]));
+
+    // Initial skeleton items (fast render)
+    const initialItems: PhotoItem[] = [];
     for (const fish of fishCaught) {
-      // Detect encrypted photo: must have encryptedMetadata and enc_photos path
+      const trip = tripsById.get(fish.tripId);
+      if (!trip) continue;
+      const rawPhoto: string | undefined = fixPhotoData((fish.photoUrl || fish.photo) ?? '');
       const isEncrypted = Boolean(fish.encryptedMetadata && typeof fish.photoPath === 'string' && fish.photoPath.includes('enc_photos'));
-      const rawPhoto: string | undefined = fish.photoUrl || fish.photo;
-      let displayPhoto: string | undefined = fixPhotoData(rawPhoto || '');
-      if (isEncrypted && typeof fish.photoPath === 'string') {
-        try {
-          const decryptedData = await firebaseDataService.getDecryptedPhoto(
-            fish.photoPath,
-            fish.encryptedMetadata
-          );
-          if (decryptedData) {
-            const blob = new Blob([decryptedData.data], { type: decryptedData.mimeType });
-            const objectUrl = URL.createObjectURL(blob);
-            objectUrlsRef.current.push(objectUrl);
-            displayPhoto = objectUrl;
-          } else {
-            displayPhoto = undefined;
-          }
-        } catch (decryptError) {
-          console.warn('Failed to decrypt photo for display:', decryptError);
-          displayPhoto = undefined;
-        }
+      const isGuest = !user;
+      const hasStoragePath = Boolean(fish.photoPath);
+
+      let initialPhoto: string | undefined;
+      if (isGuest && (isEncrypted || hasStoragePath)) {
+        initialPhoto = createSignInEncryptedPlaceholder();
+      } else if (rawPhoto) {
+        initialPhoto = rawPhoto;
+      } else if (hasStoragePath) {
+        initialPhoto = createPlaceholderSVG('Loading…');
       }
-      // Only add if trip found AND displayPhoto is usable
-      const trip = trips.find((t: any) => t.id === fish.tripId);
-      if (trip && displayPhoto) {
-        const photoItem = {
-          id: `${fish.id}-${fish.tripId}`,
-          fishId: fish.id,
-          tripId: fish.tripId,
-          photo: displayPhoto,
-          species: fish.species,
-          length: fish.length,
-          weight: fish.weight,
-          date: trip.date,
-          location: trip.location,
-          water: trip.water,
-          time: fish.time,
-        };
-        photoItems.push(photoItem);
+
+      if (!initialPhoto) {
+        continue;
       }
+
+      initialItems.push({
+        id: `${fish.id}-${fish.tripId}`,
+        fishId: fish.id,
+        tripId: fish.tripId,
+        photo: initialPhoto || createPlaceholderSVG('Loading…'),
+        requiresAuth: isGuest && (isEncrypted || hasStoragePath),
+        species: fish.species,
+        length: fish.length,
+        weight: fish.weight,
+        date: trip.date,
+        location: trip.location,
+        water: trip.water,
+        time: fish.time,
+      });
     }
-    setPhotos(photoItems);
+    setPhotos(initialItems);
+
+    // Progressive resolve with limited concurrency
+    const CONCURRENCY = 4;
+    let index = 0;
+    const workers: Promise<void>[] = [];
+    for (let w = 0; w < CONCURRENCY; w++) {
+      workers.push((async () => {
+        while (index < fishCaught.length) {
+          const i = index++;
+          const fish = fishCaught[i];
+          const trip = tripsById.get(fish.tripId);
+          if (!trip) continue;
+          try {
+            const isEncrypted = Boolean(fish.encryptedMetadata && typeof fish.photoPath === 'string' && fish.photoPath.includes('enc_photos'));
+            const hasStoragePath = Boolean(fish.photoPath);
+            if (!user && (isEncrypted || hasStoragePath)) {
+              // Keep sign-in placeholder for guests; skip fetch/decrypt
+              continue;
+            }
+            const url = await getFishPhotoPreview(fish as any);
+            if (url) {
+              if (url.startsWith('blob:')) objectUrlsRef.current.push(url);
+              setPhotos(prev => prev.map(p => p.fishId === fish.id && p.tripId === fish.tripId ? { ...p, photo: url } : p));
+            }
+          } catch (e) {
+            // ignore per-item errors
+          }
+          // Yield to event loop to keep UI responsive
+          await new Promise(r => setTimeout(r, 0));
+        }
+      })());
+    }
+    await Promise.all(workers);
   } catch (err) {
     setError("Failed to load photos");
   } finally {
@@ -265,31 +298,6 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
   };
 
   // Touch handlers for swipe navigation
-  const handleTouchStart = (e: React.TouchEvent) => {
-    setTouchEnd(null);
-    setTouchStart(e.targetTouches[0].clientX);
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    setTouchEnd(e.targetTouches[0].clientX);
-  };
-
-  const handleTouchEnd = () => {
-    if (!touchStart || !touchEnd) return;
-
-    const distance = touchStart - touchEnd;
-    const isLeftSwipe = distance > 50;
-    const isRightSwipe = distance < -50;
-
-    if (isLeftSwipe && filteredAndSortedPhotos.length > 1) {
-      // Swipe left - go to next photo (forwards)
-      handleNextPhoto();
-    } else if (isRightSwipe && filteredAndSortedPhotos.length > 1) {
-      // Swipe right - go to previous photo (backwards)
-      handlePreviousPhoto();
-    }
-  };
-
   const formatDate = (dateString: string) => {
     try {
       return new Date(dateString).toLocaleDateString("en-NZ", {
@@ -365,22 +373,7 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
     return undefined;
   };
 
-  const createPlaceholderSVG = (text: string): string => {
-    const svg = `<svg width="300" height="300" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" style="stop-color:#f3f4f6;stop-opacity:1" />
-          <stop offset="100%" style="stop-color:#e5e7eb;stop-opacity:1" />
-        </linearGradient>
-      </defs>
-      <rect width="100%" height="100%" fill="url(#grad1)"/>
-      <circle cx="150" cy="120" r="30" fill="#d1d5db" opacity="0.6"/>
-      <path d="M140 110 L160 110 L155 125 Z" fill="#d1d5db" opacity="0.6"/>
-      <text x="50%" y="180" font-family="system-ui, -apple-system, sans-serif" font-size="16" font-weight="500" fill="#6b7280" text-anchor="middle" dy=".3em">${text}</text>
-      <text x="50%" y="200" font-family="system-ui, -apple-system, sans-serif" font-size="12" fill="#9ca3af" text-anchor="middle" dy=".3em">Tap to view details</text>
-    </svg>`;
-    return `data:image/svg+xml;base64,${btoa(svg)}`;
-  };
+  // Use shared placeholder generator for consistency across modals
 
   const getAvailableMonths = () => {
     const months = new Set<string>();
@@ -556,16 +549,20 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
                         <div
                           key={photo.id}
                           onClick={() => handlePhotoClick(photo)}
-                          className="relative aspect-square rounded-lg overflow-hidden
+                          className="relative rounded-lg overflow-hidden
                                    cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all duration-200
                                    group"
+                          style={{}}
                         >
+                          {/* Ratio box */}
+                          <div className="pt-[100%]"></div>
                           {/* Image */}
                           <img
                             src={photo.photo}
                             alt={`${photo.species} - ${photo.length}`}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                            className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                             decoding="async"
+                            loading="lazy"
                             onError={(e) => {
                               const target = e.target as HTMLImageElement;
                               const originalSrc = target.src;
@@ -601,6 +598,13 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
                               </p>
                             </div>
                           </div>
+                          {/* Lock badge for guest + storage-backed photos */}
+                          {photo.requiresAuth && (
+                            <div className="absolute top-1 left-1 z-20 px-2 py-0.5 rounded text-[10px] font-medium"
+                                 style={{ backgroundColor: 'rgba(17,24,39,0.7)', color: 'white' }}>
+                              🔒 Sign in
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -612,117 +616,25 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
         </ModalBody>
       </Modal>
 
-      {/* Full-size Photo Modal */}
       {selectedPhoto && (
-        <Modal
-           isOpen={true}
-           onClose={() => setSelectedPhoto(null)}
-           maxWidth="3xl"
-         >
-          <div className="relative">
-            {/* Navigation buttons */}
-            {filteredAndSortedPhotos.length > 1 && (
-              <>
-                <button
-                  onClick={handlePreviousPhoto}
-                  className="icon-btn absolute left-4 top-1/2 transform -translate-y-1/2 z-10"
-                >
-                  <i className="fas fa-chevron-left"></i>
-                </button>
-
-                <button
-                  onClick={handleNextPhoto}
-                  className="icon-btn absolute right-4 top-1/2 transform -translate-y-1/2 z-10"
-                >
-                  <i className="fas fa-chevron-right"></i>
-                </button>
-              </>
-            )}
-
-            {/* Close button */}
-            <button
-              onClick={() => setSelectedPhoto(null)}
-              className="absolute top-4 right-4 z-10
-                       bg-gray-600 bg-opacity-70 text-white p-3 rounded-full
-                       hover:bg-opacity-90 transition-all duration-200"
-            >
-              <i className="fas fa-times"></i>
-            </button>
-
-            {/* Photo */}
-            <div
-              className="flex items-center justify-center min-h-[60vh] max-h-[80vh] bg-gray-50 dark:bg-gray-600"
-              onTouchStart={handleTouchStart}
-              onTouchMove={handleTouchMove}
-              onTouchEnd={handleTouchEnd}
-            >
-              <img
-                src={selectedPhoto.photo}
-                alt={`${selectedPhoto.species} - ${selectedPhoto.length}`}
-                className="max-w-full max-h-full object-contain bg-white dark:bg-gray-700 rounded-lg shadow-lg"
-                onError={(e) => {
-                  const target = e.target as HTMLImageElement;
-                  const originalSrc = target.src;
-
-                  // If it's not already a placeholder, try to fix the image data
-                  if (!originalSrc.includes('data:image/svg+xml')) {
-                    console.warn('Full-size image failed to load, attempting to fix:', originalSrc.substring(0, 50) + '...');
-
-                    // Try to reprocess the image data
-                    const fixedSrc = fixPhotoData(originalSrc);
-                    if (fixedSrc && fixedSrc !== originalSrc && !fixedSrc.includes('data:image/svg+xml')) {
-                      target.src = fixedSrc;
-                    } else {
-                      // Use placeholder as final fallback
-                      target.src = createPlaceholderSVG('Image not available');
-                    }
-                  }
-                }}
-              />
-            </div>
-
-            {/* Photo info */}
-            <div className="bg-gray-800 dark:bg-gray-900 text-white p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <h3 className="text-xl font-bold mb-2">
-                    {selectedPhoto.species}
-                  </h3>
-                  <div className="space-y-1 text-sm">
-                    <p>
-                      <span className="text-gray-300">Length:</span>{" "}
-                      {selectedPhoto.length}
-                    </p>
-                    <p>
-                      <span className="text-gray-300">Weight:</span>{" "}
-                      {selectedPhoto.weight}
-                    </p>
-                    <p>
-                      <span className="text-gray-300">Time:</span>{" "}
-                      {selectedPhoto.time}
-                    </p>
-                  </div>
-                </div>
-                <div>
-                  <div className="space-y-1 text-sm">
-                    <p>
-                      <span className="text-gray-300">Date:</span>{" "}
-                      {formatDate(selectedPhoto.date)}
-                    </p>
-                    <p>
-                      <span className="text-gray-300">Location:</span>{" "}
-                      {selectedPhoto.location}
-                    </p>
-                    <p>
-                      <span className="text-gray-300">Water:</span>{" "}
-                      {selectedPhoto.water}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </Modal>
+        <PhotoViewerModal
+          isOpen={true}
+          photoSrc={selectedPhoto.photo}
+          requiresAuth={selectedPhoto.requiresAuth}
+          onClose={() => setSelectedPhoto(null)}
+          onNext={filteredAndSortedPhotos.length > 1 ? handleNextPhoto : undefined}
+          onPrevious={filteredAndSortedPhotos.length > 1 ? handlePreviousPhoto : undefined}
+          resolveImageSrc={fixPhotoData}
+          metadata={{
+            species: selectedPhoto.species,
+            length: selectedPhoto.length,
+            weight: selectedPhoto.weight,
+            time: selectedPhoto.time,
+            date: formatDate(selectedPhoto.date),
+            location: selectedPhoto.location,
+            water: selectedPhoto.water,
+          }}
+        />
       )}
     </>
   );

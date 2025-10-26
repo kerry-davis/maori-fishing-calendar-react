@@ -1,6 +1,7 @@
 import type { Trip, WeatherLog, FishCaught, DatabaseError } from "../types";
 import { DB_CONFIG } from "../types";
 import { DEV_LOG, DEV_ERROR, PROD_ERROR, PROD_WARN } from "../utils/loggingHelpers";
+import { generateULID } from "../utils/ulid";
 
 /**
  * IndexedDB Service for the Māori Fishing Calendar
@@ -54,7 +55,7 @@ export class DatabaseService {
                           const newStore = db.createObjectStore(DB_CONFIG.STORES.WEATHER_LOGS, { keyPath: 'id' });
                           newStore.createIndex('tripId', 'tripId', { unique: false });
                           data.forEach((item: WeatherLog) => {
-                              const newItem = { ...item, id: `${item.tripId}-${Date.now()}` };
+                              const newItem = { ...item, id: `${item.tripId}-${generateULID()}` };
                               newStore.add(newItem);
                           });
                           DEV_LOG('weather_logs store migration complete.');
@@ -83,7 +84,7 @@ export class DatabaseService {
                           const newStore = db.createObjectStore(DB_CONFIG.STORES.FISH_CAUGHT, { keyPath: 'id' });
                           newStore.createIndex('tripId', 'tripId', { unique: false });
                           data.forEach((item: FishCaught) => {
-                              const newItem = { ...item, id: `${item.tripId}-${Date.now()}` };
+                              const newItem = { ...item, id: `${item.tripId}-${generateULID()}` };
                               newStore.add(newItem);
                           });
                           DEV_LOG('fish_caught store migration complete.');
@@ -387,7 +388,7 @@ export class DatabaseService {
   async createWeatherLog(weatherData: Omit<WeatherLog, "id">): Promise<string> {
     await this.initialize();
 
-    const newId = `${weatherData.tripId}-${Date.now()}`;
+    const newId = `${weatherData.tripId}-${generateULID()}`;
     const weatherLogWithId: WeatherLog = { ...weatherData, id: newId };
 
     return new Promise((resolve, reject) => {
@@ -564,7 +565,7 @@ export class DatabaseService {
   async createFishCaught(fishData: Omit<FishCaught, "id">): Promise<string> {
     await this.initialize();
 
-    const newId = `${fishData.tripId}-${Date.now()}`;
+    const newId = `${fishData.tripId}-${generateULID()}`;
     const fishCaughtWithId: FishCaught = { ...fishData, id: newId };
 
     return new Promise((resolve, reject) => {

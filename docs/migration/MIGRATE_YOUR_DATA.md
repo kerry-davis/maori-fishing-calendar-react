@@ -13,7 +13,7 @@ I've analyzed your legacy app and created a complete migration solution. Here's 
 ✅ **Fish Catches** - All fish caught with species, size, gear used, and photos
 ✅ **Tackle Box** - Your fishing gear and equipment
 ✅ **Settings** - Theme preferences and location data
-✅ **Photos** - All fishing photos with automatic format detection and size optimization
+✅ **Photos** - All fishing photos with automatic format detection and size optimization (global preset 1080px @ 0.85)
 
 ## 🛠️ Migration Methods
 
@@ -89,7 +89,7 @@ I've created these scripts for you:
 - `scripts/migrate-from-legacy.js` - Extracts data from legacy app
 - `scripts/import-legacy-data.js` - Imports data into React app
 - `scripts/import-zip-migration.js` - Import zip files with Node.js
-- `src/services/browserZipImportService.ts` - **NEW: Browser-based zip import (mobile-friendly)**
+- `src/shared/services/browserZipImportService.ts` - **NEW: Browser-based zip import (mobile-friendly)**
 - `scripts/test-legacy-migration.js` - Tests the migration process
 
 ## 📋 Step-by-Step Instructions
@@ -135,16 +135,16 @@ The migration system provides **comprehensive photo support**:
 
 ### **Photo Features:**
 - ✅ **Automatic format detection** (JPEG, PNG, WebP)
-- ✅ **Base64 preservation** - maintains original quality
-- ✅ **Size analysis** - reports photo data statistics
+- ✅ **Size optimization preset** — images are standardized to max 1080px on the longest side at ~0.85 JPEG quality
+- ✅ **Size analysis** — reports photo data statistics
 - ✅ **Error handling** - gracefully handles corrupted photos
 - ✅ **Gallery integration** - photos appear in React app gallery
 
-### **Photo Storage:**
+### **Photo Storage & Optimization:**
 - **Legacy Format**: Base64 encoded images in IndexedDB
-- **React Format**: Same base64 format (compatible)
-- **File Size**: All sizes supported (analyzed during migration)
-- **Quality**: Original quality preserved
+- **React Format**: Optimized data URLs (JPEG, 1080px @ 0.85) for import; uploaded photos use the same preset before encryption
+- **File Size**: All sizes supported; compressed on import for faster loads and smaller backups
+- **Quality**: Visually preserved with lossy compression tuned for photos
 
 ### **Photo Migration Process:**
 1. **Detection** - Identifies base64 encoded photos

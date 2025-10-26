@@ -8,7 +8,10 @@ vi.mock('@shared/services/firebase', () => ({
     currentUser: null,
     onAuthStateChanged: vi.fn().mockImplementation(() => () => {}),
     signOut: vi.fn().mockResolvedValue(undefined)
-  }
+  },
+  firestore: {} as any,
+  storage: {} as any,
+  app: {} as any,
 }));
 
 // Import after mocking

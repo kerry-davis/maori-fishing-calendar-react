@@ -14,9 +14,9 @@
   - Configured proper icon handling and PWA manifest
 
 #### 2. PWA Context and Hooks
-- **Files**: 
-  - `src/contexts/PWAContext.tsx`
-  - `src/hooks/usePWARegister.ts`
+- **Files**:
+  - `src/app/providers/PWAContext.tsx`
+  - `src/shared/hooks/usePWARegister.ts`
 - **Features**:
   - Install prompt handling with beforeinstallprompt event
   - Service worker update notifications
@@ -25,9 +25,11 @@
 
 #### 3. PWA UI Components
 - **Files**:
-  - `src/components/PWA/PWAInstallPrompt.tsx`
-  - `src/components/PWA/PWAUpdateNotification.tsx`
-  - `src/components/PWA/OfflineIndicator.tsx`
+  - `src/features/pwa/PWAInstallPrompt.tsx`
+  - `src/features/pwa/PWAUpdateNotification.tsx`
+  - `src/features/pwa/OfflineIndicator.tsx`
+  - `src/features/pwa/SyncToast.tsx`
+  - `src/features/pwa/index.ts` (barrel export)
 - **Features**:
   - Install prompt with dismiss functionality
   - Update notification with reload option
@@ -50,7 +52,6 @@
   - Portrait orientation preference
 
 #### 6. Testing Implementation
-- **Files**: `src/components/PWA/__tests__/*.test.tsx`
 - **Coverage**: 
   - Install prompt functionality
   - Update notification behavior
@@ -90,11 +91,10 @@
 
 ### 🧪 Testing Status
 
-- ✅ Unit tests for all PWA components
-- ✅ Context and hook testing
-- ✅ Install prompt behavior testing
-- ✅ Update notification testing
-- ✅ Offline indicator testing
+- ✅ PWA behavior covered by integration suites (e.g. auth login/logout flows, encryption UI, offline UX)
+- ✅ Context and hook usage exercised in app-level tests
+- ✅ Update and install prompts validated in UI flows
+- ✅ Offline indicator visibility validated under network toggles
 
 ### 🚀 Production Ready
 

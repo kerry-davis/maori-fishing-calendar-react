@@ -53,12 +53,12 @@ export function useModalWithCleanup(initialOpenState = false, options: UseModalW
   const getCurrentUser = useCallback((): string | null => {
     // Use provided authUser from context first (preferred)
     if (authUser) {
-      return authUser.uid || authUser.id || null;
+      return authUser.uid || null;
     }
     
     // Fallback to Firebase auth
     if (auth?.currentUser) {
-      return auth.currentUser.uid || auth.currentUser.id || null;
+      return auth.currentUser.uid || null;
     }
 
     // Fallback to lastActiveUser localStorage tracking when available
@@ -218,7 +218,7 @@ export function useModalWithCleanup(initialOpenState = false, options: UseModalW
       handleUserContextChange(null);
     } else if (e.detail?.user) {
       // User logged in - check if different user
-      const newUser = e.detail.user.uid || e.detail.user.id;
+      const newUser = e.detail.user.uid;
       const prevUser = prevUserRef.current;
       
       if (prevUser !== newUser) {

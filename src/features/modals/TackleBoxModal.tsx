@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Modal, ModalHeader, ModalBody } from './Modal';
 import { Button } from '@shared/components/Button';
 import { GearForm } from './GearForm';
 import { GearTypeForm } from './GearTypeForm';
 import { useFirebaseTackleBox, useFirebaseGearTypes } from '@shared/hooks/useFirebaseTackleBox';
+import { enqueueGearItemRename, enqueueGearTypeRename, subscribeGearMaintenance } from '@shared/services/gearLabelMaintenanceService';
 import type { ModalProps, TackleItem } from '../../shared/types';
 import ConfirmationDialog from '@shared/components/ConfirmationDialog';
 
@@ -28,8 +29,57 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
   const [editingGear, setEditingGear] = useState<TackleItem | null>(null);
   const [editingGearType, setEditingGearType] = useState<string>('');
   const [showConfirm, setShowConfirm] = useState<{ open: boolean; title: string; message: string; onConfirm: () => void } | null>(null);
+  const [gearMaintenanceQueueSize, setGearMaintenanceQueueSize] = useState(0);
+  const [gearMaintenanceProgress, setGearMaintenanceProgress] = useState<{ label: string; processed: number; total: number } | null>(null);
+  const [gearMaintenanceMessage, setGearMaintenanceMessage] = useState<string | null>(null);
+  const maintenanceMessageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const normalize = (value?: string) => (value ?? '').trim();
+  const normalizeLower = (value?: string) => normalize(value).toLowerCase();
 
   console.log('TackleBoxModal rendered - tacklebox items:', tacklebox.length, 'gearTypes:', gearTypes.length);
+
+  useEffect(() => {
+    const unsubscribe = subscribeGearMaintenance(event => {
+      if (event.type === 'queue-size') {
+        setGearMaintenanceQueueSize(event.size);
+      } else if (event.type === 'task-start') {
+        setGearMaintenanceProgress({ label: event.label, processed: 0, total: event.total });
+      } else if (event.type === 'task-progress') {
+        setGearMaintenanceProgress({ label: event.label, processed: event.processed, total: event.total });
+      } else if (event.type === 'task-complete') {
+        setGearMaintenanceProgress(null);
+        const message = `${event.label} complete (${event.processed} catch${event.processed === 1 ? '' : 'es'} updated)`;
+        setGearMaintenanceMessage(message);
+        if (maintenanceMessageTimeoutRef.current) {
+          clearTimeout(maintenanceMessageTimeoutRef.current);
+        }
+        maintenanceMessageTimeoutRef.current = setTimeout(() => {
+          setGearMaintenanceMessage(null);
+          maintenanceMessageTimeoutRef.current = null;
+        }, 5000);
+      } else if (event.type === 'task-error') {
+        setGearMaintenanceProgress(null);
+        const message = `${event.label} failed. Check console for details.`;
+        setGearMaintenanceMessage(message);
+        if (maintenanceMessageTimeoutRef.current) {
+          clearTimeout(maintenanceMessageTimeoutRef.current);
+        }
+        maintenanceMessageTimeoutRef.current = setTimeout(() => {
+          setGearMaintenanceMessage(null);
+          maintenanceMessageTimeoutRef.current = null;
+        }, 7000);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      if (maintenanceMessageTimeoutRef.current) {
+        clearTimeout(maintenanceMessageTimeoutRef.current);
+        maintenanceMessageTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   // Reset form state when modal opens/closes
   useEffect(() => {
@@ -89,11 +139,33 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
 
   const handleGearSave = async (gearData: Omit<TackleItem, 'id'> | TackleItem) => {
     try {
+      // Helpers to build composite keys consistently with selection UI
+      const buildKey = (it: { type: string; brand: string; name: string; colour: string }) => {
+        const parts = [normalize(it.type), normalize(it.brand), normalize(it.name), normalize(it.colour)];
+        const canonical = parts.join('|');
+        const lower = parts.map(part => part.toLowerCase()).join('|');
+        return { canonical, lower };
+      };
+
       if ('id' in gearData) {
         // Update existing gear
+        const previous = editingGear || undefined;
         await updateTackleBox(prev => prev.map(item =>
-          item.id === gearData.id ? gearData : item
+          item.id === gearData.id ? (gearData as TackleItem) : item
         ));
+
+        // If name/brand/type/colour changed, update catch records' denormalized gear labels
+        if (previous) {
+          const oldKey = buildKey(previous);
+          const newKey = buildKey(gearData as TackleItem);
+          const oldNameLc = normalizeLower(previous.name);
+          if (oldKey.lower !== newKey.lower || oldNameLc !== normalizeLower((gearData as TackleItem).name)) {
+            // Process both cloud and guest seamlessly via data service
+            const description = `Gear rename: ${previous.name || 'Unnamed'} → ${(gearData as TackleItem).name || 'Unnamed'}`;
+            enqueueGearItemRename(oldKey.lower, oldNameLc, newKey.canonical, newKey.lower, description);
+            console.log('Queued gear label maintenance task (item rename).');
+          }
+        }
       } else {
         // Add new gear
         const newGear: TackleItem = {
@@ -133,6 +205,14 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
         updateTackleBox(prev => prev.map(item =>
           item.type === oldTypeName ? { ...item, type: newTypeName } : item
         ));
+
+        // Also update catch records' denormalized gear composite labels for this type
+        const oldPrefixLower = `${normalizeLower(oldTypeName)}|`;
+        const newPrefixCanonical = normalize(newTypeName);
+        const newPrefixLower = normalizeLower(newTypeName);
+        const description = `Gear type rename: ${oldTypeName} → ${newTypeName}`;
+        enqueueGearTypeRename(oldPrefixLower, newPrefixCanonical, newPrefixLower, description);
+        console.log('Queued gear label maintenance task (type rename).');
       } else if (!oldTypeName && !gearTypes.includes(newTypeName)) {
         // Add new gear type
         updateGearTypes(prev => [...prev, newTypeName]);
@@ -168,12 +248,68 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
   // Sort gear items and types for display
   const sortedGear = [...tacklebox].sort((a, b) => a.name.localeCompare(b.name));
   const sortedGearTypes = [...gearTypes].sort();
+  const groupedGearForSelect = React.useMemo(() => {
+    const groups: Record<string, TackleItem[]> = {};
+    for (const item of sortedGear) {
+      const t = item.type || 'Other';
+      if (!groups[t]) groups[t] = [];
+      groups[t].push(item);
+    }
+    Object.keys(groups).forEach(t => {
+      groups[t].sort((a, b) => a.name.localeCompare(b.name) || (a.brand || '').localeCompare(b.brand || ''));
+    });
+    return Object.fromEntries(Object.entries(groups).sort(([a], [b]) => a.localeCompare(b)));
+  }, [sortedGear]);
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} className="max-w-5xl">
       <ModalHeader title="My Tackle Box" onClose={onClose} />
 
       <ModalBody className="overflow-y-auto max-h-[75vh]">
+        {(gearMaintenanceProgress || gearMaintenanceMessage || gearMaintenanceQueueSize > 0) && (
+          <div className="mb-4 space-y-2">
+            {gearMaintenanceProgress && (
+              <div
+                className="rounded-md border p-3"
+                style={{ backgroundColor: 'var(--secondary-background)', borderColor: 'var(--border-color)' }}
+              >
+                <div className="flex items-center justify-between text-sm">
+                  <span style={{ color: 'var(--primary-text)' }}>
+                    Updating catch records: {gearMaintenanceProgress.label}
+                  </span>
+                  <span style={{ color: 'var(--secondary-text)' }}>
+                    {gearMaintenanceProgress.processed}/{gearMaintenanceProgress.total}
+                  </span>
+                </div>
+                <div className="mt-2 h-2 rounded bg-gray-200 dark:bg-gray-700">
+                  <div
+                    className="h-2 rounded"
+                    style={{
+                      width: `${gearMaintenanceProgress.total ? Math.min(100, (gearMaintenanceProgress.processed / gearMaintenanceProgress.total) * 100) : 0}%`,
+                      backgroundColor: 'var(--button-primary)'
+                    }}
+                  ></div>
+                </div>
+              </div>
+            )}
+
+            {gearMaintenanceMessage && (
+              <div
+                className="rounded-md border p-3 text-sm"
+                style={{ backgroundColor: 'var(--card-background)', borderColor: 'var(--border-color)', color: 'var(--primary-text)' }}
+              >
+                {gearMaintenanceMessage}
+              </div>
+            )}
+
+            {gearMaintenanceQueueSize > 0 && !gearMaintenanceProgress && (
+              <div className="text-xs" style={{ color: 'var(--secondary-text)' }}>
+                Queued catch updates: {gearMaintenanceQueueSize}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Main Content Area */}
         <div className="space-y-6">
           {/* Selection and Action Controls */}
@@ -201,10 +337,14 @@ export const TackleBoxModal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
                   }}
                 >
                   <option value="">Select Gear...</option>
-                  {sortedGear.map(item => (
-                    <option key={item.id} value={item.id}>
-                      {item.name} ({item.type})
-                    </option>
+                  {Object.entries(groupedGearForSelect).map(([type, items]) => (
+                    <optgroup key={type} label={`${type}s`}>
+                      {items.map(item => (
+                        <option key={item.id} value={item.id}>
+                          {item.name}{item.brand ? ` - ${item.brand}` : ''}
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
               </div>

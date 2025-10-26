@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, renderHook, act, waitFor } from '@testing-library/react';
-import { AuthProvider, useAuth } from '@app/providers/AuthContext';
+import { AuthProvider } from '@app/providers/AuthContext';
+import { useEncryptionMigrationStatus } from '@shared/hooks/useEncryptionMigrationStatus';
 import { encryptionService } from '@shared/services/encryptionService';
 import { firebaseDataService } from '@shared/services/firebaseDataService';
 import EncryptionMigrationStatus from '@features/encryption/EncryptionMigrationStatus';
@@ -23,6 +24,13 @@ vi.mock('@shared/services/firebaseDataService', () => ({
       collections: {},
     }),
     resetEncryptionMigrationState: vi.fn(),
+    // Required by AuthProvider background ops
+    switchToUser: vi.fn().mockResolvedValue(undefined),
+    mergeLocalDataForUser: vi.fn().mockResolvedValue(undefined),
+    clearAllData: vi.fn().mockResolvedValue(undefined),
+    initialize: vi.fn().mockResolvedValue(undefined),
+    backupLocalDataBeforeLogout: vi.fn().mockResolvedValue(undefined),
+    clearSyncQueue: vi.fn().mockResolvedValue(undefined),
   }
 }));
 
@@ -32,7 +40,9 @@ vi.mock('@shared/services/firebase', () => ({
     onAuthStateChanged: vi.fn(),
     signOut: vi.fn(),
     getRedirectResult: vi.fn(),
-  }
+  },
+  firestore: {},
+  storage: {}
 }));
 
 // Mock PWAContext
@@ -44,30 +54,24 @@ vi.mock('@app/providers/PWAContext', () => ({
 describe('Migration Completion Verification', () => {
   let authCallback: ((user: any) => void) | null = null;
   let migrationEvents: any[] = [];
+  let dispatchSpy: ReturnType<typeof vi.spyOn> | null = null;
   
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     migrationEvents = [];
     
     // Setup onAuthStateChanged mock to capture the callback
-    vi.mocked(require('@shared/services/firebase').auth.onAuthStateChanged).mockImplementation((callback) => {
+    const firebase = await import('@shared/services/firebase');
+    vi.mocked(firebase.auth.onAuthStateChanged).mockImplementation((callback) => {
       authCallback = callback as (user: any) => void;
       return vi.fn(); // unsubscribe function
     });
     
-    // Mock window events
-    Object.defineProperty(window, 'dispatchEvent', {
-      value: vi.fn((event: CustomEvent) => {
-        migrationEvents.push(event);
-      }),
-    });
-    
-    Object.defineProperty(window, 'addEventListener', {
-      value: vi.fn(),
-    });
-    
-    Object.defineProperty(window, 'removeEventListener', {
-      value: vi.fn(),
+    // Spy window events but keep native behavior
+    const originalDispatch = window.dispatchEvent.bind(window);
+    dispatchSpy = vi.spyOn(window, 'dispatchEvent').mockImplementation((event: any) => {
+      migrationEvents.push(event);
+      return originalDispatch(event);
     });
     
     // Mock localStorage
@@ -94,6 +98,10 @@ describe('Migration Completion Verification', () => {
   afterEach(() => {
     authCallback = null;
     migrationEvents = [];
+    if (dispatchSpy) {
+      dispatchSpy.mockRestore();
+      dispatchSpy = null;
+    }
   });
 
   it('should watch for completion event and dismiss pill after indexes exist', async () => {
@@ -107,7 +115,7 @@ describe('Migration Completion Verification', () => {
       }
     });
 
-    const { result } = renderHook(() => useAuth(), {
+    const { result } = renderHook(() => useEncryptionMigrationStatus(), {
       wrapper: AuthProvider,
     });
 
@@ -194,7 +202,7 @@ describe('Migration Completion Verification', () => {
       }
     });
 
-    const { result } = renderHook(() => useAuth(), {
+    const { result } = renderHook(() => useEncryptionMigrationStatus(), {
       wrapper: AuthProvider,
     });
 
@@ -245,7 +253,7 @@ describe('Migration Completion Verification', () => {
 
   it('should handle migration completion with no warnings after proper setup', async () => {
     // Mock a scenario where migration runs successfully from start to finish
-    const { result } = renderHook(() => useAuth(), {
+    const { result } = renderHook(() => useEncryptionMigrationStatus(), {
       wrapper: AuthProvider,
     });
 
