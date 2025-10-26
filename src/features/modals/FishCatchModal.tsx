@@ -40,6 +40,9 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
     details: "",
     photo: "",
     photoPath: "",
+    photoUrl: "",
+    photoHash: "",
+    photoMime: "",
     encryptedMetadata: undefined as string | undefined,
   });
   const [validation, setValidation] = useState({
@@ -102,6 +105,9 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
           details: fish.details,
           photo: fish.photo || "",
           photoPath: fish.photoPath || "",
+          photoUrl: fish.photoUrl || "",
+          photoHash: fish.photoHash || "",
+          photoMime: fish.photoMime || "",
           encryptedMetadata: fish.encryptedMetadata ?? undefined,
         });
         photoStatusRef.current = 'unchanged';
@@ -128,6 +134,9 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
           details: "",
           photo: "",
           photoPath: "",
+          photoUrl: "",
+          photoHash: "",
+          photoMime: "",
           encryptedMetadata: undefined,
         });
       }
@@ -281,7 +290,28 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
         fishDataBase.photo = '';
         fishDataBase.photoPath = '';
         fishDataBase.photoUrl = '';
+        fishDataBase.photoHash = undefined;
+        fishDataBase.photoMime = undefined;
         fishDataBase.encryptedMetadata = undefined;
+      } else {
+        if (typeof formData.photo === 'string' && formData.photo.trim() !== '') {
+          fishDataBase.photo = formData.photo;
+        }
+        if (typeof formData.photoPath === 'string' && formData.photoPath.trim() !== '') {
+          fishDataBase.photoPath = formData.photoPath;
+        }
+        if (typeof formData.photoUrl === 'string' && formData.photoUrl.trim() !== '') {
+          fishDataBase.photoUrl = formData.photoUrl;
+        }
+        if (typeof formData.photoHash === 'string' && formData.photoHash.trim() !== '') {
+          fishDataBase.photoHash = formData.photoHash;
+        }
+        if (typeof formData.photoMime === 'string' && formData.photoMime.trim() !== '') {
+          fishDataBase.photoMime = formData.photoMime;
+        }
+        if (typeof formData.encryptedMetadata === 'string' && formData.encryptedMetadata.trim() !== '') {
+          fishDataBase.encryptedMetadata = formData.encryptedMetadata;
+        }
       }
 
       let savedData: FishCaught;
@@ -290,6 +320,11 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
         if (!user) {
           payload.guestSessionId = getOrCreateGuestSessionId();
         }
+        Object.keys(payload).forEach((key) => {
+          if (payload[key] === undefined) {
+            delete payload[key];
+          }
+        });
         await db.updateFishCaught(payload);
         savedData = { id: fishId, ...payload };
       } else {
@@ -297,6 +332,11 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
         if (!user) {
           payload.guestSessionId = getOrCreateGuestSessionId();
         }
+        Object.keys(payload).forEach((key) => {
+          if (payload[key] === undefined) {
+            delete payload[key];
+          }
+        });
         const newId = await db.createFishCaught(payload);
         savedData = { id: newId.toString(), ...payload };
       }
@@ -343,6 +383,10 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
           const dataUrl = reader.result as string;
           handleInputChange("photo", dataUrl);
           handleInputChange("photoPath", "");
+          handleInputChange("photoUrl", "");
+          handleInputChange("photoHash", "");
+          handleInputChange("photoMime", "");
+          handleInputChange("encryptedMetadata", undefined);
           setPhotoPreview(dataUrl);
           if (previewUrl.startsWith('blob:')) {
             URL.revokeObjectURL(previewUrl);
@@ -384,6 +428,10 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
 
         // Clear any existing storage-backed fields when replacing a photo
         handleInputChange("photoPath", "");
+        handleInputChange("photoUrl", "");
+        handleInputChange("photoHash", "");
+        handleInputChange("photoMime", "");
+        handleInputChange("encryptedMetadata", undefined);
         // Keep UI preview as the local data URL for instant feedback
         setPhotoPreview(dataUrl);
         photoStatusRef.current = 'uploaded';
@@ -786,6 +834,9 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                         const removal = buildPhotoRemovalFields();
                         handleInputChange("photo", removal.photo);
                         handleInputChange("photoPath", removal.photoPath);
+                        handleInputChange("photoUrl", removal.photoUrl);
+                        handleInputChange("photoHash", removal.photoHash);
+                        handleInputChange("photoMime", removal.photoMime);
                         handleInputChange("encryptedMetadata", removal.encryptedMetadata);
                         setPhotoPreview(null);
                         setUploadError(null);
@@ -840,6 +891,9 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                         const removal = buildPhotoRemovalFields();
                         handleInputChange("photo", removal.photo);
                         handleInputChange("photoPath", removal.photoPath);
+                        handleInputChange("photoUrl", removal.photoUrl);
+                        handleInputChange("photoHash", removal.photoHash);
+                        handleInputChange("photoMime", removal.photoMime);
                         handleInputChange("encryptedMetadata", removal.encryptedMetadata);
                         // Force React to remount the file input so onChange binding remains intact
                         setFileInputKey((k) => k + 1);
