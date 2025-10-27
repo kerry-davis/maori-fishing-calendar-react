@@ -514,14 +514,25 @@ export async function fetchOpenMeteoTideForecast(
       );
     }
 
-    const extremaForRange = findExtrema(series).filter((extremum) =>
+    const allExtrema = findExtrema(series);
+    console.log('🔍 Open-Meteo - Target date:', targetDate);
+    console.log('🔍 Open-Meteo - All extrema found:', allExtrema.length);
+    console.log('🔍 Open-Meteo - First 6 extrema times:', allExtrema.slice(0, 6).map(e => `${e.type}:${e.time}`));
+    
+    const extremaForRange = allExtrema.filter((extremum) =>
       extremum.time.startsWith(targetDate)
     );
+    
+    console.log('🔍 Open-Meteo - Filtered extrema:', extremaForRange.length);
+    console.log('🔍 Open-Meteo - Filtered extrema times:', extremaForRange.map(e => `${e.type}:${e.time}`));
 
     // Enhanced validation for NZ harbours
     const extrema = extremaForRange.length >= 2
       ? extremaForRange.slice(0, 4) // Take first 4 extrema (2 high/low pairs)
       : fallbackExtrema(seriesForDate);
+    
+    console.log('🔍 Open-Meteo - Final extrema count:', extrema.length);
+    console.log('🔍 Open-Meteo - Final extrema:', extrema.map(e => `${e.type}:${e.time}`));
 
     return createForecast(
       targetDate,
