@@ -7,7 +7,7 @@ import ConfirmationDialog from '@shared/components/ConfirmationDialog';
 import { useAuth } from '../../app/providers/AuthContext';
 import { firebaseDataService } from '@shared/services/firebaseDataService';
 import { databaseService } from '@shared/services/databaseService';
-import type { ImportProgress } from '../../shared/types';
+import type { ImportProgress, UserLocation } from '../../shared/types';
 import { useLocationContext } from '@app/providers/LocationContext';
 import SavedLocationSelector from '@features/locations/SavedLocationSelector';
 import type { SavedLocation } from '@shared/types';
@@ -24,6 +24,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const { user } = useAuth();
   const {
     userLocation,
+    setLocation,
+    requestLocation,
+    searchLocation,
+    searchLocationSuggestions,
     tideCoverage,
     refreshTideCoverage,
   } = useLocationContext();
@@ -58,6 +62,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [rebuildResult, setRebuildResult] = useState<{ updated: number; total: number } | null>(null);
   const [tacklebox] = useFirebaseTackleBox();
   const [selectedSavedLocationId, setSelectedSavedLocationId] = useState<string>('');
+  
+  // Location search state
+  const [locationInput, setLocationInput] = useState('');
+  const [isRequestingLocation, setIsRequestingLocation] = useState(false);
+  const [isSearchingLocation, setIsSearchingLocation] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [locationSuggestions, setLocationSuggestions] = useState<UserLocation[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // No auto-matching - only show selection when explicitly chosen from dropdown
 
@@ -221,6 +236,98 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     }
   }, [refreshTideCoverage, userLocation]);
 
+  const handleLocationRequest = useCallback(async () => {
+    setIsRequestingLocation(true);
+    setLocationError(null);
+    try {
+      await requestLocation();
+    } catch (error) {
+      setLocationError(error instanceof Error ? error.message : 'Failed to get location');
+    } finally {
+      setIsRequestingLocation(false);
+    }
+  }, [requestLocation]);
+
+  const handleLocationSearch = useCallback(async () => {
+    if (!locationInput.trim()) {
+      return;
+    }
+    setIsSearchingLocation(true);
+    setLocationError(null);
+    try {
+      await searchLocation(locationInput.trim());
+      setLocationInput('');
+      setLocationSuggestions([]);
+      setShowSuggestions(false);
+    } catch (error) {
+      setLocationError(error instanceof Error ? error.message : 'Failed to search location');
+    } finally {
+      setIsSearchingLocation(false);
+    }
+  }, [locationInput, searchLocation]);
+
+  const handleLocationInputChange = useCallback((value: string) => {
+    setLocationInput(value);
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    if (value.trim().length < 2) {
+      setLocationSuggestions([]);
+      setShowSuggestions(false);
+      setSelectedSuggestionIndex(-1);
+      setIsLoadingSuggestions(false);
+      return;
+    }
+    setIsLoadingSuggestions(true);
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const suggestions = await searchLocationSuggestions(value.trim());
+        setLocationSuggestions(suggestions);
+        setShowSuggestions(suggestions.length > 0);
+        setSelectedSuggestionIndex(-1);
+      } catch (error) {
+        setLocationSuggestions([]);
+        setShowSuggestions(false);
+      } finally {
+        setIsLoadingSuggestions(false);
+      }
+    }, 300);
+  }, [searchLocationSuggestions]);
+
+  const handleSuggestionSelect = useCallback((suggestion: UserLocation) => {
+    setLocation(suggestion);
+    setLocationInput('');
+    setLocationSuggestions([]);
+    setShowSuggestions(false);
+    setSelectedSuggestionIndex(-1);
+    setLocationError(null);
+  }, [setLocation]);
+
+  const handleLocationInputKeyPress = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !isSearchingLocation) {
+      if (showSuggestions && locationSuggestions.length > 0) {
+        const selectedSuggestion = locationSuggestions[selectedSuggestionIndex >= 0 ? selectedSuggestionIndex : 0];
+        handleSuggestionSelect(selectedSuggestion);
+      } else {
+        handleLocationSearch();
+      }
+    } else if (e.key === 'Escape') {
+      setShowSuggestions(false);
+      setSelectedSuggestionIndex(-1);
+    } else if (e.key === 'ArrowDown' && showSuggestions) {
+      e.preventDefault();
+      setSelectedSuggestionIndex(prev => prev < locationSuggestions.length - 1 ? prev + 1 : 0);
+    } else if (e.key === 'ArrowUp' && showSuggestions) {
+      e.preventDefault();
+      setSelectedSuggestionIndex(prev => prev > 0 ? prev - 1 : locationSuggestions.length - 1);
+    }
+  }, [handleLocationSearch, handleSuggestionSelect, isSearchingLocation, locationSuggestions, selectedSuggestionIndex, showSuggestions]);
+
+  const handleClearLocation = useCallback(() => {
+    setLocation(null);
+    setLocationError(null);
+  }, [setLocation]);
+
   const clearErrors = () => {
     setExportError(null);
     setImportError(null);
@@ -232,7 +339,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     setExportProgress(null);
     setResetError(null);
     setResetSuccess(null);
+    setLocationError(null);
   };
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Reset dialog state on logout/auth changes
   useEffect(() => {
@@ -374,7 +491,112 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               placeholder="Select a saved location"
             />
           </div>
+
+          {/* Location Search UI */}
+          <div className="mt-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium" style={{ color: 'var(--secondary-text)' }}>
+                Find New Location
+              </label>
+            </div>
+
+            {locationError && (
+              <p className="text-xs" style={{ color: 'var(--error-text)' }}>
+                <i className="fas fa-exclamation-triangle mr-1"></i>
+                {locationError}
+              </p>
+            )}
+
+            <div className="flex items-center space-x-1">
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={locationInput}
+                  onChange={(e) => handleLocationInputChange(e.target.value)}
+                  onKeyDown={handleLocationInputKeyPress}
+                  onFocus={() => locationInput.trim().length >= 2 && setShowSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                  placeholder="Enter a location"
+                  className="w-full px-3 py-2 rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  style={{
+                    backgroundColor: 'var(--input-background)',
+                    border: '1px solid var(--border-color)',
+                    color: 'var(--primary-text)'
+                  }}
+                />
+
+                {showSuggestions && (
+                  <div className="absolute z-50 w-full mt-1 border rounded-md shadow-lg max-h-60 overflow-y-auto" style={{
+                    backgroundColor: 'var(--card-background)',
+                    borderColor: 'var(--card-border)'
+                  }}>
+                    {isLoadingSuggestions ? (
+                      <div className="px-2 py-1 text-xs" style={{ color: 'var(--secondary-text)' }}>
+                        <i className="fas fa-spinner fa-spin mr-1"></i>
+                        Searching locations...
+                      </div>
+                    ) : locationSuggestions.length > 0 ? (
+                      locationSuggestions.map((suggestion, index) => (
+                        <div
+                          key={`${suggestion.lat}-${suggestion.lon}`}
+                          onClick={() => handleSuggestionSelect(suggestion)}
+                          className="px-2 py-1 cursor-pointer text-xs"
+                          style={{
+                            backgroundColor: index === selectedSuggestionIndex ? 'var(--secondary-background)' : 'transparent'
+                          }}
+                          onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--tertiary-background)'}
+                          onMouseOut={(e) => e.currentTarget.style.backgroundColor = index === selectedSuggestionIndex ? 'var(--secondary-background)' : 'transparent'}
+                        >
+                          <div className="font-medium" style={{ color: 'var(--primary-text)' }}>
+                            {suggestion.name}
+                          </div>
+                          <div className="text-xs" style={{ color: 'var(--tertiary-text)' }}>
+                            {suggestion.lat.toFixed(4)}, {suggestion.lon.toFixed(4)}
+                          </div>
+                        </div>
+                      ))
+                    ) : locationInput.trim().length >= 2 ? (
+                      <div className="px-2 py-1 text-xs" style={{ color: 'var(--secondary-text)' }}>
+                        No locations found
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={handleLocationSearch}
+                disabled={isSearchingLocation}
+                className="px-3 py-2 rounded-none transition disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ backgroundColor: 'var(--button-secondary)', color: 'white' }}
+                onMouseOver={(e) => !isSearchingLocation && (e.currentTarget.style.backgroundColor = 'var(--button-secondary-hover)')}
+                onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'var(--button-secondary)'}
+                title="Search location"
+              >
+                <i className={`fas ${isSearchingLocation ? "fa-spinner fa-spin" : "fa-search"}`}></i>
+              </button>
+              <button
+                onClick={handleLocationRequest}
+                disabled={isRequestingLocation}
+                className="px-3 py-2 rounded-r bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                title="Use current location"
+              >
+                <i className={`fas ${isRequestingLocation ? "fa-spinner fa-spin" : "fa-map-marker-alt"}`}></i>
+              </button>
+            </div>
+            <p className="text-xs" style={{ color: 'var(--tertiary-text)' }}>
+              Start typing to see location suggestions, or use GPS to get your current location
+            </p>
+          </div>
+
           <div className="flex gap-3 mt-4">
+            {userLocation && (
+              <Button
+                onClick={handleClearLocation}
+                variant="secondary"
+              >
+                Clear Location
+              </Button>
+            )}
             <Button
               onClick={handleTideCoverageCheck}
               disabled={!userLocation || checkingTideCoverage}
