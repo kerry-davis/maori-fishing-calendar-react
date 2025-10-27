@@ -220,15 +220,35 @@ function fallbackExtrema(
   return extrema.sort((a, b) => a.time.localeCompare(b.time));
 }
 
+/**
+ * Converts a tide time string (UTC ISO format) to a Date object.
+ * 
+ * The returned Date represents the UTC instant. When formatted with
+ * toLocaleString({ timeZone: ... }), it will display in the correct
+ * local time for that timezone.
+ * 
+ * @param time - ISO 8601 UTC timestamp (e.g., "2025-10-26T12:58:00Z")
+ * @param utcOffsetSeconds - DEPRECATED: No longer used, kept for backward compatibility
+ * @returns Date object representing the UTC instant
+ * 
+ * @example
+ * const date = getUtcDateFromTideTime("2025-10-26T12:58:00Z");
+ * // date represents: Sunday Oct 26, 12:58 UTC
+ * 
+ * date.toLocaleString('en-US', { timeZone: 'Pacific/Auckland', ... })
+ * // Displays: "Mon, Oct 27, 1:58 AM" (UTC+13 = Monday in NZ)
+ */
 export function getUtcDateFromTideTime(
   time: string,
-  utcOffsetSeconds = 0,
+  _utcOffsetSeconds = 0, // Kept for backward compatibility, not used
 ): Date {
   const [datePart, timePart] = time.split("T");
   const [year, month, day] = datePart.split("-").map(Number);
   const [hours, minutes] = timePart.split(":").map(Number);
   const utcMillis = Date.UTC(year, month - 1, day, hours, minutes);
-  return new Date(utcMillis - utcOffsetSeconds * 1000);
+  // Return Date representing the UTC instant directly
+  // The formatter (toLocaleString with timeZone) will handle timezone conversion
+  return new Date(utcMillis);
 }
 
 // Compute NZ offset using Intl for a given UTC reference (midday best for stability)

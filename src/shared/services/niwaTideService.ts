@@ -118,17 +118,7 @@ export class NwaTideProvider {
 
     // Format the date for NZ timezone
     // Input date should already be in UTC representing the calendar date
-    console.log('🔍 NIWA fetchForecast - Input date:', date);
-    console.log('🔍 NIWA fetchForecast - Input date ISO:', date.toISOString());
-    console.log('🔍 NIWA fetchForecast - Input date UTC components:', {
-      year: date.getUTCFullYear(),
-      month: date.getUTCMonth(),
-      date: date.getUTCDate(),
-      hours: date.getUTCHours()
-    });
-    
     const targetDateNz = nzDateFormatter.format(date);
-    console.log('🔍 NIWA fetchForecast - targetDateNz:', targetDateNz);
     
     const startDateNz = shiftNzDateString(targetDateNz, -3);
     const endDateNz = shiftNzDateString(targetDateNz, 2);
@@ -324,8 +314,6 @@ function processTideData(data: NIWAResponse, targetDate: string): TideForecast {
   const firstDate = data.values[0]?.time?.split('T')[0];
   const lastDate = data.values[data.values.length-1]?.time?.split('T')[0];
   DEV_LOG(`🔍 NIWA Date range: ${firstDate} to ${lastDate} (UTC)`);
-  console.log('🔍 NIWA processTideData - targetDate:', targetDate);
-  console.log('🔍 NIWA processTideData - First 5 data points:', data.values.slice(0, 5).map(p => p.time));
 
   const [targetYear, targetMonth, targetDay] = targetDate.split('-').map(Number);
   const targetReferenceUtc = new Date(Date.UTC(targetYear, targetMonth - 1, targetDay, 12, 0, 0));
@@ -336,16 +324,12 @@ function processTideData(data: NIWAResponse, targetDate: string): TideForecast {
     const nzDateString = nzDateFormatter.format(utcDate);
     const isTarget = nzDateString === targetDate;
 
-    if (index < 10 || isTarget) {
-      console.log(`🔧 Point ${index}: UTC: ${point.time} -> NZ: ${nzDateString} (target: ${targetDate}, match: ${isTarget})`);
+    if (index < 3 || isTarget) {
       DEV_LOG(`🔧 UTC: ${point.time} -> NZ: ${nzDateString} (target: ${targetDate})`);
     }
 
     return isTarget;
   });
-  
-  console.log('🔍 NIWA processTideData - Filtered to', targetDateValues.length, 'points');
-  console.log('🔍 NIWA processTideData - Filtered times:', targetDateValues.slice(0, 10).map(p => p.time));
 
   DEV_LOG(`🔍 NIWA UTC->NZ conversion: ${targetDateValues.length} points for NZ date ${targetDate}`);
   
