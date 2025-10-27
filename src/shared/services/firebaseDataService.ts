@@ -3381,7 +3381,13 @@ export class FirebaseDataService {
         where('userId', '==', this.userId)
       );
       const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const items = [];
+      for (const doc of querySnapshot.docs) {
+        const data = doc.data();
+        const decryptedData = await encryptionService.decryptObject('tackleItems', data);
+        items.push({ id: doc.id, ...decryptedData });
+      }
+      return items;
     } catch (error) {
       PROD_ERROR('Error fetching tackle items:', error);
       throw error;

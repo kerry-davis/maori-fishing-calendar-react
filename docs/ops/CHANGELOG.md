@@ -2,6 +2,7 @@
 
 ## Latest Updates
 
+- **Tackle Items Decryption Fix**: Resolved regression where encrypted tackle item names displayed as encoded strings. Fixed timing issue by adding `encryptionReady` dependency to `useFirebaseTackleBox` hook, ensuring tackle items reload and decrypt properly once encryption service initializes after login. Also added decryption to `firebaseDataService.getAllTackleItems()` for consistency.
 - Firestore rules: owner-guarded get/update/delete; explicit list permissions for trips, weatherLogs, fishCaught, tackleItems, gearTypes; allow userSettings delete by owner (covers legacy docs without userId); helper functions for standardized checks.
 - Import/Export: include encrypted photos in exports; improved import progress; fetch catches by trip; robust guest→cloud merge via upsert; complete delete-all wipe (enc_photos + tackle/gear/userSettings).
 - PWA/Offline UX: new `SyncToast` and refreshed `OfflineIndicator`; shared sync status across UI; safer logout waiting for pending sync.

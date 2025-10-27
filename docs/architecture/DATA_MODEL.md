@@ -94,10 +94,10 @@ erDiagram
   TACKLE_ITEMS {
     string gearId PK  "doc id"
     string userId FK
-    string name
-    string brand
+    string name       "encrypted"
+    string brand      "encrypted"
     string type
-    string colour
+    string colour     "encrypted"
     timestamp createdAt
     timestamp updatedAt
   }
@@ -121,6 +121,7 @@ erDiagram
 Notes:
 - Gear types are primarily stored in `userSettings.gearTypes`. The `gearTypes` collection exists but is deprecated for most flows to avoid drift.
 - Sensitive fields are deterministically encrypted client-side per `SECURITY.md` (selected string fields in trips/weatherLogs/fishCaught/tackleItems/userSavedLocations).
+- **Tackle Items Encryption**: `name`, `brand`, and `colour` fields are encrypted before writing to Firestore. The `type` field remains plaintext to enable filtering/grouping. Decryption occurs automatically when loading tackle items, with a timing consideration: tackle items are reloaded once the encryption service is initialized after login to ensure proper decryption.
 - Weather/Fish IDs are opaque and use a ULID-based suffix; UI should not parse IDs.
 - Saved locations are limited to 10 per user (hard cap enforced at service level).
 - Duplicate location prevention uses 11-meter coordinate tolerance (0.0001 degrees).
@@ -255,6 +256,7 @@ Notes:
 - Saved locations use Firestore for authenticated users, localStorage for guests.
 - 10-location limit enforced at service level with duplicate coordinate detection.
 - CRUD operations emit `savedLocationsChanged` events for reactive UI updates.
+- **Tackle Items Decryption Flow**: When authenticated users load tackle items, `useFirebaseTackleBox` and `firebaseDataService.getAllTackleItems()` automatically decrypt encrypted fields. The hook monitors `AuthContext.encryptionReady` to reload items once encryption service initialization completes, ensuring proper decryption timing after login.
 
 ## 4) UI Data ERD
 

@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import type { TackleItem } from '../types';
 import { DEFAULT_GEAR_TYPES } from '../types';
+import { encryptionService } from '@shared/services/encryptionService';
 
 // Generate a stable numeric ID from a string (e.g., Firestore doc.id) to satisfy TackleItem.id:number
 function stableNumericId(str: string): number {
@@ -38,7 +39,7 @@ export function useFirebaseTackleBox(): [
   string | null,
   boolean // loading state
 ] {
-  const { user } = useAuth();
+  const { user, encryptionReady } = useAuth();
   const [tacklebox, setTacklebox] = useState<TackleItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -74,12 +75,14 @@ export function useFirebaseTackleBox(): [
         const querySnapshot = await getDocs(q);
         const items: TackleItem[] = [];
 
-        querySnapshot.forEach((docSnap) => {
+        for (const docSnap of querySnapshot.docs) {
           const data = docSnap.data();
+          // Decrypt tackle item fields (name, brand, colour)
+          const decryptedData = await encryptionService.decryptObject('tackleItems', data);
           // Always derive a stable numeric id from doc id to avoid parseInt collisions
           const idNum = stableNumericId(docSnap.id);
-          items.push({ id: idNum, gearId: docSnap.id, ...(data as any) } as TackleItem);
-        });
+          items.push({ id: idNum, gearId: docSnap.id, ...decryptedData } as TackleItem);
+        }
 
         setTacklebox(dedupeByComposite(items));
       } else {
@@ -114,10 +117,10 @@ export function useFirebaseTackleBox(): [
     }
   }, [user]);
 
-  // Load data when user changes
+  // Load data when user changes or encryption becomes ready
   useEffect(() => {
     loadTackleBox();
-  }, [loadTackleBox]);
+  }, [loadTackleBox, encryptionReady]);
 
   // Update tackle box in Firestore or localStorage
   const updateTackleBox = useCallback(async (
