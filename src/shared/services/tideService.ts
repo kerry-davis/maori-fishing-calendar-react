@@ -60,6 +60,14 @@ function cacheKey(lat: number, lon: number, date: string): string {
   return `${getFetchId()}:${lat.toFixed(6)},${lon.toFixed(6)}@${date}`;
 }
 
+/**
+ * Formats a Date object to YYYY-MM-DD string using UTC date components.
+ * This ensures consistent date representation regardless of user's timezone.
+ * 
+ * IMPORTANT: Input Date should represent a calendar date (year/month/day),
+ * not a specific moment in time. Use Date.UTC() or setUTCHours(0,0,0,0) when
+ * creating the Date to avoid timezone-related off-by-one errors.
+ */
 function formatDate(date: Date): string {
   const year = date.getUTCFullYear();
   const month = `${date.getUTCMonth() + 1}`.padStart(2, "0");
