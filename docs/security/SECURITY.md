@@ -2,27 +2,42 @@
 
 This repository previously contained exposed Firebase credentials (API key and Google OAuth Client ID) in commit history. The current code loads configuration from environment variables and avoids logging sensitive data in production.
 
-## Immediate Actions to Take
+## Security Status Update (2025-10-27)
 
-1. Rotate Firebase Web API Key
-   - Go to Firebase Console > Project Settings > General > Your apps > Web API Key
-   - Create a new API key and update it in deployment environments (.env on local, provider secrets for CI/CD)
-   - Restrict usage: In Google Cloud Console, lock the API key to correct referrers (your domain) and APIs
-   - Invalidate the old key after rollout
+**✅ Git History Has Been Cleaned**
 
-2. Review OAuth Client
-   - Cloud Console > APIs & Services > Credentials > OAuth 2.0 Client IDs
-   - If the Web client ID was exposed, consider creating a new one and removing the old
-   - Verify Authorized JavaScript origins and redirect URIs are correct
+Firebase API keys were previously exposed but **have been sanitized from git history** (commit `f148644` "Scrub test literals to satisfy secret scanning"). Current status:
 
-3. Purge or Mitigate History
-   - Because the key appeared in git history, consider:
-     - Rewriting git history to remove the secret (e.g., git filter-repo), and
-     - For forks/clones you cannot control, rely on rotation and referer/API restrictions
+- ✅ Firebase API key in history: **REDACTED** (shown as asterisks)
+- ✅ Current code uses environment variables (secure)
+- ✅ Secret scanning active in CI/CD
+- ℹ️ Google OAuth Client ID visible (acceptable - needs authorized origins configured)
 
-4. Enable Secret Scanning
-   - GitHub Actions workflow added at .github/workflows/secret-scan.yml using Gitleaks
-   - Run locally: npm run scan:secrets
+## Recommended Security Hardening (Optional)
+
+Since git history has been cleaned, these are **optional best practices** rather than urgent requirements:
+
+### 1. Apply Firebase API Restrictions (Recommended)
+Even though keys are no longer exposed, adding restrictions is good security hygiene:
+   - Go to Google Cloud Console > APIs & Services > Credentials
+   - Find "Browser key (auto created by Firebase)"
+   - Add HTTP referrer restrictions to your production domains
+   - Limit to required APIs only (Identity Toolkit, Firestore, Storage)
+
+### 2. Review OAuth Client Configuration
+   - Cloud Console > APIs & Services > Credentials > OAuth 2.0 Client IDs  
+   - Verify Authorized JavaScript origins only include your domains
+   - Verify Authorized redirect URIs are correct
+   - Remove any suspicious entries
+
+### 3. Enable Firebase App Check (Highly Recommended)
+   - Firebase Console > App Check
+   - Prevents abuse even with valid API key
+   - Uses reCAPTCHA to verify requests from legitimate clients
+
+### 4. Secret Scanning (Already Active)
+   - ✅ GitHub Actions workflow at .github/workflows/secret-scan.yml using Gitleaks
+   - Run locally: `npm run scan:secrets` (if script exists)
 
 ## Local Development
 
