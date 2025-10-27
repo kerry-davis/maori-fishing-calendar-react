@@ -292,8 +292,10 @@ erDiagram
 ```
 
 Notes:
-- Saved locations are managed exclusively through Settings modal.
+- Saved locations are managed exclusively through Settings modal (consolidated from previously duplicated UI in CurrentMoonInfo, LunarModal, and Settings).
+- CurrentMoonInfo and LunarModal provide read-only location displays with "Change Location" / "Set Location" buttons that open Settings.
 - LocationContext provides app-wide access to saved locations state and CRUD operations.
 - Saved locations can be selected to auto-fill water and location fields in trip forms.
+- Location search includes GPS location detection, Google Places autocomplete, and manual coordinate entry.
 
 — End —
