@@ -117,9 +117,28 @@ npm run dev:cf
 ## Calendar Integration
 
 ### Date Handling
-- Calendar uses `Date.UTC()` for all date creation to ensure timezone independence
-- Tide queries use `setUTCHours(12, 0, 0, 0)` to query midday of target date
-- Prevents date shifting across timezone boundaries
+
+**Current Implementation** (October 2025):
+- Uses shared `createLocalCalendarDateUTC()` utility for consistent timezone-safe date construction
+- Ensures local calendar dates are correctly represented in UTC for API queries and cache keys
+- Both `CurrentMoonInfo` (main page) and `LunarModal` use the same date construction logic
+- Daily refresh at midnight local time to keep tide forecasts current
+
+**Key Functions**:
+```typescript
+// Shared utility in tideService.ts
+createLocalCalendarDateUTC(date?: Date): Date
+  - Constructs Date with local calendar date as UTC components
+  - Prevents off-by-one errors in timezones ahead of UTC
+  
+addDays(source: Date, amount: number): Date
+  - UTC-aware date arithmetic for navigation
+```
+
+**Previous Issue (Fixed)**: 
+- Using `new Date()` then `setUTCHours(0,0,0,0)` caused date to be one day behind in timezones ahead of UTC
+- Example: NZ October 27 → UTC October 26 → showed yesterday's tides
+- Fix: Use `Date.UTC(getFullYear(), getMonth(), getDate())` to preserve local calendar date
 
 ### Display Components
 - **CurrentMoonInfo**: Shows current location's tide forecast

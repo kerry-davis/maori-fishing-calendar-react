@@ -75,6 +75,27 @@ function formatDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+/**
+ * Creates a Date representing a local calendar date at midnight UTC.
+ * This ensures formatDate() and other UTC-based operations extract the correct date
+ * regardless of the user's timezone.
+ * 
+ * Example: If it's October 27 in your timezone (even if UTC is still October 26),
+ * this returns a Date where getUTCDate() === 27.
+ * 
+ * @param date - Optional date to normalize. If omitted, uses current date.
+ * @returns Date with local calendar date as UTC components at midnight
+ */
+export function createLocalCalendarDateUTC(date?: Date): Date {
+  const source = date || new Date();
+  return new Date(Date.UTC(
+    source.getFullYear(),
+    source.getMonth(),
+    source.getDate(),
+    0, 0, 0, 0
+  ));
+}
+
 export function addDays(source: Date, amount: number): Date {
   return new Date(Date.UTC(
     source.getUTCFullYear(),

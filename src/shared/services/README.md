@@ -493,9 +493,43 @@ const extremaForDate = allExtrema.filter((extremum) => {
 
 ### Calendar Integration
 
-- Uses `Date.UTC()` for timezone-independent date creation
-- Tide queries use `setUTCHours(12, 0, 0, 0)` to query midday of target date
-- Prevents date shifting across timezone boundaries
+**Timezone-Safe Date Construction**:
+
+The tide service provides `createLocalCalendarDateUTC()` utility for consistent date handling:
+
+```typescript
+import { createLocalCalendarDateUTC, addDays } from './tideService';
+
+// Create a Date representing today's local calendar date
+const today = createLocalCalendarDateUTC();
+
+// Create a Date for a specific date
+const specificDate = createLocalCalendarDateUTC(new Date('2025-10-27'));
+
+// Navigate dates using UTC arithmetic
+const tomorrow = addDays(today, 1);
+const yesterday = addDays(today, -1);
+```
+
+**Problem it solves**: In timezones ahead of UTC (e.g., NZ UTC+13), creating `new Date()` then calling `setUTCHours(0,0,0,0)` results in the UTC date being one day behind the local calendar date.
+
+**Solution**: `createLocalCalendarDateUTC()` uses `Date.UTC()` with local calendar components:
+```typescript
+export function createLocalCalendarDateUTC(date?: Date): Date {
+  const source = date || new Date();
+  return new Date(Date.UTC(
+    source.getFullYear(),  // Local year
+    source.getMonth(),     // Local month
+    source.getDate(),      // Local day
+    0, 0, 0, 0            // Midnight UTC
+  ));
+}
+```
+
+**Usage in Components**:
+- `CurrentMoonInfo`: Uses for tide date initialization and daily updates
+- `LunarModal`: Uses for initial state and date navigation
+- Both components use the same function ensuring consistent tide data
 
 ## Location Integration
 

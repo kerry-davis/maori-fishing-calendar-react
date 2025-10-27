@@ -2,6 +2,7 @@
 
 ## Latest Updates
 
+- **Tide Date Timezone Fix (Oct 2025)**: Fixed critical bug where tide forecasts on main page showed yesterday's data in timezones ahead of UTC (e.g., New Zealand UTC+13). Created shared `createLocalCalendarDateUTC()` utility in `tideService.ts` that constructs Dates with local calendar date as UTC components. Updated both `CurrentMoonInfo` and `LunarModal` to use this shared function, ensuring consistent tide data across the app. Main page now includes automatic daily refresh to keep tide forecasts current. Also updated `LunarModal` date navigation to use `addDays()` helper for UTC-aware arithmetic.
 - **Tackle Items Decryption Fix**: Resolved regression where encrypted tackle item names displayed as encoded strings. Fixed timing issue by adding `encryptionReady` dependency to `useFirebaseTackleBox` hook, ensuring tackle items reload and decrypt properly once encryption service initializes after login. Also added decryption to `firebaseDataService.getAllTackleItems()` for consistency.
 - Firestore rules: owner-guarded get/update/delete; explicit list permissions for trips, weatherLogs, fishCaught, tackleItems, gearTypes; allow userSettings delete by owner (covers legacy docs without userId); helper functions for standardized checks.
 - Import/Export: include encrypted photos in exports; improved import progress; fetch catches by trip; robust guest→cloud merge via upsert; complete delete-all wipe (enc_photos + tackle/gear/userSettings).

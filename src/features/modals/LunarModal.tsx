@@ -14,6 +14,7 @@ import {
   calculateBiteTimes,
   getSunMoonTimes,
 } from "@shared/services/lunarService";
+import { createLocalCalendarDateUTC, addDays } from "@shared/services/tideService";
 import type { BiteTime } from "@shared/types";
 import { BITE_QUALITY_COLORS } from "@shared/types";
 import { WeatherSection } from "../weather/WeatherSection";
@@ -48,7 +49,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
   // const { user } = useAuth(); // Not currently used
   const { userLocation } = useLocationContext();
   const db = useDatabaseService();
-  const [currentDate, setCurrentDate] = useState<Date>(new Date());
+  const [currentDate, setCurrentDate] = useState<Date>(() => createLocalCalendarDateUTC());
   const [hasTripsForDate, setHasTripsForDate] = useState<boolean>(false);
 
   // Touch/swipe handling for mobile
@@ -58,7 +59,7 @@ export const LunarModal: React.FC<LunarModalProps> = ({
   // Update current date when modal opens or selectedDate changes
   useEffect(() => {
     if (isOpen && selectedDate) {
-      setCurrentDate(new Date(selectedDate));
+      setCurrentDate(createLocalCalendarDateUTC(selectedDate));
     }
   }, [isOpen, selectedDate]);
 
@@ -145,15 +146,11 @@ export const LunarModal: React.FC<LunarModalProps> = ({
 
   // Navigation handlers
   const handlePrevDay = useCallback(() => {
-    const prevDay = new Date(currentDate);
-    prevDay.setDate(prevDay.getDate() - 1);
-    setCurrentDate(prevDay);
+    setCurrentDate(addDays(currentDate, -1));
   }, [currentDate]);
 
   const handleNextDay = useCallback(() => {
-    const nextDay = new Date(currentDate);
-    nextDay.setDate(nextDay.getDate() + 1);
-    setCurrentDate(nextDay);
+    setCurrentDate(addDays(currentDate, 1));
   }, [currentDate]);
 
 

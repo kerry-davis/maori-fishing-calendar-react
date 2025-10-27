@@ -300,4 +300,58 @@ Notes:
 - Saved locations can be selected to auto-fill water and location fields in trip forms.
 - Location search includes GPS location detection, Google Places autocomplete, and manual coordinate entry.
 
+## 5) Date and Time Handling for Tide Data
+
+### Timezone-Safe Date Construction
+
+Tide data requests require careful date handling to ensure local calendar dates are correctly represented in UTC for API queries and cache keys.
+
+**Problem**: JavaScript's default `new Date()` behavior can cause off-by-one date errors in timezones ahead of UTC (e.g., New Zealand UTC+13):
+- Creating `new Date()` then `setUTCHours(0,0,0,0)` results in the UTC date being one day behind the local calendar date
+- Example: October 27, 10:00 AM NZDT → October 26, 9:00 PM UTC → `setUTCHours(0,0,0,0)` → **October 26, 00:00 UTC (yesterday!)**
+
+**Solution**: Use `createLocalCalendarDateUTC()` utility from `tideService.ts`:
+
+```typescript
+/**
+ * Creates a Date representing a local calendar date at midnight UTC.
+ * Ensures formatDate() and UTC-based operations extract the correct date
+ * regardless of the user's timezone.
+ */
+export function createLocalCalendarDateUTC(date?: Date): Date {
+  const source = date || new Date();
+  return new Date(Date.UTC(
+    source.getFullYear(),    // Local year
+    source.getMonth(),       // Local month
+    source.getDate(),        // Local day
+    0, 0, 0, 0              // Midnight UTC
+  ));
+}
+```
+
+**Usage**:
+- `CurrentMoonInfo`: Uses `createLocalCalendarDateUTC()` for tide date initialization and daily updates
+- `LunarModal`: Uses `createLocalCalendarDateUTC()` for initial state and when receiving `selectedDate` prop
+- Date navigation: Uses `addDays()` helper which preserves UTC date arithmetic
+
+**Benefits**:
+- Tide forecasts always match the user's local calendar date
+- Both main page and lunar modal show consistent tide data for the same day
+- Automatic daily refresh at midnight local time
+- No timezone-related date drift or stale data
+
+### Date Formatting for API Requests
+
+The tide service's internal `formatDate()` function extracts UTC components:
+```typescript
+function formatDate(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = `${date.getUTCMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getUTCDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+```
+
+When combined with `createLocalCalendarDateUTC()`, this ensures the formatted date string matches the local calendar date, preventing cache misses and incorrect API queries.
+
 — End —

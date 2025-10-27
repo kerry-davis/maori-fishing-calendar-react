@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useLocationContext } from "@app/providers";
 import { TideSummary } from "../tide/TideSummary";
 import {
   getCurrentMoonInfo,
   getSunMoonTimes,
 } from "@shared/services/lunarService";
+import { createLocalCalendarDateUTC } from "@shared/services/tideService";
 import type { LunarPhase } from "@shared/types";
 
 interface CurrentMoonInfoProps {
@@ -28,12 +29,8 @@ export function CurrentMoonInfo({ className = "", onSettingsClick }: CurrentMoon
     moonrise: string;
     moonset: string;
   } | null>(null);
-  const tideDate = useMemo(() => {
-    const current = new Date();
-    // Use UTC to avoid timezone-related date shifts
-    current.setUTCHours(0, 0, 0, 0);
-    return current;
-  }, []);
+  // Tide date state that updates to match current local calendar date
+  const [tideDate, setTideDate] = useState(() => createLocalCalendarDateUTC());
 
   // Update moon info every minute
   useEffect(() => {
@@ -50,6 +47,21 @@ export function CurrentMoonInfo({ className = "", onSettingsClick }: CurrentMoon
 
     return () => clearInterval(interval);
   }, []);
+
+  // Update tide date every minute to catch day changes
+  useEffect(() => {
+    const updateTideDate = () => {
+      const newTideDate = createLocalCalendarDateUTC();
+      
+      // Only update if the date actually changed
+      if (newTideDate.getTime() !== tideDate.getTime()) {
+        setTideDate(newTideDate);
+      }
+    };
+
+    const interval = setInterval(updateTideDate, 60000);
+    return () => clearInterval(interval);
+  }, [tideDate]);
 
   // Update sun/moon times when location changes
   useEffect(() => {
