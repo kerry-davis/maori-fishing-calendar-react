@@ -10,13 +10,17 @@ a new set of tasks have been provided .tasks/[branch name][increment number].md 
 do not stop until complete.
 
 3. planner
-tasks complete. please review the code that was completed in these files  .tasks/[branch name].[files][increment number].md and provide feedback.
+tasks complete. please review the code that was completed in these files .tasks/[branch name].[files][increment number].md and provide feedback.
 
 4. Initial plan
 please save plan to file .tasks/[branch name][increment number].md; please note that if the branch name has a "/" you are required to create a subdirectory.
 
 5. Try something else
-use for context only @docs/architecture/DATA_MODEL.md ;  Previous solutions are still not working. Think harder and approach the problem from a different angle to implement a cleaner solution. Do not overcomplicate; keep the solution simple and straightforward. After you complete your implementation, validate the changes with a brief summary of the new solution and its rationale. If the solution does not address the core issue, iterate with a revised approach.
+use for context only @docs/architecture/DATA_MODEL.md ;  Previous solutions are still not working. 
+Think harder and approach the problem from a different angle to implement a cleaner solution. 
+Do not overcomplicate; keep the solution simple and straightforward. 
+After you complete your implementation, validate the changes with a brief summary of the new solution and its rationale. 
+If the solution does not address the core issue, iterate with a revised approach.
 
 6. Code review
 please review all changes on this branch and provide feedback
