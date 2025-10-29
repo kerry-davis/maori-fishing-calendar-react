@@ -47,7 +47,9 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
 
   // Add days from current month only
   for (let day = 1; day <= daysInMonth; day++) {
-    const date = new Date(currentYear, currentMonth, day);
+    // Create date at UTC midnight to avoid timezone issues with tide services
+    // This represents the calendar date (year/month/day) rather than a specific moment
+    const date = new Date(Date.UTC(currentYear, currentMonth, day, 0, 0, 0, 0));
     const dateString = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
     calendarDays.push({
       date,

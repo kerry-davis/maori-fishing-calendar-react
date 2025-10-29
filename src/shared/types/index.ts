@@ -268,6 +268,30 @@ export interface UserLocation {
   name: string;
 }
 
+export interface SavedLocation {
+  id: string;
+  userId?: string;
+  name: string;
+  water?: string;
+  location?: string;
+  lat?: number;
+  lon?: number;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type SavedLocationCreateInput = {
+  name: string;
+  water?: string;
+  location?: string;
+  lat?: number;
+  lon?: number;
+  notes?: string;
+};
+
+export type SavedLocationUpdateInput = Partial<SavedLocationCreateInput>;
+
 export interface TideCoverageStatus {
   available: boolean;
   checkedAt: string;
@@ -310,6 +334,15 @@ export interface LocationContextType {
   searchLocationSuggestions: (locationName: string) => Promise<UserLocation[]>;
   tideCoverage: TideCoverageStatus | null;
   refreshTideCoverage: () => Promise<void>;
+  savedLocations: SavedLocation[];
+  savedLocationsLoading: boolean;
+  savedLocationsError: string | null;
+  createSavedLocation: (input: SavedLocationCreateInput) => Promise<SavedLocation>;
+  updateSavedLocation: (id: string, updates: SavedLocationUpdateInput) => Promise<void>;
+  deleteSavedLocation: (id: string) => Promise<void>;
+  selectSavedLocation: (id: string) => Promise<SavedLocation | null>;
+  saveCurrentLocation: (input: SavedLocationCreateInput) => Promise<SavedLocation>;
+  savedLocationsLimit: number;
 }
 
 export interface DatabaseContextType {
@@ -482,7 +515,10 @@ export const STORAGE_KEYS = {
   USER_LOCATION: "userLocation",
   TACKLEBOX: "tacklebox",
   GEAR_TYPES: "gearTypes",
+  SAVED_LOCATIONS: "savedLocations",
 } as const;
+
+export const MAX_SAVED_LOCATIONS = 10;
 
 // Database configuration
 export const DB_CONFIG = {

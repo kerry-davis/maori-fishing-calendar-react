@@ -1,8 +1,12 @@
 import { createContext, useContext, useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useLocationStorage } from "@shared/hooks/useLocalStorage";
+import { useSavedLocations } from "@shared/hooks/useSavedLocations";
 import type {
   LocationContextType,
+  SavedLocation,
+  SavedLocationCreateInput,
+  SavedLocationUpdateInput,
   TideCoverageStatus,
   UserLocation,
 } from "@shared/types";
@@ -27,6 +31,16 @@ export function LocationProvider({ children }: LocationProviderProps) {
     useLocationStorage();
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
   const [tideCoverage, setTideCoverage] = useState<TideCoverageStatus | null>(null);
+  const {
+    savedLocations,
+    savedLocationsLoading,
+    savedLocationsError,
+    createSavedLocation: createSavedLocationInternal,
+    updateSavedLocation: updateSavedLocationInternal,
+    deleteSavedLocation: deleteSavedLocationInternal,
+    getSavedLocationById,
+    savedLocationsLimit,
+  } = useSavedLocations();
 
   // Set location and persist to localStorage
   const setLocation = useCallback(
@@ -251,6 +265,63 @@ export function LocationProvider({ children }: LocationProviderProps) {
     void refreshTideCoverage();
   }, [userLocation, refreshTideCoverage]);
 
+  useEffect(() => {
+    if (savedLocationsError) {
+      console.error("Saved locations error:", savedLocationsError);
+    }
+  }, [savedLocationsError]);
+
+  const createSavedLocation = useCallback((input: SavedLocationCreateInput) => {
+    return createSavedLocationInternal(input);
+  }, [createSavedLocationInternal]);
+
+  const updateSavedLocation = useCallback(async (id: string, updates: SavedLocationUpdateInput) => {
+    await updateSavedLocationInternal(id, updates);
+  }, [updateSavedLocationInternal]);
+
+  const deleteSavedLocation = useCallback(async (id: string) => {
+    await deleteSavedLocationInternal(id);
+  }, [deleteSavedLocationInternal]);
+
+  const selectSavedLocation = useCallback(async (id: string): Promise<SavedLocation | null> => {
+    const location = await getSavedLocationById(id);
+    if (!location) {
+      return null;
+    }
+
+    if (typeof location.lat === 'number' && typeof location.lon === 'number') {
+      const name = location.name || location.location || 'Saved Location';
+      setLocation({
+        lat: location.lat,
+        lon: location.lon,
+        name,
+      });
+    }
+
+    return location;
+  }, [getSavedLocationById, setLocation]);
+
+  const saveCurrentLocation = useCallback(async (input: SavedLocationCreateInput) => {
+    const payload: SavedLocationCreateInput = { ...input };
+
+    if (!payload.name || payload.name.trim().length === 0) {
+      if (userLocation?.name) {
+        payload.name = userLocation.name;
+      }
+    }
+
+    if (payload.lat === undefined && typeof userLocation?.lat === 'number') {
+      payload.lat = userLocation.lat;
+    }
+
+    if (payload.lon === undefined && typeof userLocation?.lon === 'number') {
+      payload.lon = userLocation.lon;
+    }
+
+    const saved = await createSavedLocation(payload);
+    return saved;
+  }, [createSavedLocation, userLocation]);
+
   const contextValue: LocationContextType = {
     userLocation,
     setLocation,
@@ -259,6 +330,15 @@ export function LocationProvider({ children }: LocationProviderProps) {
     searchLocationSuggestions,
     tideCoverage,
     refreshTideCoverage,
+    savedLocations,
+    savedLocationsLoading,
+    savedLocationsError,
+    createSavedLocation,
+    updateSavedLocation,
+    deleteSavedLocation,
+    selectSavedLocation,
+    saveCurrentLocation,
+    savedLocationsLimit,
   };
 
   return (

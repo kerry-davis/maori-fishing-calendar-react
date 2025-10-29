@@ -35,6 +35,12 @@ service cloud.firestore {
       allow read, update, delete: if isOwnerResource();
     }
 
+    // Saved locations collection - users can only access their own saved locations
+    match /userSavedLocations/{document} {
+      allow create: if isOwnerRequest();
+      allow read, update, delete: if isOwnerResource();
+    }
+
     // User settings collection - users can only access their own settings
     // Use path param for read so it works even if the document doesn't exist yet
     match /userSettings/{userId} {

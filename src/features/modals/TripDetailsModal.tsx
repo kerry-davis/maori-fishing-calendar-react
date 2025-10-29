@@ -4,6 +4,7 @@ import { Modal, ModalHeader, ModalBody, ModalFooter } from './Modal';
 import { useAuth } from '../../app/providers/AuthContext';
 import { firebaseDataService } from '@shared/services/firebaseDataService';
 import { databaseService } from '@shared/services/databaseService';
+
 import type { Trip, TripModalProps, FormValidation } from '../../shared/types';
 import { DEV_LOG, PROD_ERROR } from '../../shared/utils/loggingHelpers';
 
@@ -49,6 +50,8 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
     return date.toLocaleDateString("en-CA");
   };
 
+
+
   // Initialize form data
   useEffect(() => {
     if (!isOpen) return;
@@ -72,6 +75,8 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
     setValidation({ isValid: true, errors: {} });
     setError(null);
   }, [isOpen, isEditing, tripId, selectedDate]);
+
+
 
   // Load trip data for editing
   const loadTripData = async (id: number) => {

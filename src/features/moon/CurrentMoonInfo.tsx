@@ -1,18 +1,20 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useLocationContext } from "@app/providers";
 import { TideSummary } from "../tide/TideSummary";
 import {
   getCurrentMoonInfo,
   getSunMoonTimes,
 } from "@shared/services/lunarService";
-import type { LunarPhase, UserLocation } from "@shared/types";
+import { createLocalCalendarDateUTC } from "@shared/services/tideService";
+import type { LunarPhase } from "@shared/types";
 
 interface CurrentMoonInfoProps {
   className?: string;
+  onSettingsClick?: () => void;
 }
 
-export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
-  const { userLocation, setLocation, requestLocation, searchLocation, searchLocationSuggestions } = useLocationContext();
+export function CurrentMoonInfo({ className = "", onSettingsClick }: CurrentMoonInfoProps) {
+  const { userLocation } = useLocationContext();
   const [moonInfo, setMoonInfo] = useState<{
     phase: LunarPhase;
     phaseIndex: number;
@@ -27,23 +29,8 @@ export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
     moonrise: string;
     moonset: string;
   } | null>(null);
-  const tideDate = useMemo(() => {
-    const current = new Date();
-    current.setHours(0, 0, 0, 0);
-    return current;
-  }, []);
-
-  const [isRequestingLocation, setIsRequestingLocation] = useState(false);
-  const [locationError, setLocationError] = useState<string | null>(null);
-  const [locationInput, setLocationInput] = useState("");
-  const [isSearchingLocation, setIsSearchingLocation] = useState(false);
-  const [locationSuggestions, setLocationSuggestions] = useState<UserLocation[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
-  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
-
-  // Debounced search timeout ref
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Tide date state that updates to match current local calendar date
+  const [tideDate, setTideDate] = useState(() => createLocalCalendarDateUTC());
 
   // Update moon info every minute
   useEffect(() => {
@@ -61,6 +48,21 @@ export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
     return () => clearInterval(interval);
   }, []);
 
+  // Update tide date every minute to catch day changes
+  useEffect(() => {
+    const updateTideDate = () => {
+      const newTideDate = createLocalCalendarDateUTC();
+      
+      // Only update if the date actually changed
+      if (newTideDate.getTime() !== tideDate.getTime()) {
+        setTideDate(newTideDate);
+      }
+    };
+
+    const interval = setInterval(updateTideDate, 60000);
+    return () => clearInterval(interval);
+  }, [tideDate]);
+
   // Update sun/moon times when location changes
   useEffect(() => {
     if (userLocation) {
@@ -71,126 +73,6 @@ export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
       setSunMoonTimes(null);
     }
   }, [userLocation]);
-
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  // Handle location request
-  const handleLocationRequest = async () => {
-    if (isRequestingLocation) return;
-
-    setIsRequestingLocation(true);
-    setLocationError(null);
-
-    try {
-      await requestLocation();
-    } catch (error) {
-      setLocationError(
-        error instanceof Error ? error.message : "Failed to get location",
-      );
-    } finally {
-      setIsRequestingLocation(false);
-    }
-  };
-
-  // Handle location search
-  const handleLocationSearch = async () => {
-    if (!locationInput.trim()) {
-      return; // Don't search for empty input
-    }
-
-    setIsSearchingLocation(true);
-
-    try {
-      await searchLocation(locationInput.trim());
-      setLocationInput(""); // Clear the input after successful search
-    } catch (error) {
-      setLocationError(
-        error instanceof Error ? error.message : "Failed to search location",
-      );
-    } finally {
-      setIsSearchingLocation(false);
-    }
-  };
-
-  // Handle Enter key press in location input
-  const handleLocationInputKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !isSearchingLocation) {
-      if (showSuggestions && locationSuggestions.length > 0) {
-        // Select the highlighted suggestion
-        const selectedSuggestion = locationSuggestions[selectedSuggestionIndex >= 0 ? selectedSuggestionIndex : 0];
-        handleSuggestionSelect(selectedSuggestion);
-      } else {
-        handleLocationSearch();
-      }
-    } else if (e.key === 'Escape') {
-      setShowSuggestions(false);
-      setSelectedSuggestionIndex(-1);
-    } else if (e.key === 'ArrowDown' && showSuggestions) {
-      e.preventDefault();
-      setSelectedSuggestionIndex(prev =>
-        prev < locationSuggestions.length - 1 ? prev + 1 : 0
-      );
-    } else if (e.key === 'ArrowUp' && showSuggestions) {
-      e.preventDefault();
-      setSelectedSuggestionIndex(prev =>
-        prev > 0 ? prev - 1 : locationSuggestions.length - 1
-      );
-    }
-  };
-
-  // Handle location input change with debounced search
-  const handleLocationInputChange = (value: string) => {
-    setLocationInput(value);
-
-    // Clear previous timeout
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
-
-    if (value.trim().length < 2) {
-      setLocationSuggestions([]);
-      setShowSuggestions(false);
-      setSelectedSuggestionIndex(-1);
-      setIsLoadingSuggestions(false);
-      return;
-    }
-
-    // Set loading state
-    setIsLoadingSuggestions(true);
-
-    // Debounce the search by 300ms
-    searchTimeoutRef.current = setTimeout(async () => {
-      try {
-        const suggestions = await searchLocationSuggestions(value.trim());
-        setLocationSuggestions(suggestions);
-        setShowSuggestions(suggestions.length > 0);
-        setSelectedSuggestionIndex(-1);
-      } catch (error) {
-        console.error("Location suggestions error:", error);
-        setLocationSuggestions([]);
-        setShowSuggestions(false);
-      } finally {
-        setIsLoadingSuggestions(false);
-      }
-    }, 300);
-  };
-
-  // Handle suggestion selection
-  const handleSuggestionSelect = (suggestion: UserLocation) => {
-    setLocation(suggestion);
-    setLocationInput("");
-    setLocationSuggestions([]);
-    setShowSuggestions(false);
-    setSelectedSuggestionIndex(-1);
-    setLocationError(null);
-  };
 
   // Get moon phase icon based on phase index
   const getMoonPhaseIcon = (phaseIndex: number): string => {
@@ -291,6 +173,26 @@ export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
           <h5 className="text-sm font-medium" style={{ color: 'var(--primary-text)' }}>
             Location
           </h5>
+          {onSettingsClick && (
+            <button
+              onClick={onSettingsClick}
+              className="text-xs px-2 py-1 rounded transition"
+              style={{ 
+                color: 'var(--secondary-text)',
+                backgroundColor: 'var(--tertiary-background)'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.backgroundColor = 'var(--secondary-background)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.backgroundColor = 'var(--tertiary-background)';
+              }}
+              title="Change location in Settings"
+            >
+              <i className="fas fa-cog mr-1"></i>
+              Change Location
+            </button>
+          )}
         </div>
 
         {userLocation ? (
@@ -349,114 +251,12 @@ export function CurrentMoonInfo({ className = "" }: CurrentMoonInfoProps) {
                 />
               );
             })()}
-
-            <button
-              onClick={() => setLocation(null)}
-              className="text-xs mt-2"
-              style={{ color: 'var(--tertiary-text)' }}
-              onMouseOver={(e) => e.currentTarget.style.color = 'var(--secondary-text)'}
-              onMouseOut={(e) => e.currentTarget.style.color = 'var(--tertiary-text)'}
-            >
-              <i className="fas fa-times mr-1"></i>
-              Clear location
-            </button>
           </div>
         ) : (
           <div>
             <p className="text-sm mb-2" style={{ color: 'var(--tertiary-text)' }}>
-              Set your location to see sun and moon times
+              No location set. Set your location to see sun and moon times.
             </p>
-
-            {locationError && (
-              <p className="text-xs mb-2" style={{ color: 'var(--quality-poor)' }}>
-                <i className="fas fa-exclamation-triangle mr-1"></i>
-                {locationError}
-              </p>
-            )}
-
-            {/* Location Search Input with Buttons */}
-            <div className="space-y-2">
-              <div className="flex items-center space-x-1">
-                <div className="relative flex-1">
-                  <input
-                    type="text"
-                    value={locationInput}
-                    onChange={(e) => handleLocationInputChange(e.target.value)}
-                    onKeyDown={handleLocationInputKeyPress}
-                    onFocus={() => locationInput.trim().length >= 2 && setShowSuggestions(true)}
-                    onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                    placeholder="Enter a location"
-                    className="w-full px-3 py-2 rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    style={{
-                      backgroundColor: 'var(--input-background)',
-                      border: '1px solid var(--border-color)',
-                      color: 'var(--primary-text)'
-                    }}
-                  />
-
-                  {/* Location Suggestions Dropdown */}
-                  {showSuggestions && (
-                    <div className="absolute z-50 w-full mt-1 border rounded-md shadow-lg max-h-60 overflow-y-auto" style={{
-                      backgroundColor: 'var(--card-background)',
-                      borderColor: 'var(--card-border)'
-                    }}>
-                      {isLoadingSuggestions ? (
-                        <div className="px-2 py-1 text-xs" style={{ color: 'var(--secondary-text)' }}>
-                          <i className="fas fa-spinner fa-spin mr-1"></i>
-                          Searching locations...
-                        </div>
-                      ) : locationSuggestions.length > 0 ? (
-                        locationSuggestions.map((suggestion, index) => (
-                          <div
-                            key={`${suggestion.lat}-${suggestion.lon}`}
-                            onClick={() => handleSuggestionSelect(suggestion)}
-                            className="px-2 py-1 cursor-pointer text-xs"
-                            style={{
-                              backgroundColor: index === selectedSuggestionIndex ? 'var(--secondary-background)' : 'transparent'
-                            }}
-                            onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--tertiary-background)'}
-                            onMouseOut={(e) => e.currentTarget.style.backgroundColor = index === selectedSuggestionIndex ? 'var(--secondary-background)' : 'transparent'}
-                          >
-                            <div className="font-medium" style={{ color: 'var(--primary-text)' }}>
-                              {suggestion.name}
-                            </div>
-                            <div className="text-xs" style={{ color: 'var(--tertiary-text)' }}>
-                              {suggestion.lat.toFixed(4)}, {suggestion.lon.toFixed(4)}
-                            </div>
-                          </div>
-                        ))
-                      ) : locationInput.trim().length >= 2 ? (
-                        <div className="px-2 py-1 text-xs" style={{ color: 'var(--secondary-text)' }}>
-                          No locations found
-                        </div>
-                      ) : null}
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={handleLocationSearch}
-                  disabled={isSearchingLocation}
-                  className="px-3 py-2 rounded-none transition disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ backgroundColor: 'var(--button-secondary)', color: 'white' }}
-                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--button-secondary-hover)'}
-                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'var(--button-secondary)'}
-                  title="Search location"
-                >
-                  <i className={`fas ${isSearchingLocation ? "fa-spinner fa-spin" : "fa-search"}`}></i>
-                </button>
-                <button
-                  onClick={handleLocationRequest}
-                  disabled={isRequestingLocation}
-                  className="px-3 py-2 rounded-r bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                  title="Use current location"
-                >
-                  <i className={`fas ${isRequestingLocation ? "fa-spinner fa-spin" : "fa-map-marker-alt"}`}></i>
-                </button>
-              </div>
-              <p className="text-xs" style={{ color: 'var(--tertiary-text)' }}>
-                Start typing to see location suggestions
-              </p>
-            </div>
           </div>
         )}
       </div>

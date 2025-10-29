@@ -372,3 +372,211 @@ The service is optimized for performance:
 - Minimal external dependencies (only SunCalc)
 - Efficient algorithms for transit calculations
 - TypeScript compilation optimizations
+
+---
+
+# Tide Service
+
+The tide service provides accurate tide forecasts using multiple data providers with automatic fallback.
+
+## Provider Architecture
+
+### Waterfall Fallback System
+1. **NIWA API (Primary)** - Official NZ MetOcean Solutions data
+2. **Open-Meteo (Secondary)** - Global coverage with enhanced NZ support
+3. **Original Tide Service (Fallback)** - Legacy calculation-based service
+
+### NIWA Integration
+
+**Features**:
+- Official NZ harbor tide data with local corrections
+- High accuracy for NZ coastal waters
+- UTC timestamps with 'Z' suffix
+- Requires Cloudflare proxy for API key security
+
+**Usage**:
+```typescript
+import { fetchNwaTideForecast } from './niwaTideService';
+
+const forecast = await fetchNwaTideForecast(
+  -38.0651053,  // lat
+  174.818273,   // lon
+  new Date('2025-10-27')
+);
+```
+
+**Local Development**:
+```bash
+# Requires .dev.vars file with NIWA_API_KEY
+npm run dev:cf
+# Access at http://127.0.0.1:8788
+```
+
+### Open-Meteo Integration
+
+**Features**:
+- Global tide coverage
+- No API key required
+- Local timezone timestamps (no Z suffix)
+- Automatic fallback when NIWA unavailable
+
+**Usage**:
+```typescript
+import { fetchOpenMeteoTideForecast } from './tideService';
+
+const forecast = await fetchOpenMeteoTideForecast(
+  -38.0651053,  // lat
+  174.818273,   // lon
+  new Date('2025-10-27')
+);
+```
+
+## Timezone Handling
+
+### Unified Date Parsing
+
+The `getUtcDateFromTideTime()` function handles both UTC and local timestamps:
+
+```typescript
+// NIWA format (UTC)
+getUtcDateFromTideTime("2025-10-26T12:58:00Z")
+// Parsed as UTC, displays correctly in any timezone
+
+// Open-Meteo format (local)
+getUtcDateFromTideTime("2025-10-27T01:00:00")
+// Parsed as local time in target timezone
+```
+
+### Display Formatting
+
+All tide times use timezone-aware formatting:
+
+```typescript
+const formatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: forecast.timezone,  // e.g., "Pacific/Auckland"
+  weekday: "short",
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit"
+});
+
+const displayTime = formatter.format(tideDate);
+```
+
+### Date Filtering
+
+Ensures only selected date's tides are shown:
+
+```typescript
+// Timezone-aware filtering for Open-Meteo
+const formatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: forecast.timezone,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit"
+});
+
+const extremaForDate = allExtrema.filter((extremum) => {
+  const localDateString = formatter.format(new Date(extremum.time));
+  return localDateString === targetDate;  // "2025-10-27"
+});
+```
+
+## Recent Fixes
+
+### Timezone Bug Fixes (Oct 2025)
+
+1. **NIWA Date Display**: Removed erroneous offset subtraction that caused dates to shift backwards
+2. **Open-Meteo Date Filtering**: Added timezone-aware filtering to prevent adjacent day tides
+3. **Unified Timestamp Handling**: Single function handles both UTC (NIWA) and local (Open-Meteo) formats
+
+### Calendar Integration
+
+**Timezone-Safe Date Construction**:
+
+The tide service provides `createLocalCalendarDateUTC()` utility for consistent date handling:
+
+```typescript
+import { createLocalCalendarDateUTC, addDays } from './tideService';
+
+// Create a Date representing today's local calendar date
+const today = createLocalCalendarDateUTC();
+
+// Create a Date for a specific date
+const specificDate = createLocalCalendarDateUTC(new Date('2025-10-27'));
+
+// Navigate dates using UTC arithmetic
+const tomorrow = addDays(today, 1);
+const yesterday = addDays(today, -1);
+```
+
+**Problem it solves**: In timezones ahead of UTC (e.g., NZ UTC+13), creating `new Date()` then calling `setUTCHours(0,0,0,0)` results in the UTC date being one day behind the local calendar date.
+
+**Solution**: `createLocalCalendarDateUTC()` uses `Date.UTC()` with local calendar components:
+```typescript
+export function createLocalCalendarDateUTC(date?: Date): Date {
+  const source = date || new Date();
+  return new Date(Date.UTC(
+    source.getFullYear(),  // Local year
+    source.getMonth(),     // Local month
+    source.getDate(),      // Local day
+    0, 0, 0, 0            // Midnight UTC
+  ));
+}
+```
+
+**Usage in Components**:
+- `CurrentMoonInfo`: Uses for tide date initialization and daily updates
+- `LunarModal`: Uses for initial state and date navigation
+- Both components use the same function ensuring consistent tide data
+
+## Location Integration
+
+Tide forecasts integrate with saved locations:
+
+```typescript
+// Get tide forecast for saved location
+const location = await getSavedLocation(locationId);
+const forecast = await fetchTideForecast(
+  location.lat,
+  location.lon,
+  new Date()
+);
+```
+
+## Caching
+
+Forecasts are cached by location and date:
+
+```typescript
+// Cache key format
+const key = `${providerId}:${lat.toFixed(6)},${lon.toFixed(6)}@${date}`;
+
+// Cache checked before API calls
+if (!forceRefresh && cache.has(key)) {
+  return cache.get(key);
+}
+```
+
+## Error Handling
+
+Comprehensive error types and fallback:
+
+```typescript
+try {
+  const forecast = await fetchNwaTideForecast(...);
+} catch (error) {
+  if (error.type === 'network') {
+    // Fall back to Open-Meteo
+    return fetchOpenMeteoTideForecast(...);
+  }
+  throw error;
+}
+```
+
+## Related Documentation
+
+- `docs/tide/TIDE_IMPLEMENTATION_STATUS.md` - Current implementation details
+- `docs/deployment/NIWA_PROXY_DEPLOYMENT.md` - Proxy setup guide
+- `docs/tide/COMPLETE_TIDE_COMPARISON.md` - Provider accuracy analysis

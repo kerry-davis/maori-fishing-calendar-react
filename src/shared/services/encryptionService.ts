@@ -238,7 +238,8 @@ export const ENCRYPTION_COLLECTION_FIELD_MAP: Record<string, { fields: string[];
   trips: { fields: ['water', 'location', 'companions', 'notes'] },
   weatherLogs: { fields: ['sky', 'windCondition', 'windDirection'] },
   fishCaught: { fields: ['species', 'length', 'weight', 'time', 'details'], arrayFields: ['gear'] },
-  tackleItems: { fields: ['name', 'brand', 'colour'] }
+  tackleItems: { fields: ['name', 'brand', 'colour'] },
+  savedLocations: { fields: ['name', 'water', 'location', 'notes'] }
 };
 
 export function isPossiblyEncrypted(value: any): boolean {

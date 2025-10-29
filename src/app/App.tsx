@@ -373,7 +373,7 @@ function AppContent() {
           <Legend />
 
           {/* Current Moon Info */}
-          <CurrentMoonInfo />
+          <CurrentMoonInfo onSettingsClick={handleSettingsClick} />
 
         </main>
       </Container>
@@ -416,6 +416,7 @@ function AppContent() {
           onClose={handleCloseModal}
           selectedDate={selectedDate}
           onTripLogOpen={handleTripLogOpen}
+          onSettingsClick={handleSettingsClick}
         />
 
         <TripLogModal

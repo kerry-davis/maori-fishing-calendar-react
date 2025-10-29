@@ -54,7 +54,7 @@ export const TripFormModal: React.FC<TripFormModalProps> = ({
       ...prev,
       [field]: value,
     }));
-    // Clear error when user starts typing
+
     if (error) {
       setError(null);
     }

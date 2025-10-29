@@ -116,7 +116,10 @@ export class NwaTideProvider {
       throw new Error("NIWA tide provider disabled: configure VITE_NIWA_PROXY_URL to enable official NZ tides.");
     }
 
+    // Format the date for NZ timezone
+    // Input date should already be in UTC representing the calendar date
     const targetDateNz = nzDateFormatter.format(date);
+    
     const startDateNz = shiftNzDateString(targetDateNz, -3);
     const endDateNz = shiftNzDateString(targetDateNz, 2);
     const numberOfDays = Math.max(

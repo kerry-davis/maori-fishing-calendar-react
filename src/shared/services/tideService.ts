@@ -60,11 +60,40 @@ function cacheKey(lat: number, lon: number, date: string): string {
   return `${getFetchId()}:${lat.toFixed(6)},${lon.toFixed(6)}@${date}`;
 }
 
+/**
+ * Formats a Date object to YYYY-MM-DD string using UTC date components.
+ * This ensures consistent date representation regardless of user's timezone.
+ * 
+ * IMPORTANT: Input Date should represent a calendar date (year/month/day),
+ * not a specific moment in time. Use Date.UTC() or setUTCHours(0,0,0,0) when
+ * creating the Date to avoid timezone-related off-by-one errors.
+ */
 function formatDate(date: Date): string {
   const year = date.getUTCFullYear();
   const month = `${date.getUTCMonth() + 1}`.padStart(2, "0");
   const day = `${date.getUTCDate()}`.padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+/**
+ * Creates a Date representing a local calendar date at midnight UTC.
+ * This ensures formatDate() and other UTC-based operations extract the correct date
+ * regardless of the user's timezone.
+ * 
+ * Example: If it's October 27 in your timezone (even if UTC is still October 26),
+ * this returns a Date where getUTCDate() === 27.
+ * 
+ * @param date - Optional date to normalize. If omitted, uses current date.
+ * @returns Date with local calendar date as UTC components at midnight
+ */
+export function createLocalCalendarDateUTC(date?: Date): Date {
+  const source = date || new Date();
+  return new Date(Date.UTC(
+    source.getFullYear(),
+    source.getMonth(),
+    source.getDate(),
+    0, 0, 0, 0
+  ));
 }
 
 export function addDays(source: Date, amount: number): Date {
@@ -212,15 +241,54 @@ function fallbackExtrema(
   return extrema.sort((a, b) => a.time.localeCompare(b.time));
 }
 
+/**
+ * Converts a tide time string (UTC ISO format) to a Date object.
+ * 
+ * The returned Date represents the UTC instant. When formatted with
+ * toLocaleString({ timeZone: ... }), it will display in the correct
+ * local time for that timezone.
+ * 
+ * @param time - ISO 8601 UTC timestamp (e.g., "2025-10-26T12:58:00Z")
+ * @param utcOffsetSeconds - DEPRECATED: No longer used, kept for backward compatibility
+ * @returns Date object representing the UTC instant
+ * 
+ * @example
+ * const date = getUtcDateFromTideTime("2025-10-26T12:58:00Z");
+ * // date represents: Sunday Oct 26, 12:58 UTC
+ * 
+ * date.toLocaleString('en-US', { timeZone: 'Pacific/Auckland', ... })
+ * // Displays: "Mon, Oct 27, 1:58 AM" (UTC+13 = Monday in NZ)
+ */
 export function getUtcDateFromTideTime(
   time: string,
-  utcOffsetSeconds = 0,
+  _utcOffsetSeconds = 0, // Kept for backward compatibility, not used
 ): Date {
+  // NIWA format: "2025-10-26T12:58:00Z" (UTC with Z suffix)
+  // Open-Meteo format: "2025-10-27T01:00:00" (no Z = ISO 8601 without timezone = treat as local)
+  //
+  // For display, we use toLocaleString({ timeZone: tide.timezone })
+  // The formatter expects a Date representing a UTC instant, and it will display
+  // that instant in the specified timezone.
+  //
+  // NIWA (with Z): Already UTC, parse with Date.UTC()
+  // Open-Meteo (no Z): Parse as ISO 8601 "local" time, which JavaScript interprets
+  //                    in the system timezone. Since we'll format with the correct
+  //                    timezone, this should work.
+  
   const [datePart, timePart] = time.split("T");
   const [year, month, day] = datePart.split("-").map(Number);
-  const [hours, minutes] = timePart.split(":").map(Number);
-  const utcMillis = Date.UTC(year, month - 1, day, hours, minutes);
-  return new Date(utcMillis - utcOffsetSeconds * 1000);
+  const timeClean = timePart.replace('Z', '').split(':');
+  const hours = Number(timeClean[0]);
+  const minutes = Number(timeClean[1]);
+  
+  if (time.endsWith('Z') || time.includes('+')) {
+    // UTC timestamp - parse as UTC
+    return new Date(Date.UTC(year, month - 1, day, hours, minutes));
+  } else {
+    // No timezone suffix - parse the ISO string directly
+    // JavaScript will interpret "2025-10-27T01:00:00" correctly
+    return new Date(time);
+  }
 }
 
 // Compute NZ offset using Intl for a given UTC reference (midday best for stability)
@@ -283,10 +351,25 @@ export async function fetchTideForecast(
 ): Promise<TideForecast> {
   ensureValidCoordinates(lat, lon);
   const targetDate = formatDate(date);
+  
+  console.log('🔍 Open-Meteo ENTRY DEBUG:');
+  console.log('  targetDate:', targetDate);
+  console.log('  date param:', date);
+  
   const key = cacheKey(lat, lon, targetDate);
-  if (!_options.forceRefresh && forecastCache.has(key)) {
-    return forecastCache.get(key)!;
+  const isCached = forecastCache.has(key);
+  
+  console.log('  cacheKey:', key);
+  console.log('  isCached:', isCached);
+  
+  if (!_options.forceRefresh && isCached) {
+    console.log('  🔄 Returning CACHED data for', targetDate);
+    const cached = forecastCache.get(key)!;
+    console.log('  Cached forecast:', cached);
+    return cached;
   }
+  
+  console.log('  ⬇️ Fetching FRESH data for', targetDate);
   const startDate = formatDate(addDays(date, -1));
   const endDate = formatDate(addDays(date, 1));
   const response: any = await requestSeaLevelSeries({ lat, lon, startDate, endDate });
@@ -486,14 +569,45 @@ export async function fetchOpenMeteoTideForecast(
       );
     }
 
-    const extremaForRange = findExtrema(series).filter((extremum) =>
-      extremum.time.startsWith(targetDate)
-    );
+    const allExtrema = findExtrema(series);
+    
+    console.log('🔍 Open-Meteo DEBUG:');
+    console.log('  targetDate:', targetDate);
+    console.log('  json.timezone:', json.timezone);
+    console.log('  allExtrema count:', allExtrema.length);
+    console.log('  First 6 allExtrema:', allExtrema.slice(0, 6).map(e => `${e.type}:${e.time}`));
+    
+    // Filter extrema by converting to target timezone before comparison
+    // This ensures we only include extrema that occur on the target date in the local timezone
+    const formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: json.timezone || "auto",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    });
+    
+    const extremaForRange = allExtrema.filter((extremum) => {
+      // Convert the UTC timestamp to the target timezone and extract the date
+      const extremumDate = new Date(extremum.time);
+      const localDateString = formatter.format(extremumDate);
+      const matches = localDateString === targetDate;
+      if (allExtrema.indexOf(extremum) < 6) {
+        console.log(`  Extremum ${allExtrema.indexOf(extremum)}: ${extremum.time} -> ${localDateString} (target: ${targetDate}, match: ${matches})`);
+      }
+      return matches;
+    });
+
+    console.log('  extremaForRange count:', extremaForRange.length);
+    console.log('  extremaForRange:', extremaForRange.map(e => `${e.type}:${e.time}`));
 
     // Enhanced validation for NZ harbours
     const extrema = extremaForRange.length >= 2
       ? extremaForRange.slice(0, 4) // Take first 4 extrema (2 high/low pairs)
       : fallbackExtrema(seriesForDate);
+    
+    console.log('  Using fallback?', extremaForRange.length < 2);
+    console.log('  Final extrema count:', extrema.length);
+    console.log('  Final extrema:', extrema.map(e => `${e.type}:${e.time}`));
 
     return createForecast(
       targetDate,

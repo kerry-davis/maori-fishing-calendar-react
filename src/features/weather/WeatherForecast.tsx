@@ -93,6 +93,11 @@ export const WeatherForecast: React.FC<WeatherForecastProps> = ({
         </button>
       )}
 
+      <div className="border-t dark:border-gray-700 pt-4 mb-4 mt-6">
+        <h4 className="form-label text-lg mb-3">
+          Tide Forecast
+        </h4>
+      </div>
       {(() => {
         const isDark = typeof document !== 'undefined' && (
           document.documentElement.classList.contains('dark') ||
@@ -104,9 +109,8 @@ export const WeatherForecast: React.FC<WeatherForecastProps> = ({
         return (
           <TideSummary
             date={date}
-            className="mt-4"
-            title="Tide Forecast"
-            titleClassName="font-semibold text-sm mb-1"
+            title=""
+            titleClassName=""
             bodyClassName="text-sm"
             showShortLabel={showTideLabel}
             axisColor={axisColor}
