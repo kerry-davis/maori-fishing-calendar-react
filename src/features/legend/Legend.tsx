@@ -19,11 +19,6 @@ const LEGEND_ITEMS: LegendItem[] = [
     className: 'quality-good'
   },
   {
-    quality: 'Average',
-    color: '#f59e0b',
-    className: 'quality-average'
-  },
-  {
     quality: 'Poor',
     color: '#ef4444',
     className: 'quality-poor'
@@ -37,8 +32,8 @@ export const Legend: React.FC = () => {
         Fishing Quality Legend
       </h3>
 
-      {/* Legend items grid - responsive layout */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2" style={{ color: 'var(--secondary-text)' }}>
+      {/* Legend items - spread across full width */}
+      <div className="flex items-center justify-between" style={{ color: 'var(--secondary-text)' }}>
         {LEGEND_ITEMS.map((item) => (
           <div key={item.quality} className="flex items-center">
             <div
@@ -51,9 +46,14 @@ export const Legend: React.FC = () => {
         ))}
       </div>
       
-      {/* Helper text */}
-      <p className="text-sm mt-3" style={{ color: 'var(--tertiary-text)' }}>
-        Hover over any day to see the fishing quality. Click for more details.
+      {/* Helper text - mobile */}
+      <p className="text-sm mt-3 text-center block md:hidden" style={{ color: 'var(--tertiary-text)' }}>
+        Tap any day to view lunar info, bite times, and log trips.
+      </p>
+      
+      {/* Helper text - desktop */}
+      <p className="text-sm mt-3 text-center hidden md:block" style={{ color: 'var(--tertiary-text)' }}>
+        Hover to see quality. Click for lunar info, bite times, and trip logging.
       </p>
     </div>
   );

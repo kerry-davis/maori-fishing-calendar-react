@@ -34,8 +34,6 @@ export const CalendarDay: React.FC<CalendarDayProps> = ({
         return 'quality-excellent';
       case 'Good':
         return 'quality-good';
-      case 'Average':
-        return 'quality-average';
       case 'Poor':
         return 'quality-poor';
       default:

@@ -1,6 +1,7 @@
-import * as SunCalc from "suncalc";
+import SunCalc from "suncalc";
 import type {
   BiteTime,
+  BiteQuality,
   MoonPhaseData,
   MoonTransitData,
   LunarPhase,
@@ -150,6 +151,132 @@ export function getMoonTransitTimes(
 }
 
 /**
+ * Get solunar-based daily fishing quality matching the fishing website's system
+ * Quality is based on illumination and position in the lunar cycle:
+ * - Excellent: Around full moon (high illumination) or just after new moon (low but rising)
+ * - Poor: Mid-waning phase and around new moon
+ * - Good: Transition periods
+ * 
+ * @param date - The date to calculate quality for
+ * @returns Fishing quality for the day (Excellent, Good, or Poor)
+ */
+export function getSolunarDailyQuality(date: Date): "Excellent" | "Good" | "Poor" {
+  const phaseData = getMoonPhaseData(date);
+  const illumination = phaseData.illumination;
+  const moonAge = phaseData.moonAge;
+  
+  // Determine if waxing (0-14.76) or waning (14.76-29.53)
+  const isWaxing = moonAge < 14.76;
+  
+  // EXCELLENT PERIODS:
+  // 1. Leading up to and including full moon (waxing, 65%+ illumination)
+  // 2. Extended period after full moon (waning, 28%+ illumination)
+  // 3. Early waxing after new moon (1-15% illumination)
+  
+  if (illumination >= 0.65) {
+    // Around full moon = Excellent (both waxing and early waning)
+    return "Excellent";
+  }
+  
+  if (!isWaxing && illumination >= 0.28 && illumination < 0.65) {
+    // Waning from full moon, still excellent fishing until ~28%
+    return "Excellent";
+  }
+  
+  if (isWaxing && illumination >= 0.04 && illumination <= 0.15) {
+    // 1-3 days after new moon (waxing, 4-15% illumination) = Excellent
+    return "Excellent";
+  }
+  
+  // GOOD PERIODS:
+  // 1. Transition zones
+  // 2. Very close to new moon (±1 day)
+  
+  if (!isWaxing && illumination >= 0.18 && illumination < 0.28) {
+    // Late waning, approaching new moon
+    return "Good";
+  }
+  
+  if (isWaxing && illumination >= 0.15 && illumination < 0.25) {
+    // Early waxing transition
+    return "Good";
+  }
+  
+  if (!isWaxing && moonAge >= 20.5) {
+    // Within ~2 days of new moon (waning side)
+    return illumination <= 0.02 ? "Good" : "Poor";
+  }
+  
+  if (isWaxing && illumination <= 0.04) {
+    // Within ~2 days after new moon (waxing side)
+    return illumination <= 0.02 ? "Good" : "Poor";
+  }
+  
+  // POOR PERIODS:
+  // 1. Mid-waxing (before catching up to full moon)
+  // 2. Around new moon transition
+  // 3. Early waning (low illumination, waning)
+  
+  return "Poor";
+}
+
+/**
+ * Calculate bite quality based on lunar day ranges matching the fishing website's system
+ * Quality is based on the lunar day (moon age), with major bites one tier higher than minor
+ * 
+ * @param date - The date to calculate quality for
+ * @param isMajor - True for major bites (moon transits), false for minor bites (rise/set)
+ * @returns Bite quality (excellent, good, average, fair, poor)
+ */
+export function getSolunarBiteQuality(
+  date: Date,
+  isMajor: boolean
+): BiteQuality {
+  const phaseData = getMoonPhaseData(date);
+  const lunarDay = Math.round(phaseData.moonAge);
+  
+  // Determine base quality (for minor bites) based on lunar day
+  let minorQuality: BiteQuality;
+  
+  if (lunarDay === 1 || lunarDay >= 29) {
+    // New moon period: poorest fishing
+    minorQuality = "poor";
+  } else if (lunarDay >= 2 && lunarDay <= 11) {
+    // Waxing moon (days 2-11): fair
+    minorQuality = "fair";
+  } else if (lunarDay >= 12 && lunarDay <= 15) {
+    // Approaching and at full moon (days 12-15): average
+    minorQuality = "average";
+  } else if (lunarDay >= 16 && lunarDay <= 23) {
+    // Waning from full (days 16-23): fair
+    minorQuality = "fair";
+  } else if (lunarDay === 24) {
+    // Special day: average
+    minorQuality = "average";
+  } else if (lunarDay >= 25 && lunarDay <= 28) {
+    // Late waning (days 25-28): poor
+    minorQuality = "poor";
+  } else {
+    // Fallback (shouldn't reach here for days 0-30)
+    minorQuality = "poor";
+  }
+  
+  // Major bites are one tier better than minor bites
+  if (isMajor) {
+    const upgrade: Record<BiteQuality, BiteQuality> = {
+      poor: "fair",
+      fair: "average",
+      average: "good",
+      good: "excellent",
+      excellent: "excellent"
+    };
+    return upgrade[minorQuality];
+  }
+  
+  return minorQuality;
+}
+
+/**
  * Calculate bite times for a specific date and location
  * @param date - The date to calculate bite times for
  * @param lat - Latitude
@@ -163,10 +290,8 @@ export function calculateBiteTimes(
 ): { major: BiteTime[]; minor: BiteTime[] } {
   const moonTimes = SunCalc.getMoonTimes(date, lat, lon);
   const moonTransits = getMoonTransitTimes(date, lat, lon).transits;
-  const lunarDay = getLunarPhase(date);
-  const qualities = lunarDay.biteQualities;
 
-  const formatBite = (start: Date, end: Date, quality: string): BiteTime => ({
+  const formatBite = (start: Date, end: Date, quality: BiteQuality): BiteTime => ({
     start: start.toLocaleTimeString([], {
       hour: "2-digit",
       minute: "2-digit",
@@ -177,27 +302,31 @@ export function calculateBiteTimes(
       minute: "2-digit",
       hour12: false,
     }),
-    quality: quality as any, // Type assertion since we know the quality comes from biteQualities
+    quality,
   });
+
+  // Calculate solunar bite qualities based on lunar day
+  const majorQuality = getSolunarBiteQuality(date, true);
+  const minorQuality = getSolunarBiteQuality(date, false);
 
   // Major bite times (moon transits) - 2 hour windows
-  const majorBites = moonTransits.map((transit, index) => {
+  const majorBites = moonTransits.map((transit) => {
     const start = new Date(transit.time.getTime() - 1 * 60 * 60 * 1000); // 1 hour before
     const end = new Date(transit.time.getTime() + 1 * 60 * 60 * 1000); // 1 hour after
-    return formatBite(start, end, qualities[index] || "poor");
+    return formatBite(start, end, majorQuality);
   });
 
-  // Minor bite times (moonrise/moonset) - 1 hour windows
+  // Minor bite times (moonrise/moonset) - 3 hour windows ending at moon event
   const minorBites: BiteTime[] = [];
   if (moonTimes.rise) {
-    const start = new Date(moonTimes.rise.getTime() - 0.5 * 60 * 60 * 1000); // 30 min before
-    const end = new Date(moonTimes.rise.getTime() + 0.5 * 60 * 60 * 1000); // 30 min after
-    minorBites.push(formatBite(start, end, qualities[2] || "poor"));
+    const start = new Date(moonTimes.rise.getTime() - 3 * 60 * 60 * 1000); // 3 hours before
+    const end = new Date(moonTimes.rise.getTime()); // ends at moonrise
+    minorBites.push(formatBite(start, end, minorQuality));
   }
   if (moonTimes.set) {
-    const start = new Date(moonTimes.set.getTime() - 0.5 * 60 * 60 * 1000); // 30 min before
-    const end = new Date(moonTimes.set.getTime() + 0.5 * 60 * 60 * 1000); // 30 min after
-    minorBites.push(formatBite(start, end, qualities[3] || "poor"));
+    const start = new Date(moonTimes.set.getTime() - 3 * 60 * 60 * 1000); // 3 hours before
+    const end = new Date(moonTimes.set.getTime()); // ends at moonset
+    minorBites.push(formatBite(start, end, minorQuality));
   }
 
   return {

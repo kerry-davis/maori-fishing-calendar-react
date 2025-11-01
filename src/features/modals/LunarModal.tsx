@@ -13,6 +13,7 @@ import {
   getMoonPhaseData,
   calculateBiteTimes,
   getSunMoonTimes,
+  getSolunarDailyQuality,
 } from "@shared/services/lunarService";
 import { createLocalCalendarDateUTC, addDays } from "@shared/services/tideService";
 import type { BiteTime } from "@shared/types";
@@ -108,11 +109,13 @@ export const LunarModal: React.FC<LunarModalProps> = ({
   const lunarData = useMemo(() => {
     const phase = getLunarPhase(currentDate);
     const phaseData = getMoonPhaseData(currentDate);
+    const solunarQuality = getSolunarDailyQuality(currentDate);
     return {
       phase,
       phaseIndex: phaseData.phaseIndex,
       moonAge: phaseData.moonAge,
       illumination: phaseData.illumination,
+      solunarQuality, // Use solunar quality for display
     };
   }, [currentDate]);
 
@@ -278,9 +281,9 @@ export const LunarModal: React.FC<LunarModalProps> = ({
             <span className="text-4xl mr-3">{getMoonPhaseIcon(lunarData.phaseIndex)}</span>
             <div>
               <div
-                className={`inline-block px-2 py-1 rounded text-white text-sm font-bold ${getQualityColorClass(lunarData.phase.quality)}`}
+                className={`inline-block px-2 py-1 rounded text-white text-sm font-bold ${getQualityColorClass(lunarData.solunarQuality)}`}
               >
-                {lunarData.phase.quality}
+                {lunarData.solunarQuality}
               </div>
               <p className="text-sm mt-1" style={{ color: 'var(--primary-text)' }}>
                 Moon age: {lunarData.moonAge.toFixed(1)} days
