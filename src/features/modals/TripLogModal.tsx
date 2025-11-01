@@ -88,7 +88,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
 
   // Load trips for the selected date
   const loadTrips = useCallback(async () => {
-    if (!isOpen || !selectedDate) return;
+    if (!selectedDate) return;
 
     setIsLoading(true);
     setError(null);
@@ -96,7 +96,8 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
     try {
       const dateStr = formatDateForDB(selectedDate);
       DEV_LOG('Loading trips for date:', dateStr);
-      const tripsData = await db.getTripsByDate(dateStr);
+      // Force local storage read to get immediate updates (Firebase syncs in background)
+      const tripsData = await db.getTripsByDate(dateStr, true);
       DEV_LOG('Loaded trips data:', tripsData);
       setTrips(tripsData);
     } catch (err) {
@@ -105,7 +106,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [isOpen, selectedDate, db]);
+  }, [selectedDate, db]);
 
   // Load all fish catches for the selected date
   const canonicalizeGearEntries = useCallback((entries: string[]): string[] => {
@@ -196,7 +197,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
   }, [tackleBox]);
 
   const loadFishCatches = useCallback(async () => {
-    if (!isOpen || !selectedDate) return;
+    if (!selectedDate) return;
 
     try {
       // Revoke previously created blob URLs before generating new previews
@@ -204,7 +205,8 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
       objectUrlsRef.current = [];
 
       const dateStr = formatDateForDB(selectedDate);
-      const tripsOnDate = await db.getTripsByDate(dateStr);
+      // Force local storage read to get immediate updates (Firebase syncs in background)
+      const tripsOnDate = await db.getTripsByDate(dateStr, true);
 
       // Fetch catches per trip to avoid filtering pitfalls and missing items
       const perTrip = await Promise.all(
@@ -253,7 +255,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
       PROD_ERROR("Error loading fish catches:", err);
       // Don't set error state for fish catches as it's not critical
     }
-  }, [isOpen, selectedDate, db, tackleBox]);
+  }, [selectedDate, db, tackleBox, user, canonicalizeGearEntries]);
   // Cleanup blob URLs on unmount
   useEffect(() => {
     return () => {
@@ -264,7 +266,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
 
   // Load all weather logs for the selected date
   const loadWeatherLogs = useCallback(async () => {
-    if (!isOpen || !selectedDate) return;
+    if (!selectedDate) return;
 
     try {
       // Get all weather logs from database
@@ -272,7 +274,8 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
 
       // Filter weather logs for trips that exist on the selected date
       const dateStr = formatDateForDB(selectedDate);
-      const tripsOnDate = await db.getTripsByDate(dateStr);
+      // Force local storage read to get immediate updates (Firebase syncs in background)
+      const tripsOnDate = await db.getTripsByDate(dateStr, true);
 
       // Get weather logs only for trips on the selected date
       const relevantWeatherLogs = allWeatherLogs.filter((log: WeatherLog) =>
@@ -284,7 +287,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
       PROD_ERROR("Error loading weather logs:", err);
       // Don't set error state for weather logs as it's not critical
     }
-  }, [isOpen, selectedDate, db]);
+  }, [selectedDate, db]);
 
   // Helper function to get the correct ID for deletion
   const getCorrectIdForDeletion = useCallback((item: WeatherLog | FishCaught): string => {
@@ -319,7 +322,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
     }
   }, [isOpen, selectedDate, tackleBox, loadFishCatches]);
 
-  // Reload data when refresh trigger changes (e.g., after trip deletion from other modals)
+  // Reload data when refresh trigger changes (e.g., after trip update or deletion)
   useEffect(() => {
     if (isOpen && selectedDate && refreshTrigger !== undefined) {
       loadTrips();

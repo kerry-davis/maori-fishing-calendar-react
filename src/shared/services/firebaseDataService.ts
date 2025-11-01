@@ -703,8 +703,10 @@ export class FirebaseDataService {
 
   /**
     * Get all trips for a specific date
+    * @param date - The date to query (YYYY-MM-DD format)
+    * @param forceLocal - If true, skip Firebase and read from local storage only (useful after updates)
     */
-   async getTripsByDate(date: string): Promise<Trip[]> {
+   async getTripsByDate(date: string, forceLocal = false): Promise<Trip[]> {
     if (!this.isReady()) throw new Error('Service not initialized');
 
     // Guest mode bypass: perform local DB read directly
@@ -714,7 +716,15 @@ export class FirebaseDataService {
 
     // UID validation: ensure operation is for current user
     return validateUserContext(this.userId, async () => {
-      DEV_LOG('getTripsByDate called for date:', date, 'online:', this.isOnline);
+      DEV_LOG('getTripsByDate called for date:', date, 'online:', this.isOnline, 'forceLocal:', forceLocal);
+
+      // If forceLocal is true, skip Firebase and read from local storage
+      if (forceLocal) {
+        DEV_LOG('Forcing local storage read for immediate UI update');
+        const localTrips = await databaseService.getTripsByDate(date);
+        DEV_LOG('Local storage returned', localTrips.length, 'trips');
+        return localTrips;
+      }
 
       if (this.isOnline) {
         try {
@@ -819,7 +829,7 @@ export class FirebaseDataService {
               const mappedId = await this.getFirebaseId('trips', trip.id.toString());
               if (mappedId) {
                 const docRef = doc(firestore, 'trips', mappedId);
-                await updateDoc(docRef, { ...operationPayload, updatedAt: serverTimestamp() });
+                await updateDoc(docRef, { ...this.stripUndefined(operationPayload), updatedAt: serverTimestamp() });
                 DEV_LOG('Trip updated in Firestore with validation:', mappedId);
                 return;
               }
@@ -834,7 +844,7 @@ export class FirebaseDataService {
                 const snapshot = await getDocs(q);
                 if (!snapshot.empty) {
                   const existing = snapshot.docs[0];
-                  await updateDoc(existing.ref, { ...operationPayload, updatedAt: serverTimestamp() });
+                  await updateDoc(existing.ref, { ...this.stripUndefined(operationPayload), updatedAt: serverTimestamp() });
                   await this.storeLocalMapping('trips', trip.id.toString(), existing.id);
                   DEV_LOG('Trip updated in Firestore via query resolution:', existing.id);
                   return;
@@ -859,7 +869,7 @@ export class FirebaseDataService {
 
           await databaseService.updateTrip(trip);
           // Only queue when offline or Firestore path failed entirely
-          this.queueOperation('update', 'trips', operationPayload);
+          this.queueOperation('update', 'trips', this.stripUndefined(operationPayload));
         }, 'updateTrip');
       }
     );
@@ -883,7 +893,7 @@ export class FirebaseDataService {
        try {
          const docRef = doc(firestore, 'trips', firebaseId);
          await updateDoc(docRef, {
-           ...tripWithUser,
+           ...this.stripUndefined(tripWithUser),
            updatedAt: serverTimestamp()
          });
          DEV_LOG('Trip updated in Firestore using direct Firebase ID:', firebaseId);
@@ -2324,6 +2334,16 @@ export class FirebaseDataService {
       let processedAny = false;
 
       for (const entry of this.syncQueue) {
+        // Skip entries with undefined values in the data payload (corrupted/invalid)
+        if (entry.data && typeof entry.data === 'object') {
+          const hasUndefined = Object.values(entry.data).some(v => v === undefined);
+          if (hasUndefined && entry.operation === 'update') {
+            DEV_WARN('Skipping queued operation with undefined values:', entry);
+            processedAny = true; // Mark as processed to remove it
+            continue;
+          }
+        }
+
         try {
           const success = await this.applyQueuedOperation(entry);
           if (success) {
@@ -2487,14 +2507,14 @@ export class FirebaseDataService {
     if (operationType === 'create') {
       if (firebaseId) {
         await updateDoc(doc(firestore, 'trips', firebaseId), {
-          ...basePayload,
+          ...this.stripUndefined(basePayload),
           updatedAt: serverTimestamp()
         });
         return true;
       }
 
       const docRef = await addDoc(collection(firestore, 'trips'), {
-        ...basePayload,
+        ...this.stripUndefined(basePayload),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
@@ -2508,7 +2528,7 @@ export class FirebaseDataService {
     }
 
     await updateDoc(doc(firestore, 'trips', firebaseId), {
-      ...basePayload,
+      ...this.stripUndefined(basePayload),
       updatedAt: serverTimestamp()
     });
     return true;

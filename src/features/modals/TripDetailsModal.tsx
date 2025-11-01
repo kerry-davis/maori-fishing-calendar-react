@@ -204,34 +204,40 @@ export const TripDetailsModal: React.FC<TripModalProps> = ({
         // Update existing trip - use local storage first for reliability
         await databaseService.updateTrip({ id: tripId, ...formData });
 
-        // Also update in Firebase if online - try multiple approaches
+        // Trigger UI refresh immediately - local data is already updated
+        if (onTripUpdated) {
+          onTripUpdated();
+          // Don't call onClose() when callback is provided
+        } else {
+          onClose();
+        }
+
+        // Update Firebase in the background (fire and forget)
         try {
-          // First, try to get the trip from Firebase to see if it has firebaseDocId
           const allTrips = await firebaseDataService.getAllTrips();
           const existingTrip = allTrips.find(t => t.id === tripId);
 
           if (existingTrip && existingTrip.firebaseDocId) {
-            // Use the direct Firebase document ID if available
             DEV_LOG('Using direct Firebase document ID for update:', existingTrip.firebaseDocId);
             await firebaseDataService.updateTripWithFirebaseId(existingTrip.firebaseDocId, { id: tripId, ...formData });
           } else {
-            // Fall back to the regular update method
             await firebaseDataService.updateTrip({ id: tripId, ...formData });
           }
+
+          DEV_LOG('Firebase update completed in background');
         } catch (firebaseError) {
-          DEV_LOG('Firebase update failed, but local update succeeded:', firebaseError);
+          DEV_LOG('Firebase update failed (background):', firebaseError);
         }
       } else {
         // Create new trip
         await firebaseDataService.createTrip(formData);
-      }
 
-      // Call the trip updated callback and close modal on success
-      if (onTripUpdated) {
-        onTripUpdated();
-        // Don't call onClose() when callback is provided - let the callback handle navigation
-      } else {
-        onClose();
+        // Call the trip updated callback and close modal on success
+        if (onTripUpdated) {
+          onTripUpdated();
+        } else {
+          onClose();
+        }
       }
     } catch (err) {
       PROD_ERROR('Error saving trip:', err);
