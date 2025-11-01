@@ -1,7 +1,7 @@
 import React, { useMemo } from "react";
 import { DAY_NAMES } from "@shared/types";
 import { CalendarDay } from "./CalendarDay";
-import { getLunarPhase } from "@shared/services/lunarService";
+import { getLunarPhase, getSolunarDailyQuality } from "@shared/services/lunarService";
 // import { useIndexedDB } from '@shared/hooks/useIndexedDB';
 
 interface CalendarGridProps {
@@ -34,13 +34,16 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
   const calendarDays = [];
 
 
-  // Pre-calculate lunar phases for all days in the month to avoid loading states
+  // Pre-calculate lunar phases and solunar qualities for all days in the month
   const lunarPhases = useMemo(() => {
     const phases = new Map();
     for (let day = 1; day <= daysInMonth; day++) {
-      const date = new Date(currentYear, currentMonth, day);
+      // Use UTC date to match what's passed to modal and stored in calendar
+      const date = new Date(Date.UTC(currentYear, currentMonth, day, 0, 0, 0, 0));
       const phase = getLunarPhase(date);
-      phases.set(day, phase);
+      const solunarQuality = getSolunarDailyQuality(date);
+      // Override the Māori phase quality with solunar quality
+      phases.set(day, { ...phase, quality: solunarQuality });
     }
     return phases;
   }, [currentYear, currentMonth, daysInMonth]);

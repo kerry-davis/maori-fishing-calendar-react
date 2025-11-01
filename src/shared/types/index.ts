@@ -1,6 +1,6 @@
 // Core data types for the Māori Fishing Calendar
 
-export type FishingQuality = "Excellent" | "Good" | "Average" | "Poor";
+export type FishingQuality = "Excellent" | "Good" | "Poor";
 export type BiteQuality = "excellent" | "good" | "average" | "fair" | "poor";
 
 export interface LunarPhase {
@@ -20,7 +20,7 @@ export const LUNAR_PHASES: readonly LunarPhase[] = [
   },
   {
     name: "Tirea",
-    quality: "Average",
+    quality: "Excellent",
     description: "The moon is a sliver. A reasonably good day for crayfishing.",
     biteQualities: ["poor", "average", "poor", "poor"],
   },
@@ -44,7 +44,7 @@ export const LUNAR_PHASES: readonly LunarPhase[] = [
   },
   {
     name: "Tamatea-a-hotu",
-    quality: "Average",
+    quality: "Excellent",
     description: "A day for planting. Fishing is average.",
     biteQualities: ["fair", "average", "fair", "poor"],
   },
@@ -125,13 +125,13 @@ export const LUNAR_PHASES: readonly LunarPhase[] = [
   },
   {
     name: "Takirau",
-    quality: "Average",
+    quality: "Good",
     description: "Fine weather in the morning. Fishing is average.",
     biteQualities: ["excellent", "average", "fair", "fair"],
   },
   {
     name: "Oike",
-    quality: "Average",
+    quality: "Good",
     description: "The afternoon is favourable for fishing.",
     biteQualities: ["average", "average", "fair", "fair"],
   },
@@ -185,7 +185,7 @@ export const LUNAR_PHASES: readonly LunarPhase[] = [
   },
   {
     name: "Mauri",
-    quality: "Average",
+    quality: "Good",
     description: "The morning is fine. Fishing is average.",
     biteQualities: ["fair", "average", "poor", "poor"],
   },
