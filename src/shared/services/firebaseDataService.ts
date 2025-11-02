@@ -2396,7 +2396,7 @@ export class FirebaseDataService {
     this.notifySyncQueueCleared();
   }
 
-  private async processSyncQueue(): Promise<void> {
+  async processSyncQueue(): Promise<void> {
     if (this.isProcessingQueue) {
       return;
     }
