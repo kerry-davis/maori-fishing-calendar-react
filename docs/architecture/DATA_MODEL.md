@@ -258,6 +258,71 @@ Notes:
 - CRUD operations emit `savedLocationsChanged` events for reactive UI updates.
 - **Tackle Items Decryption Flow**: When authenticated users load tackle items, `useFirebaseTackleBox` and `firebaseDataService.getAllTackleItems()` automatically decrypt encrypted fields. The hook monitors `AuthContext.encryptionReady` to reload items once encryption service initialization completes, ensuring proper decryption timing after login.
 
+### Data Persistence & Caching Strategy
+
+**Cloud-First Architecture** (implemented 2025-11-02):
+
+The application follows a cloud-first data model with temporary local caching:
+
+#### Authenticated Users
+- **Source of Truth**: Firestore
+- **Local Cache**: IndexedDB (temporary, cleared on logout)
+- **Cache Strategy**: Write-through caching
+  - All Firestore writes immediately cache to IndexedDB using `put()` (upsert)
+  - All Firestore reads cache results to IndexedDB for offline access
+  - Cache enables offline viewing and queued writes
+
+#### Guest Users
+- **Source of Truth**: IndexedDB
+- **Persistence**: Data remains until login
+- **On Login**: Guest data merges to Firestore, then IndexedDB is cleared
+
+#### Logout Behavior
+1. **Sync Attempt**: 30-second attempt to sync queued operations
+   - Success: All data uploaded to Firestore
+   - Timeout: Warning displayed, user allowed to continue
+2. **Local Cleanup**: ALL IndexedDB data cleared (`preserveGuestData: false`)
+3. **Result**: Zero local data for authenticated users post-logout
+
+#### Offline Support
+- **Authenticated Offline**: 
+  - Read from IndexedDB cache
+  - Writes queue in sync queue
+  - Auto-sync when reconnected
+- **Write Pattern**:
+  ```typescript
+  // Online: Write to both
+  await addDoc(firestore, data);
+  await databaseService.updateTrip(data); // Cache with put()
+  
+  // Offline: Queue for sync
+  await databaseService.updateTrip(data);
+  this.queueOperation('create', 'trips', data);
+  ```
+
+#### Duplicate Prevention
+**Issue**: Multiple Firestore documents can have the same local ID field, causing UI duplicates.
+
+**Solution**: Automatic deduplication on read
+- All read operations (`getAllTrips`, `getTripsByDate`, `getAllWeatherLogs`, `getAllFishCaught`) deduplicate results by local ID
+- Keeps newest version based on `updatedAt` timestamp
+- Transparent logging: `Deduplication: Replacing ID {id} (older: {time}, newer: {time})`
+- No manual cleanup required
+
+**Implementation**:
+```typescript
+private deduplicateById<T extends { id: number | string; updatedAt?: string }>(records: T[]): T[] {
+  // Groups by ID, keeps newest by updatedAt timestamp
+  // Returns deduplicated array
+}
+```
+
+**Cache Method Safety**:
+- Uses `updateTrip()`, `updateWeatherLog()`, `updateFishCaught()` for caching
+- These methods use IndexedDB `put()` operation (upsert)
+- Prevents duplicate creation when ID already exists
+- Safe for both create and update scenarios
+
 ## 4) UI Data ERD
 
 ```mermaid

@@ -140,6 +140,6 @@ open https://console.cloud.google.com/
 - `docs/security/README.md`
 - `docs/security/SECURITY_INVESTIGATION_REPORT.md`
 - `docs/security/ROTATION_CHECKLIST.md`
-- `SECURITY_INVESTIGATION_SUMMARY.md` (this file)
+- `docs/security/SECURITY_INVESTIGATION_SUMMARY.md` (this file)
 
 **Next review**: After key rotation completed
