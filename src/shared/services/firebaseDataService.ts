@@ -534,6 +534,15 @@ export class FirebaseDataService {
             // Store the Firebase ID mapping
             await this.storeLocalMapping('trips', tripId.toString(), docRef.id);
 
+            // Cache to IndexedDB for offline support (use updateTrip for upsert)
+            try {
+              const tripToCache = { ...sanitizedTripData, id: tripId };
+              await databaseService.updateTrip(tripToCache);
+              DEV_LOG('Trip cached to IndexedDB for offline support');
+            } catch (cacheError) {
+              DEV_WARN('Failed to cache trip to IndexedDB:', cacheError);
+            }
+
             DEV_LOG('Trip created in Firestore with validation:', docRef.id);
             return tripId;
           } catch (error) {
@@ -748,8 +757,21 @@ export class FirebaseDataService {
 
           trips.push(...(await Promise.all(tripPromises)));
 
-          DEV_LOG('Returning', trips.length, 'trips from Firestore');
-          return trips;
+          // Deduplicate in case multiple Firestore docs have the same local ID
+          const deduplicatedTrips = this.deduplicateById(trips);
+
+          // Cache to IndexedDB for offline support
+          try {
+            for (const trip of deduplicatedTrips) {
+              await databaseService.updateTrip(trip);
+            }
+            DEV_LOG('Cached', deduplicatedTrips.length, 'trips to IndexedDB');
+          } catch (cacheError) {
+            DEV_WARN('Failed to cache trips to IndexedDB:', cacheError);
+          }
+
+          DEV_LOG('Returning', deduplicatedTrips.length, 'trips from Firestore');
+          return deduplicatedTrips;
         } catch (error) {
           DEV_WARN('Firestore query failed, falling back to local:', error);
         }
@@ -794,7 +816,21 @@ export class FirebaseDataService {
 
         const trips = await Promise.all(tripPromises) as Trip[];
         DEV_LOG(`Found ${trips.length} trips in Firebase for user ${this.userId}`);
-        return trips;
+        
+        // Deduplicate in case multiple Firestore docs have the same local ID
+        const deduplicatedTrips = this.deduplicateById(trips);
+        
+        // Cache to IndexedDB for offline support
+        try {
+          for (const trip of deduplicatedTrips) {
+            await databaseService.updateTrip(trip);
+          }
+          DEV_LOG('Cached', deduplicatedTrips.length, 'trips to IndexedDB');
+        } catch (cacheError) {
+          DEV_WARN('Failed to cache trips to IndexedDB:', cacheError);
+        }
+        
+        return deduplicatedTrips;
       } catch (error) {
         PROD_ERROR('Firestore query failed, falling back to local:', error);
       }
@@ -1049,6 +1085,16 @@ export class FirebaseDataService {
 
             DEV_LOG('[Weather Create] Firebase document ID:', docRef.id);
             await this.storeLocalMapping('weatherLogs', localId, docRef.id);
+
+            // Cache to IndexedDB for offline support (use updateWeatherLog for upsert)
+            try {
+              const weatherToCache = { ...weatherData, id: localId };
+              await databaseService.updateWeatherLog(weatherToCache);
+              DEV_LOG('Weather log cached to IndexedDB for offline support');
+            } catch (cacheError) {
+              DEV_WARN('Failed to cache weather log to IndexedDB:', cacheError);
+            }
+
             DEV_LOG('[Weather Create] Successfully created weather log and stored mappings');
             return localId;
           } catch (error) {
@@ -1252,7 +1298,21 @@ export class FirebaseDataService {
         });
 
         const weatherLogs = await Promise.all(weatherLogPromises) as WeatherLog[];
-        return weatherLogs;
+        
+        // Deduplicate in case multiple Firestore docs have the same local ID
+        const deduplicatedWeatherLogs = this.deduplicateById(weatherLogs);
+        
+        // Cache to IndexedDB for offline support
+        try {
+          for (const weatherLog of deduplicatedWeatherLogs) {
+            await databaseService.updateWeatherLog(weatherLog);
+          }
+          DEV_LOG('Cached', deduplicatedWeatherLogs.length, 'weather logs to IndexedDB');
+        } catch (cacheError) {
+          DEV_WARN('Failed to cache weather logs to IndexedDB:', cacheError);
+        }
+        
+        return deduplicatedWeatherLogs;
       } catch (error) {
         DEV_WARN('Firestore query failed, falling back to local:', error);
       }
@@ -1392,6 +1452,16 @@ export class FirebaseDataService {
 
             DEV_LOG('[Fish Create] Firebase document ID:', docRef.id);
             await this.storeLocalMapping('fishCaught', localId, docRef.id);
+
+            // Cache to IndexedDB for offline support (use updateFishCaught for upsert)
+            try {
+              const fishToCache = { ...sanitizedFishData, id: localId };
+              await databaseService.updateFishCaught(fishToCache);
+              DEV_LOG('Fish catch cached to IndexedDB for offline support');
+            } catch (cacheError) {
+              DEV_WARN('Failed to cache fish catch to IndexedDB:', cacheError);
+            }
+
             DEV_LOG('[Fish Create] Successfully created fish catch and stored mappings');
             return localId;
           } catch (error) {
@@ -1621,7 +1691,21 @@ export class FirebaseDataService {
         });
 
         const fishCaught = await Promise.all(fishPromises) as FishCaught[];
-        return fishCaught;
+        
+        // Deduplicate in case multiple Firestore docs have the same local ID
+        const deduplicatedFishCaught = this.deduplicateById(fishCaught);
+        
+        // Cache to IndexedDB for offline support
+        try {
+          for (const fish of deduplicatedFishCaught) {
+            await databaseService.updateFishCaught(fish);
+          }
+          DEV_LOG('Cached', deduplicatedFishCaught.length, 'fish caught records to IndexedDB');
+        } catch (cacheError) {
+          DEV_WARN('Failed to cache fish caught records to IndexedDB:', cacheError);
+        }
+        
+        return deduplicatedFishCaught;
       } catch (error) {
         DEV_WARN('Firestore query failed, falling back to local:', error);
       }
@@ -2312,7 +2396,7 @@ export class FirebaseDataService {
     this.notifySyncQueueCleared();
   }
 
-  private async processSyncQueue(): Promise<void> {
+  async processSyncQueue(): Promise<void> {
     if (this.isProcessingQueue) {
       return;
     }
@@ -2793,6 +2877,44 @@ export class FirebaseDataService {
       return await encryptionService.decryptObject(collectionHint, baseObj);
     }
     return baseObj;
+  }
+
+  /**
+   * Deduplicate records by ID, keeping the most recently updated version
+   * Handles cases where multiple Firestore documents have the same local ID
+   */
+  private deduplicateById<T extends { id: number | string; updatedAt?: string }>(records: T[]): T[] {
+    if (records.length === 0) return records;
+
+    const idMap = new Map<number | string, T>();
+    
+    for (const record of records) {
+      const existingRecord = idMap.get(record.id);
+      
+      if (!existingRecord) {
+        // First occurrence of this ID
+        idMap.set(record.id, record);
+      } else {
+        // Duplicate found - keep the most recently updated
+        const existingTime = existingRecord.updatedAt ? new Date(existingRecord.updatedAt).getTime() : 0;
+        const newTime = record.updatedAt ? new Date(record.updatedAt).getTime() : 0;
+        
+        if (newTime > existingTime) {
+          DEV_LOG(`Deduplication: Replacing ID ${record.id} (older: ${existingRecord.updatedAt}, newer: ${record.updatedAt})`);
+          idMap.set(record.id, record);
+        } else {
+          DEV_LOG(`Deduplication: Keeping ID ${record.id} (keeping: ${existingRecord.updatedAt}, discarding: ${record.updatedAt})`);
+        }
+      }
+    }
+    
+    const deduplicated = Array.from(idMap.values());
+    
+    if (deduplicated.length < records.length) {
+      DEV_LOG(`Deduplicated ${records.length} records to ${deduplicated.length} (removed ${records.length - deduplicated.length} duplicates)`);
+    }
+    
+    return deduplicated;
   }
 
   // ================= ENCRYPTION MIGRATION (deterministic key) =================

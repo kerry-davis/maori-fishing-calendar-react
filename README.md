@@ -1,6 +1,6 @@
 # Māori Fishing Calendar (React PWA)
 
-Modern offline-first fishing planner grounded in traditional Māori lunar knowledge.
+Modern cloud-first fishing planner with offline support, grounded in traditional Māori lunar knowledge.
 
 ## Quick links
 
@@ -30,7 +30,7 @@ Helps anglers plan and review fishing activity using lunar phases, weather, and 
 | Analytics | Basic success pattern exploration (charts) |
 | Photos | Encrypted photo storage (Firebase Storage) and gallery; included in export/import |
 | Import / Export | CSV / zipped data flows & legacy migration |
-| Offline | Local persistence + queued writes + PWA install |
+| Offline | Temporary IndexedDB cache + queued writes + automatic sync + PWA install |
 | Encryption | Deterministic field-level obfuscation (AES-GCM) |
 
 ## Quick Start
