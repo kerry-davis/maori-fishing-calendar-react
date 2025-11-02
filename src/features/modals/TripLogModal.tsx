@@ -96,8 +96,8 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
     try {
       const dateStr = formatDateForDB(selectedDate);
       DEV_LOG('Loading trips for date:', dateStr);
-      // Force local storage read to get immediate updates (Firebase syncs in background)
-      const tripsData = await db.getTripsByDate(dateStr, true);
+      // Fetch from Firestore (with IndexedDB cache for offline support)
+      const tripsData = await db.getTripsByDate(dateStr);
       DEV_LOG('Loaded trips data:', tripsData);
       setTrips(tripsData);
     } catch (err) {

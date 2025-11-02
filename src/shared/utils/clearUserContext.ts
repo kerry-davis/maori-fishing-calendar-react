@@ -699,8 +699,28 @@ export async function secureLogoutWithCleanup(): Promise<void> {
   console.log('🔐 Starting secure logout with comprehensive cleanup...');
   
   try {
+    // Step 0: Force sync any queued operations before logout (30s timeout)
+    if (auth && auth.currentUser) {
+      console.log('⏳ Syncing queued operations before logout...');
+      
+      try {
+        const syncPromise = firebaseDataService.processSyncQueue();
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Sync timeout')), 30000)
+        );
+        
+        await Promise.race([syncPromise, timeoutPromise]);
+        console.log('✅ Sync completed successfully');
+      } catch (syncError) {
+        const errorMsg = syncError instanceof Error ? syncError.message : 'Unknown error';
+        console.warn(`⚠️ Sync failed or timed out (${errorMsg}). Continuing with logout.`);
+        console.warn('⚠️ Any unsync\'d data may be lost. Data in cloud is preserved.');
+      }
+    }
+    
     // Step 1: Complete user context cleanup BEFORE Firebase logout
-    const cleanupResult = await clearUserContext({ preserveGuestData: true });
+    // Clear ALL local data - cloud is the source of truth for authenticated users
+    const cleanupResult = await clearUserContext({ preserveGuestData: false });
     
     if (!cleanupResult.success) {
       console.warn('⚠️ Cleanup had issues but continuing with logout:', cleanupResult.error);

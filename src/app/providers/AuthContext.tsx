@@ -604,17 +604,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Fallback to basic logout if enhanced fails
       try {
         setError(null);
-        
-        // Download Firebase data to local storage for guest mode access (maintain existing behavior)
-        console.log('Downloading your data for offline access...');
-        setSuccessMessage('Downloading your data for offline access...');
-        
-        try {
-          await firebaseDataService.backupLocalDataBeforeLogout();
-          console.log('Data download completed - your data will be available offline');
-        } catch (backupError) {
-          console.warn('Failed to download data for offline access:', backupError);
-        }
 
         // Call basic Firebase signOut
         if (auth) {
@@ -623,7 +612,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.log('Firebase signOut successful');
         }
 
-        // Clear basic cleanup
+        // Clear all local data (no backup needed - cloud is source of truth)
         await clearUserState();
         
         setSuccessMessage('Signed out successfully');

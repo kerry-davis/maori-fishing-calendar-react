@@ -534,6 +534,15 @@ export class FirebaseDataService {
             // Store the Firebase ID mapping
             await this.storeLocalMapping('trips', tripId.toString(), docRef.id);
 
+            // Cache to IndexedDB for offline support
+            try {
+              const tripToCache = { ...sanitizedTripData, id: tripId };
+              await databaseService.createTrip(tripToCache);
+              DEV_LOG('Trip cached to IndexedDB for offline support');
+            } catch (cacheError) {
+              DEV_WARN('Failed to cache trip to IndexedDB:', cacheError);
+            }
+
             DEV_LOG('Trip created in Firestore with validation:', docRef.id);
             return tripId;
           } catch (error) {
@@ -748,6 +757,16 @@ export class FirebaseDataService {
 
           trips.push(...(await Promise.all(tripPromises)));
 
+          // Cache to IndexedDB for offline support
+          try {
+            for (const trip of trips) {
+              await databaseService.updateTrip(trip);
+            }
+            DEV_LOG('Cached', trips.length, 'trips to IndexedDB');
+          } catch (cacheError) {
+            DEV_WARN('Failed to cache trips to IndexedDB:', cacheError);
+          }
+
           DEV_LOG('Returning', trips.length, 'trips from Firestore');
           return trips;
         } catch (error) {
@@ -794,6 +813,17 @@ export class FirebaseDataService {
 
         const trips = await Promise.all(tripPromises) as Trip[];
         DEV_LOG(`Found ${trips.length} trips in Firebase for user ${this.userId}`);
+        
+        // Cache to IndexedDB for offline support
+        try {
+          for (const trip of trips) {
+            await databaseService.updateTrip(trip);
+          }
+          DEV_LOG('Cached', trips.length, 'trips to IndexedDB');
+        } catch (cacheError) {
+          DEV_WARN('Failed to cache trips to IndexedDB:', cacheError);
+        }
+        
         return trips;
       } catch (error) {
         PROD_ERROR('Firestore query failed, falling back to local:', error);
@@ -1049,6 +1079,16 @@ export class FirebaseDataService {
 
             DEV_LOG('[Weather Create] Firebase document ID:', docRef.id);
             await this.storeLocalMapping('weatherLogs', localId, docRef.id);
+
+            // Cache to IndexedDB for offline support
+            try {
+              const weatherToCache = { ...weatherData, id: localId };
+              await databaseService.createWeatherLog(weatherToCache);
+              DEV_LOG('Weather log cached to IndexedDB for offline support');
+            } catch (cacheError) {
+              DEV_WARN('Failed to cache weather log to IndexedDB:', cacheError);
+            }
+
             DEV_LOG('[Weather Create] Successfully created weather log and stored mappings');
             return localId;
           } catch (error) {
@@ -1252,6 +1292,17 @@ export class FirebaseDataService {
         });
 
         const weatherLogs = await Promise.all(weatherLogPromises) as WeatherLog[];
+        
+        // Cache to IndexedDB for offline support
+        try {
+          for (const weatherLog of weatherLogs) {
+            await databaseService.updateWeatherLog(weatherLog);
+          }
+          DEV_LOG('Cached', weatherLogs.length, 'weather logs to IndexedDB');
+        } catch (cacheError) {
+          DEV_WARN('Failed to cache weather logs to IndexedDB:', cacheError);
+        }
+        
         return weatherLogs;
       } catch (error) {
         DEV_WARN('Firestore query failed, falling back to local:', error);
@@ -1392,6 +1443,16 @@ export class FirebaseDataService {
 
             DEV_LOG('[Fish Create] Firebase document ID:', docRef.id);
             await this.storeLocalMapping('fishCaught', localId, docRef.id);
+
+            // Cache to IndexedDB for offline support
+            try {
+              const fishToCache = { ...sanitizedFishData, id: localId };
+              await databaseService.createFishCaught(fishToCache);
+              DEV_LOG('Fish catch cached to IndexedDB for offline support');
+            } catch (cacheError) {
+              DEV_WARN('Failed to cache fish catch to IndexedDB:', cacheError);
+            }
+
             DEV_LOG('[Fish Create] Successfully created fish catch and stored mappings');
             return localId;
           } catch (error) {
@@ -1621,6 +1682,17 @@ export class FirebaseDataService {
         });
 
         const fishCaught = await Promise.all(fishPromises) as FishCaught[];
+        
+        // Cache to IndexedDB for offline support
+        try {
+          for (const fish of fishCaught) {
+            await databaseService.updateFishCaught(fish);
+          }
+          DEV_LOG('Cached', fishCaught.length, 'fish caught records to IndexedDB');
+        } catch (cacheError) {
+          DEV_WARN('Failed to cache fish caught records to IndexedDB:', cacheError);
+        }
+        
         return fishCaught;
       } catch (error) {
         DEV_WARN('Firestore query failed, falling back to local:', error);
