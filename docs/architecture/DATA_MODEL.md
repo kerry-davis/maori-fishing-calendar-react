@@ -304,7 +304,7 @@ The application follows a cloud-first data model with temporary local caching:
 **Issue**: Multiple Firestore documents can have the same local ID field, causing UI duplicates.
 
 **Solution**: Automatic deduplication on read
-- All read operations (`getAllTrips`, `getTripsByDate`, `getAllWeatherLogs`, `getAllFishCaught`) deduplicate results by local ID
+- All read operations (`getAllTrips`, `getTripsByDate`, `getAllWeatherLogs`, `getWeatherLogsByTripId`, `getAllFishCaught`, `getFishCaughtByTripId`) deduplicate results by local ID
 - Keeps newest version based on `updatedAt` timestamp
 - Transparent logging: `Deduplication: Replacing ID {id} (older: {time}, newer: {time})`
 - No manual cleanup required
@@ -322,6 +322,13 @@ private deduplicateById<T extends { id: number | string; updatedAt?: string }>(r
 - These methods use IndexedDB `put()` operation (upsert)
 - Prevents duplicate creation when ID already exists
 - Safe for both create and update scenarios
+- Trip Log consumer flows (trip list, weather, fish) now invoke the same cloud-first read paths, so IndexedDB stays hydrated before filtering in-memory.
+- If the encryption service is not ready (no deterministic key yet), Firestore reads skip IndexedDB caching altogether; once the key comes online the service triggers a rehydrate pass to refresh cached data with decrypted payloads.
+
+### Encryption Salt & Key Lifecycle
+- `ensureUserSalt(uid)` will now bail if Firestore cannot provide a salt instead of inventing a new one; this prevents inadvertent key rotation when offline.
+- `encryptionService.setDeterministicKey()` requires an existing salt (synced from Firestore or previously cached). If none is available it logs a warning and leaves the service in “not ready” mode.
+- Components must wait for `encryptionReady=true` before assuming decrypted data exists. When that flag flips, `firebaseDataService.rehydrateCachedData()` fetches trips/weather/fish to populate IndexedDB with plaintext.
 
 ## 4) UI Data ERD
 

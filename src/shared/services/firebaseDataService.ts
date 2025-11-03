@@ -63,6 +63,7 @@ export class FirebaseDataService {
   private readonly savedLocationsCollection = 'userSavedLocations';
   private readonly savedLocationsStorageKey = STORAGE_KEYS.SAVED_LOCATIONS;
   private readonly savedLocationsLimit = MAX_SAVED_LOCATIONS;
+  private hasRehydratedAfterEncryption = false;
 
   constructor() {
     // Monitor online/offline status
@@ -426,12 +427,14 @@ export class FirebaseDataService {
     if (userId) {
       this.userId = userId;
       this.isGuest = false;
+      this.hasRehydratedAfterEncryption = false;
       this.loadSyncQueue(); // Load user-specific queue
       void this.processSyncQueue();
       DEV_LOG('Firebase Data Service initialized for user:', userId);
     } else {
       this.userId = null;
       this.isGuest = true;
+      this.hasRehydratedAfterEncryption = false;
       DEV_LOG('Firebase Data Service initialized for guest');
     }
     this.isInitialized = true;
@@ -462,6 +465,7 @@ export class FirebaseDataService {
     if (this.isGuest) {
       this.userId = userId;
       this.isGuest = false;
+      this.hasRehydratedAfterEncryption = false;
       this.loadSyncQueue();
       void this.processSyncQueue();
       DEV_LOG('Switched to user mode:', userId);
@@ -535,12 +539,16 @@ export class FirebaseDataService {
             await this.storeLocalMapping('trips', tripId.toString(), docRef.id);
 
             // Cache to IndexedDB for offline support (use updateTrip for upsert)
-            try {
-              const tripToCache = { ...sanitizedTripData, id: tripId };
-              await databaseService.updateTrip(tripToCache);
-              DEV_LOG('Trip cached to IndexedDB for offline support');
-            } catch (cacheError) {
-              DEV_WARN('Failed to cache trip to IndexedDB:', cacheError);
+            if (encryptionService.isReady()) {
+              try {
+                const tripToCache = { ...sanitizedTripData, id: tripId };
+                await databaseService.updateTrip(tripToCache);
+                DEV_LOG('Trip cached to IndexedDB for offline support');
+              } catch (cacheError) {
+                DEV_WARN('Failed to cache trip to IndexedDB:', cacheError);
+              }
+            } else {
+              DEV_LOG('Skipping trip cache because encryption not ready');
             }
 
             DEV_LOG('Trip created in Firestore with validation:', docRef.id);
@@ -761,13 +769,17 @@ export class FirebaseDataService {
           const deduplicatedTrips = this.deduplicateById(trips);
 
           // Cache to IndexedDB for offline support
-          try {
-            for (const trip of deduplicatedTrips) {
-              await databaseService.updateTrip(trip);
+          if (encryptionService.isReady()) {
+            try {
+              for (const trip of deduplicatedTrips) {
+                await databaseService.updateTrip(trip);
+              }
+              DEV_LOG('Cached', deduplicatedTrips.length, 'trips to IndexedDB');
+            } catch (cacheError) {
+              DEV_WARN('Failed to cache trips to IndexedDB:', cacheError);
             }
-            DEV_LOG('Cached', deduplicatedTrips.length, 'trips to IndexedDB');
-          } catch (cacheError) {
-            DEV_WARN('Failed to cache trips to IndexedDB:', cacheError);
+          } else {
+            DEV_LOG('Skipping trip cache because encryption not ready');
           }
 
           DEV_LOG('Returning', deduplicatedTrips.length, 'trips from Firestore');
@@ -821,13 +833,17 @@ export class FirebaseDataService {
         const deduplicatedTrips = this.deduplicateById(trips);
         
         // Cache to IndexedDB for offline support
-        try {
-          for (const trip of deduplicatedTrips) {
-            await databaseService.updateTrip(trip);
+        if (encryptionService.isReady()) {
+          try {
+            for (const trip of deduplicatedTrips) {
+              await databaseService.updateTrip(trip);
+            }
+            DEV_LOG('Cached', deduplicatedTrips.length, 'trips to IndexedDB');
+          } catch (cacheError) {
+            DEV_WARN('Failed to cache trips to IndexedDB:', cacheError);
           }
-          DEV_LOG('Cached', deduplicatedTrips.length, 'trips to IndexedDB');
-        } catch (cacheError) {
-          DEV_WARN('Failed to cache trips to IndexedDB:', cacheError);
+        } else {
+          DEV_LOG('Skipping trip cache because encryption not ready');
         }
         
         return deduplicatedTrips;
@@ -1087,12 +1103,16 @@ export class FirebaseDataService {
             await this.storeLocalMapping('weatherLogs', localId, docRef.id);
 
             // Cache to IndexedDB for offline support (use updateWeatherLog for upsert)
-            try {
-              const weatherToCache = { ...weatherData, id: localId };
-              await databaseService.updateWeatherLog(weatherToCache);
-              DEV_LOG('Weather log cached to IndexedDB for offline support');
-            } catch (cacheError) {
-              DEV_WARN('Failed to cache weather log to IndexedDB:', cacheError);
+            if (encryptionService.isReady()) {
+              try {
+                const weatherToCache = { ...weatherData, id: localId };
+                await databaseService.updateWeatherLog(weatherToCache);
+                DEV_LOG('Weather log cached to IndexedDB for offline support');
+              } catch (cacheError) {
+                DEV_WARN('Failed to cache weather log to IndexedDB:', cacheError);
+              }
+            } else {
+              DEV_LOG('Skipping weather log cache because encryption not ready');
             }
 
             DEV_LOG('[Weather Create] Successfully created weather log and stored mappings');
@@ -1265,7 +1285,25 @@ export class FirebaseDataService {
         });
 
         const weatherLogs = await Promise.all(weatherLogPromises) as WeatherLog[];
-        return weatherLogs;
+
+        // Deduplicate in case multiple Firestore docs have the same local ID
+        const deduplicatedWeatherLogs = this.deduplicateById(weatherLogs);
+
+        // Cache to IndexedDB for offline support
+        if (encryptionService.isReady()) {
+          try {
+            for (const weatherLog of deduplicatedWeatherLogs) {
+              await databaseService.updateWeatherLog(weatherLog);
+            }
+            DEV_LOG('Cached', deduplicatedWeatherLogs.length, 'weather logs to IndexedDB');
+          } catch (cacheError) {
+            DEV_WARN('Failed to cache weather logs to IndexedDB:', cacheError);
+          }
+        } else {
+          DEV_LOG('Skipping weather log cache because encryption not ready');
+        }
+
+        return deduplicatedWeatherLogs;
       } catch (error) {
         DEV_WARN('Firestore query failed, falling back to local:', error);
       }
@@ -1303,13 +1341,17 @@ export class FirebaseDataService {
         const deduplicatedWeatherLogs = this.deduplicateById(weatherLogs);
         
         // Cache to IndexedDB for offline support
-        try {
-          for (const weatherLog of deduplicatedWeatherLogs) {
-            await databaseService.updateWeatherLog(weatherLog);
+        if (encryptionService.isReady()) {
+          try {
+            for (const weatherLog of deduplicatedWeatherLogs) {
+              await databaseService.updateWeatherLog(weatherLog);
+            }
+            DEV_LOG('Cached', deduplicatedWeatherLogs.length, 'weather logs to IndexedDB');
+          } catch (cacheError) {
+            DEV_WARN('Failed to cache weather logs to IndexedDB:', cacheError);
           }
-          DEV_LOG('Cached', deduplicatedWeatherLogs.length, 'weather logs to IndexedDB');
-        } catch (cacheError) {
-          DEV_WARN('Failed to cache weather logs to IndexedDB:', cacheError);
+        } else {
+          DEV_LOG('Skipping weather log cache because encryption not ready');
         }
         
         return deduplicatedWeatherLogs;
@@ -1454,12 +1496,16 @@ export class FirebaseDataService {
             await this.storeLocalMapping('fishCaught', localId, docRef.id);
 
             // Cache to IndexedDB for offline support (use updateFishCaught for upsert)
-            try {
-              const fishToCache = { ...sanitizedFishData, id: localId };
-              await databaseService.updateFishCaught(fishToCache);
-              DEV_LOG('Fish catch cached to IndexedDB for offline support');
-            } catch (cacheError) {
-              DEV_WARN('Failed to cache fish catch to IndexedDB:', cacheError);
+            if (encryptionService.isReady()) {
+              try {
+                const fishToCache = { ...sanitizedFishData, id: localId };
+                await databaseService.updateFishCaught(fishToCache);
+                DEV_LOG('Fish catch cached to IndexedDB for offline support');
+              } catch (cacheError) {
+                DEV_WARN('Failed to cache fish catch to IndexedDB:', cacheError);
+              }
+            } else {
+              DEV_LOG('Skipping fish catch cache because encryption not ready');
             }
 
             DEV_LOG('[Fish Create] Successfully created fish catch and stored mappings');
@@ -1658,7 +1704,25 @@ export class FirebaseDataService {
         });
 
         const fishCaught = await Promise.all(fishPromises) as FishCaught[];
-        return fishCaught;
+
+        // Deduplicate in case multiple Firestore docs have the same local ID
+        const deduplicatedFishCaught = this.deduplicateById(fishCaught);
+
+        // Cache to IndexedDB for offline support
+        if (encryptionService.isReady()) {
+          try {
+            for (const fish of deduplicatedFishCaught) {
+              await databaseService.updateFishCaught(fish);
+            }
+            DEV_LOG('Cached', deduplicatedFishCaught.length, 'fish caught records to IndexedDB');
+          } catch (cacheError) {
+            DEV_WARN('Failed to cache fish caught records to IndexedDB:', cacheError);
+          }
+        } else {
+          DEV_LOG('Skipping fish catch cache because encryption not ready');
+        }
+
+        return deduplicatedFishCaught;
       } catch (error) {
         DEV_WARN('Firestore query failed, falling back to local:', error);
       }
@@ -1696,13 +1760,17 @@ export class FirebaseDataService {
         const deduplicatedFishCaught = this.deduplicateById(fishCaught);
         
         // Cache to IndexedDB for offline support
-        try {
-          for (const fish of deduplicatedFishCaught) {
-            await databaseService.updateFishCaught(fish);
+        if (encryptionService.isReady()) {
+          try {
+            for (const fish of deduplicatedFishCaught) {
+              await databaseService.updateFishCaught(fish);
+            }
+            DEV_LOG('Cached', deduplicatedFishCaught.length, 'fish caught records to IndexedDB');
+          } catch (cacheError) {
+            DEV_WARN('Failed to cache fish caught records to IndexedDB:', cacheError);
           }
-          DEV_LOG('Cached', deduplicatedFishCaught.length, 'fish caught records to IndexedDB');
-        } catch (cacheError) {
-          DEV_WARN('Failed to cache fish caught records to IndexedDB:', cacheError);
+        } else {
+          DEV_LOG('Skipping fish catch cache because encryption not ready');
         }
         
         return deduplicatedFishCaught;
@@ -2915,6 +2983,28 @@ export class FirebaseDataService {
     }
     
     return deduplicated;
+  }
+
+  async rehydrateCachedData(): Promise<void> {
+    if (!this.isReady() || this.isGuest || !encryptionService.isReady()) {
+      return;
+    }
+
+    if (this.hasRehydratedAfterEncryption) {
+      return;
+    }
+
+    this.hasRehydratedAfterEncryption = true;
+
+    try {
+      await Promise.all([
+        this.getAllTrips().catch((error) => DEV_WARN('Rehydrate: trips refresh failed', error)),
+        this.getAllWeatherLogs().catch((error) => DEV_WARN('Rehydrate: weather logs refresh failed', error)),
+        this.getAllFishCaught().catch((error) => DEV_WARN('Rehydrate: fish records refresh failed', error))
+      ]);
+    } catch (error) {
+      DEV_WARN('Rehydrate: failed to refresh cached data after encryption readiness', error);
+    }
   }
 
   // ================= ENCRYPTION MIGRATION (deterministic key) =================

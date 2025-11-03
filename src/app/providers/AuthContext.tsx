@@ -232,6 +232,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 if (isTestEnv) {
                   await encryptionService.setDeterministicKey(newUser.uid, newUser.email);
                   setEncryptionReady(true);
+                  void firebaseDataService.rehydrateCachedData();
                 } else {
                   // Ensure per-user salt is synced across devices before deriving key
                   const { ensureUserSalt } = await import('@shared/services/userSaltService');
@@ -239,6 +240,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   await encryptionService.setDeterministicKey(newUser.uid, newUser.email);
                   console.log('Background: Encryption key initialized for user');
                   setEncryptionReady(true);
+                  void firebaseDataService.rehydrateCachedData();
                 }
 
                 // Start background encryption migration immediately after key is ready

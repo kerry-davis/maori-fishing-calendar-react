@@ -205,8 +205,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
       objectUrlsRef.current = [];
 
       const dateStr = formatDateForDB(selectedDate);
-      // Force local storage read to get immediate updates (Firebase syncs in background)
-      const tripsOnDate = await db.getTripsByDate(dateStr, true);
+      const tripsOnDate = await db.getTripsByDate(dateStr);
 
       // Fetch catches per trip to avoid filtering pitfalls and missing items
       const perTrip = await Promise.all(
@@ -274,8 +273,7 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
 
       // Filter weather logs for trips that exist on the selected date
       const dateStr = formatDateForDB(selectedDate);
-      // Force local storage read to get immediate updates (Firebase syncs in background)
-      const tripsOnDate = await db.getTripsByDate(dateStr, true);
+      const tripsOnDate = await db.getTripsByDate(dateStr);
 
       // Get weather logs only for trips on the selected date
       const relevantWeatherLogs = allWeatherLogs.filter((log: WeatherLog) =>
