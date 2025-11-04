@@ -96,20 +96,7 @@ export function useSavedLocations(): UseSavedLocationsResult {
   }, [loadSavedLocations]);
 
   useEffect(() => {
-    const handleAuthReady = () => {
-      void loadSavedLocations();
-    };
-
-    window.addEventListener('userDataReady', handleAuthReady);
-    window.addEventListener('databaseDataReady', handleAuthReady);
-
-    // Initial load attempt in case the service is already ready
-    handleAuthReady();
-
-    return () => {
-      window.removeEventListener('userDataReady', handleAuthReady);
-      window.removeEventListener('databaseDataReady', handleAuthReady);
-    };
+    //
   }, [loadSavedLocations]);
 
   useEffect(() => {
@@ -131,6 +118,9 @@ export function useSavedLocations(): UseSavedLocationsResult {
     window.addEventListener('savedLocationsChanged', handleExternalUpdate as EventListener);
     window.addEventListener('userDataReady', handleUserDataReady);
     window.addEventListener('databaseDataReady', handleDatabaseDataReady);
+
+    // Initial load attempt in case the service is already ready
+    void loadSavedLocations();
 
     return () => {
       window.removeEventListener('savedLocationsChanged', handleExternalUpdate as EventListener);
