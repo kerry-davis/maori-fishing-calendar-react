@@ -164,7 +164,7 @@ erDiagram
 
   LS_SAVED_LOCATIONS {
     string key        "savedLocations"
-    json[] locations  "array of SavedLocation objects"
+    json[] locations  "array of SavedLocation objects. Included in the main data.json file."
   }
 
   IDB_WEATHER_LOGS {

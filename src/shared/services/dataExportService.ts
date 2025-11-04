@@ -80,10 +80,11 @@ export class DataExportService {
 
     try {
       // Get all data from Firebase (primary) with fallback to IndexedDB
-      const [trips, weatherLogs, fishCaught] = await Promise.all([
+      const [trips, weatherLogs, fishCaught, savedLocations] = await Promise.all([
         firebaseDataService.isReady() ? firebaseDataService.getAllTrips() : databaseService.getAllTrips(),
         firebaseDataService.isReady() ? firebaseDataService.getAllWeatherLogs() : databaseService.getAllWeatherLogs(),
         firebaseDataService.isReady() ? firebaseDataService.getAllFishCaught() : databaseService.getAllFishCaught(),
+        firebaseDataService.isReady() ? firebaseDataService.getAllSavedLocationsForExport() : Promise.resolve([]),
       ]);
       this.emitProgress(onProgress, 'collecting', 1, 3, start, 'Collected data');
 
@@ -131,6 +132,7 @@ export class DataExportService {
           trips,
           weather_logs: weatherLogs,
           fish_caught: fishCaught,
+          saved_locations: savedLocations,
         },
         localStorage: {
           tacklebox,
@@ -743,7 +745,8 @@ export class DataExportService {
     const totalUnits =
       (Array.isArray(dbData.trips) ? dbData.trips.length : 0) +
       (Array.isArray(dbData.weather_logs) ? dbData.weather_logs.length : 0) +
-      (Array.isArray(dbData.fish_caught) ? dbData.fish_caught.length : 0);
+      (Array.isArray(dbData.fish_caught) ? dbData.fish_caught.length : 0) +
+      (Array.isArray(dbData.saved_locations) ? dbData.saved_locations.length : 0);
     let doneUnits = 0;
 
     if (dbData.trips && Array.isArray(dbData.trips)) {
@@ -805,6 +808,23 @@ export class DataExportService {
         this.emitProgress(onProgress, 'importing', doneUnits, totalUnits || 1, startTs ?? (performance.now?.() ?? Date.now()), 'Writing fish…');
       }
     }
+
+    if (dbData.saved_locations && Array.isArray(dbData.saved_locations)) {
+      for (const location of dbData.saved_locations) {
+        try {
+          // Attempt to create the saved location. The create method should handle duplicates.
+          await firebaseDataService.createSavedLocation(location);
+        } catch (error) {
+          if (error instanceof Error && error.message.includes("already exists")) {
+            DEV_LOG(`Skipping duplicate saved location: ${location.name}`);
+          } else {
+            PROD_ERROR(`Failed to import saved location "${location.name}":`, error);
+          }
+        }
+        doneUnits++;
+        this.emitProgress(onProgress, 'importing', doneUnits, totalUnits || 1, startTs ?? (performance.now?.() ?? Date.now()), 'Writing saved locations…');
+      }
+    }
   }
 
   /**
@@ -833,7 +853,8 @@ export class DataExportService {
     const totalUnits =
       (Array.isArray(dbData.trips) ? dbData.trips.length : 0) +
       (Array.isArray(dbData.weather_logs) ? dbData.weather_logs.length : 0) +
-      (Array.isArray(dbData.fish_caught) ? dbData.fish_caught.length : 0);
+      (Array.isArray(dbData.fish_caught) ? dbData.fish_caught.length : 0) +
+      (Array.isArray(dbData.saved_locations) ? dbData.saved_locations.length : 0);
     let doneUnits = 0;
 
     if (dbData.trips && Array.isArray(dbData.trips)) {
@@ -913,6 +934,22 @@ export class DataExportService {
         }
         doneUnits++;
         this.emitProgress(onProgress, 'importing', doneUnits, totalUnits || 1, startTs ?? (performance.now?.() ?? Date.now()), 'Writing fish…');
+      }
+    }
+
+    if (dbData.saved_locations && Array.isArray(dbData.saved_locations)) {
+      for (const location of dbData.saved_locations) {
+        try {
+          await firebaseDataService.createSavedLocation(location);
+        } catch (error) {
+          if (error instanceof Error && error.message.includes("already exists")) {
+            DEV_LOG(`Skipping duplicate saved location: ${location.name}`);
+          } else {
+            PROD_ERROR(`Failed to import saved location "${location.name}":`, error);
+          }
+        }
+        doneUnits++;
+        this.emitProgress(onProgress, 'importing', doneUnits, totalUnits || 1, startTs ?? (performance.now?.() ?? Date.now()), 'Writing saved locations…');
       }
     }
   }

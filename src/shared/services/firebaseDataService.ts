@@ -2242,6 +2242,54 @@ export class FirebaseDataService {
     }
   }
 
+  async getAllSavedLocationsForExport(): Promise<SavedLocation[]> {
+    DEV_LOG('[DataExport] getAllSavedLocationsForExport called');
+    this.ensureServiceReady();
+
+    if (this.isGuest) {
+      DEV_LOG('[DataExport] Guest mode - returning saved locations from localStorage');
+      return this.getGuestSavedLocations();
+    }
+
+    if (!firestore || !this.userId) {
+      DEV_LOG('[DataExport] No Firestore or userId available for saved locations export');
+      return [];
+    }
+
+    try {
+      DEV_LOG('[DataExport] Querying Firestore for saved locations for userId:', this.userId);
+      const q = query(
+        collection(firestore, this.savedLocationsCollection),
+        where('userId', '==', this.userId)
+      );
+      const snapshot = await getDocs(q);
+      DEV_LOG('[DataExport] Firestore returned', snapshot.size, 'saved locations for export');
+
+      const locations: SavedLocation[] = [];
+      for (const docSnap of snapshot.docs) {
+        const data = docSnap.data();
+        const converted = await this.convertFromFirestore(data, docSnap.id, docSnap.id, 'savedLocations');
+        const { firebaseDocId: _firebaseDocId, ...rest } = converted;
+        locations.push(rest as SavedLocation);
+      }
+
+      const sorted = locations.sort((a, b) => {
+        const aTime = a.createdAt || '';
+        const bTime = b.createdAt || '';
+        if (aTime && bTime && aTime !== bTime) {
+          return aTime.localeCompare(bTime);
+        }
+        return (a.name || '').localeCompare(b.name || '');
+      });
+
+      DEV_LOG('[DataExport] Returning', sorted.length, 'sorted locations for export');
+      return sorted;
+    } catch (error) {
+      PROD_ERROR('[DataExport] Error fetching saved locations for export:', error);
+      throw error;
+    }
+  }
+
   /**
    * Remove all localStorage ID mapping entries for the current user
    */

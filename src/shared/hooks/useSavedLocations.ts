@@ -62,7 +62,7 @@ export function useSavedLocations(): UseSavedLocationsResult {
   }, [savedLocations]);
 
   const loadSavedLocations = useCallback(async (): Promise<SavedLocation[]> => {
-    if (!firebaseDataService.isReady()) {
+    if (!firebaseDataService.isReady() || !firebaseDataService.isAuthenticated()) {
       return savedLocationsRef.current;
     }
 
@@ -96,7 +96,7 @@ export function useSavedLocations(): UseSavedLocationsResult {
   }, [loadSavedLocations]);
 
   useEffect(() => {
-    void loadSavedLocations();
+    //
   }, [loadSavedLocations]);
 
   useEffect(() => {
@@ -118,6 +118,9 @@ export function useSavedLocations(): UseSavedLocationsResult {
     window.addEventListener('savedLocationsChanged', handleExternalUpdate as EventListener);
     window.addEventListener('userDataReady', handleUserDataReady);
     window.addEventListener('databaseDataReady', handleDatabaseDataReady);
+
+    // Initial load attempt in case the service is already ready
+    void loadSavedLocations();
 
     return () => {
       window.removeEventListener('savedLocationsChanged', handleExternalUpdate as EventListener);
