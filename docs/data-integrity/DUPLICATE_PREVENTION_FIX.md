@@ -105,10 +105,10 @@ Added deduplication after Firestore queries:
 - `getAllTrips()` - Deduplicate before caching and returning
 
 **Weather Logs**:
-- `getAllWeatherLogs()` - Deduplicate before caching and returning
+- `getWeatherLogsByTripId()` and `getAllWeatherLogs()` - Deduplicate before caching and returning
 
 **Fish Catches**:
-- `getAllFishCaught()` - Deduplicate before caching and returning
+- `getFishCaughtByTripId()` and `getAllFishCaught()` - Deduplicate before caching and returning
 
 **Pattern Applied**:
 ```typescript
@@ -118,8 +118,10 @@ const trips = await Promise.all(tripPromises);
 const deduplicatedTrips = this.deduplicateById(trips);
 
 // Cache deduplicated data
-for (const trip of deduplicatedTrips) {
-  await databaseService.updateTrip(trip);
+if (encryptionService.isReady()) {
+  for (const trip of deduplicatedTrips) {
+    await databaseService.updateTrip(trip);
+  }
 }
 
 return deduplicatedTrips;
@@ -142,7 +144,7 @@ return deduplicatedTrips;
 1. Edit offline → IndexedDB updated
 2. Reconnect → Sync to Firestore
 3. Re-fetch → Deduplicate handles any race conditions
-4. Cache updates cleanly with `put()`
+4. Cache updates cleanly with `put()` once encryption is ready
 
 ## Testing With Your Duplicate
 
@@ -187,6 +189,7 @@ The duplicate (ID 57) has been resolved:
 ✅ **Comprehensive** - Covers trips, weather logs, and fish catches  
 ✅ **Transparent** - Logs all deduplication actions for debugging  
 ✅ **Safe** - Keeps most recent data by timestamp  
+✅ **Encryption-aware** - Cache writes pause until the deterministic key is ready, then rehydrate automatically  
 ✅ **No Data Loss** - Newest version automatically selected on read
 
 ## Status

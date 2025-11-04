@@ -41,11 +41,7 @@ export async function ensureUserSalt(uid: string): Promise<void> {
     localStorage.setItem(saltKey, b64);
     await setDoc(ref, { userId: uid, encSaltB64: b64 }, { merge: true });
   } catch (e) {
-    DEV_WARN('[Salt] Failed to sync user salt; falling back to local only:', e);
-    if (!localStorage.getItem(saltKey)) {
-      const saltBytes = crypto.getRandomValues(new Uint8Array(16));
-      const b64 = btoa(String.fromCharCode(...saltBytes));
-      localStorage.setItem(saltKey, b64);
-    }
+    DEV_WARN('[Salt] Failed to sync user salt; deferring key initialization:', e);
+    throw e instanceof Error ? e : new Error(String(e ?? 'Unknown salt sync error'));
   }
 }

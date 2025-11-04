@@ -29,6 +29,7 @@ const tripsData = await db.getTripsByDate(dateStr, true);
 // AFTER: Fetch from Firestore with automatic IndexedDB caching
 const tripsData = await db.getTripsByDate(dateStr);
 ```
+- Fish catches and weather logs now reuse the same cloud-first `getTripsByDate` path before filtering, keeping Trip Log sections consistent even after a fresh login.
 
 ### 2. Logout Data Cleanup
 **File**: `src/app/providers/AuthContext.tsx`
@@ -67,8 +68,8 @@ Added automatic IndexedDB caching after Firestore reads:
 **Methods updated:**
 - `getTripsByDate()` - Cache trips for date
 - `getAllTrips()` - Cache all trips
-- `getAllWeatherLogs()` - Cache all weather logs  
-- `getAllFishCaught()` - Cache all fish records
+- `getWeatherLogsByTripId()` and `getAllWeatherLogs()` - Cache weather logs (per-trip + global)
+- `getFishCaughtByTripId()` and `getAllFishCaught()` - Cache fish catches (per-trip + global)
 
 **Pattern:**
 ```typescript
@@ -87,6 +88,8 @@ try {
 
 return trips;
 ```
+All of these reads deduplicate by local ID before caching, ensuring duplicate Firestore documents cannot surface in the UI.
+- Caching now runs only when the encryption key is ready. If encryption is still initialising (e.g., salt not synced yet), the reads skip IndexedDB writes; once the key becomes available we trigger a rehydrate pass to refresh the cache with decrypted data.
 
 ### 6. Firestore Write Caching
 **File**: `src/shared/services/firebaseDataService.ts`
@@ -112,6 +115,7 @@ try {
   DEV_WARN('Failed to cache trip to IndexedDB:', cacheError);
 }
 ```
+- Write caching follows the same encryption guard: if the key is not ready, the service waits until encryption is initialised before hydrating the cache via `rehydrateCachedData()`.
 
 ## Data Flow Summary
 

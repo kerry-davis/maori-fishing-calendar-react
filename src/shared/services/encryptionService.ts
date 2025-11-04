@@ -90,9 +90,10 @@ class EncryptionService {
     const saltKey = `enc_salt_${userId}`;
     let saltB64 = localStorage.getItem(saltKey);
     if (!saltB64) {
-      const saltBytes = crypto.getRandomValues(new Uint8Array(16));
-      saltB64 = bufToBase64(saltBytes);
-      localStorage.setItem(saltKey, saltB64);
+      DEV_WARN('[Encryption] No synced salt available; delaying key initialization');
+      this.key = null;
+      this.ready = false;
+      return;
     }
     const saltBytes = base64ToBuf(saltB64);
     const pepper = (import.meta as any).env?.VITE_KEY_PEPPER || 'default-pepper';
