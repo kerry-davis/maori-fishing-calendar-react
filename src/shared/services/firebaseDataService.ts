@@ -22,6 +22,7 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
+  setDoc,
   query,
   where,
   orderBy,
@@ -49,6 +50,13 @@ type SyncCollectionName = 'trips' | 'weatherLogs' | 'fishCaught';
  * Firebase Data Service - Cloud-first with offline fallback
  * Replaces IndexedDB with Firestore while maintaining offline functionality
  */
+export interface ReplaceSavedLocationsResult {
+  imported: number;
+  duplicatesSkipped: number;
+  invalidSkipped: number;
+  limitSkipped: number;
+}
+
 export class FirebaseDataService {
   private userId: string | null = null;
   private isGuest = true;
@@ -2082,6 +2090,11 @@ export class FirebaseDataService {
   async clearAllData(): Promise<void> {
     // Clear local data
     await databaseService.clearAllData();
+    try {
+      localStorage.removeItem(this.savedLocationsStorageKey);
+    } catch (error) {
+      DEV_WARN('Failed to clear saved locations from localStorage during clearAllData:', error);
+    }
 
     // Clear sync queue
     this.syncQueue = [];
@@ -2122,7 +2135,7 @@ export class FirebaseDataService {
       }
     }
 
-    const collectionsToWipe = ['trips', 'weatherLogs', 'fishCaught', 'tackleItems', 'gearTypes', 'userSettings'];
+    const collectionsToWipe = ['trips', 'weatherLogs', 'fishCaught', 'tackleItems', 'gearTypes', 'userSettings', this.savedLocationsCollection];
     const collectionPlans: Array<{ name: string; refs: DocumentReference[] }> = [];
 
     for (const coll of collectionsToWipe) {
@@ -3028,6 +3041,233 @@ export class FirebaseDataService {
 
   // SAVED LOCATION METHODS
 
+  private async persistSavedLocation(params: {
+    sanitizedInput: Record<string, unknown>;
+    duplicateCheck: SavedLocation[];
+    duplicateTolerance: number;
+    skipDuplicateCheck: boolean;
+    overrideId?: string;
+    explicitTimestamps?: { createdAt?: string; updatedAt?: string };
+  }): Promise<SavedLocation> {
+    const { sanitizedInput, duplicateCheck, duplicateTolerance, skipDuplicateCheck, overrideId, explicitTimestamps } = params;
+
+    if (!firestore || !this.userId) {
+      throw new Error('Firestore not available for saved locations');
+    }
+
+    if (!skipDuplicateCheck && sanitizedInput.lat != null && sanitizedInput.lon != null) {
+      const lat = Number(sanitizedInput.lat);
+      const lon = Number(sanitizedInput.lon);
+      const clash = duplicateCheck.find((loc) => {
+        if (typeof loc.lat !== 'number' || typeof loc.lon !== 'number') return false;
+        return Math.abs(loc.lat - lat) < duplicateTolerance && Math.abs(loc.lon - lon) < duplicateTolerance;
+      });
+      if (clash) {
+        throw new Error(`A location at these coordinates already exists: "${clash.name}"`);
+      }
+    }
+
+    const ensureIso = (value?: string): string => {
+      if (typeof value === 'string') {
+        const parsed = new Date(value);
+        if (!Number.isNaN(parsed.getTime())) {
+          return parsed.toISOString();
+        }
+      }
+      return new Date().toISOString();
+    };
+
+    const nowIso = new Date().toISOString();
+    const createdAtIso = explicitTimestamps?.createdAt ? ensureIso(explicitTimestamps.createdAt) : nowIso;
+    const updatedAtIso = explicitTimestamps?.updatedAt ? ensureIso(explicitTimestamps.updatedAt) : nowIso;
+
+    const docId = overrideId ?? generateULID();
+    const payload: Record<string, unknown> = {
+      ...sanitizedInput,
+      userId: this.userId,
+      createdAt: explicitTimestamps?.createdAt ? new Date(createdAtIso) : serverTimestamp(),
+      updatedAt: explicitTimestamps?.updatedAt ? new Date(updatedAtIso) : serverTimestamp(),
+    };
+
+    let encryptedPayload = payload;
+    try {
+      encryptedPayload = await encryptionService.encryptFields('savedLocations', payload);
+    } catch (error) {
+      DEV_WARN('[SavedLocations] Encryption failed for persistSavedLocation:', error);
+    }
+
+    try {
+      DEV_LOG('[SavedLocations] Writing saved location document:', docId);
+      await setDoc(doc(firestore, this.savedLocationsCollection, docId), encryptedPayload);
+    } catch (error) {
+      PROD_ERROR('[SavedLocations] Error writing saved location:', error);
+      throw error;
+    }
+
+    const savedLocation: SavedLocation = {
+      id: docId,
+      userId: this.userId ?? undefined,
+      name: sanitizedInput.name as string | undefined,
+      water: sanitizedInput.water as string | undefined,
+      location: sanitizedInput.location as string | undefined,
+      lat: sanitizedInput.lat as number | undefined,
+      lon: sanitizedInput.lon as number | undefined,
+      notes: sanitizedInput.notes as string | undefined,
+      createdAt: createdAtIso,
+      updatedAt: updatedAtIso,
+    };
+
+    this.emitSavedLocationsChanged(overrideId ? 'updated' : 'created', docId);
+    return savedLocation;
+  }
+
+  async replaceSavedLocations(locations: SavedLocation[]): Promise<ReplaceSavedLocationsResult> {
+    DEV_LOG('[SavedLocations] replaceSavedLocations called with count:', Array.isArray(locations) ? locations.length : 0);
+    this.ensureServiceReady();
+
+    const source = Array.isArray(locations) ? locations : [];
+    const normalized: SavedLocation[] = [];
+    const limit = this.savedLocationsLimit;
+    let duplicatesSkipped = 0;
+    let invalidSkipped = 0;
+    let limitSkipped = 0;
+
+    const resolveIso = (value?: string, fallback?: string): string => {
+      if (typeof value === 'string' && value.trim().length > 0) {
+        const parsed = new Date(value);
+        if (!Number.isNaN(parsed.getTime())) {
+          return parsed.toISOString();
+        }
+      }
+      if (typeof fallback === 'string' && fallback.length > 0) {
+        return fallback;
+      }
+      return new Date().toISOString();
+    };
+
+    const isDuplicateId = (candidateId: string, existing: SavedLocation[]): boolean => {
+      return existing.some((loc) => loc.id === candidateId);
+    };
+
+    for (const raw of source) {
+      if (!raw) {
+        invalidSkipped++;
+        continue;
+      }
+
+      if (normalized.length >= limit) {
+        limitSkipped++;
+        continue;
+      }
+
+      const baseName = typeof raw.name === 'string' && raw.name.trim().length > 0
+        ? raw.name.trim()
+        : (typeof raw.location === 'string' && raw.location.trim().length > 0
+          ? raw.location.trim()
+          : 'Imported Location');
+
+      const payloadInput: SavedLocationCreateInput = {
+        name: baseName,
+        water: raw.water,
+        location: raw.location,
+        lat: raw.lat,
+        lon: raw.lon,
+        notes: raw.notes,
+      };
+
+      try {
+        this.validateSavedLocationInput(payloadInput, false);
+      } catch (error) {
+        DEV_WARN('[SavedLocations] Skipping invalid saved location during replace:', error);
+        invalidSkipped++;
+        continue;
+      }
+
+      const sanitized = this.stripUndefined(this.sanitizeSavedLocationInput(payloadInput));
+      const id = typeof raw.id === 'string' && raw.id.trim().length > 0 ? raw.id : generateULID();
+      const createdAtIso = resolveIso(raw.createdAt);
+      const updatedAtIso = resolveIso(raw.updatedAt, createdAtIso);
+
+      const candidate: SavedLocation = {
+        id,
+        name: (sanitized.name as string) ?? baseName,
+        water: sanitized.water as string | undefined,
+        location: sanitized.location as string | undefined,
+        lat: sanitized.lat as number | undefined,
+        lon: sanitized.lon as number | undefined,
+        notes: sanitized.notes as string | undefined,
+        createdAt: createdAtIso,
+        updatedAt: updatedAtIso,
+      };
+
+      if (isDuplicateId(candidate.id, normalized)) {
+        DEV_LOG('[SavedLocations] Skipping saved location with duplicate id during bulk replace:', candidate.id);
+        duplicatesSkipped++;
+        continue;
+      }
+
+      normalized.push(candidate);
+    }
+
+    if (this.isGuest) {
+      this.persistGuestSavedLocations(normalized);
+      this.emitSavedLocationsChanged('updated', 'bulk-import');
+      DEV_LOG('[SavedLocations] Guest saved locations replaced count:', normalized.length);
+      return {
+        imported: normalized.length,
+        duplicatesSkipped,
+        invalidSkipped,
+        limitSkipped,
+      };
+    }
+
+    if (!firestore || !this.userId) {
+      throw new Error('Firestore not available for saved locations');
+    }
+
+    try {
+      const existingSnapshot = await getDocs(query(collection(firestore, this.savedLocationsCollection), where('userId', '==', this.userId)));
+      if (!existingSnapshot.empty) {
+        const deleteBatch = writeBatch(firestore);
+        existingSnapshot.docs.forEach((docSnap) => deleteBatch.delete(docSnap.ref));
+        await deleteBatch.commit();
+      }
+
+      for (const entry of normalized) {
+        await this.persistSavedLocation({
+          sanitizedInput: this.stripUndefined(this.sanitizeSavedLocationInput({
+            name: entry.name,
+            water: entry.water,
+            location: entry.location,
+            lat: entry.lat,
+            lon: entry.lon,
+            notes: entry.notes,
+          })),
+          duplicateCheck: [],
+          duplicateTolerance: 0,
+          skipDuplicateCheck: true,
+          overrideId: entry.id,
+          explicitTimestamps: {
+            createdAt: entry.createdAt,
+            updatedAt: entry.updatedAt,
+          },
+        });
+      }
+
+      this.emitSavedLocationsChanged('updated', 'bulk-import');
+      DEV_LOG('[SavedLocations] Firestore saved locations replaced count:', normalized.length);
+      return {
+        imported: normalized.length,
+        duplicatesSkipped,
+        invalidSkipped,
+        limitSkipped,
+      };
+    } catch (error) {
+      PROD_ERROR('[SavedLocations] Failed to replace saved locations:', error);
+      throw error;
+    }
+  }
+
   async getSavedLocations(): Promise<SavedLocation[]> {
     DEV_LOG('[SavedLocations] getSavedLocations called');
     this.ensureServiceReady();
@@ -3150,58 +3390,13 @@ export class FirebaseDataService {
       }
     }
 
-    const nowIso = new Date().toISOString();
-    const payload: Record<string, unknown> = {
-      ...sanitized,
-      userId: this.userId,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    };
-    DEV_LOG('[SavedLocations] Payload before encryption:', payload);
+    return await this.persistSavedLocation({
+      sanitizedInput: sanitized,
+      duplicateCheck: current,
+      duplicateTolerance: 0.0001,
+      skipDuplicateCheck: false,
+    });
 
-    let encrypted = payload;
-    try {
-      encrypted = await encryptionService.encryptFields('savedLocations', payload);
-      DEV_LOG('[SavedLocations] Payload after encryption:', encrypted);
-    } catch (error) {
-      DEV_WARN('[SavedLocations] Encryption failed:', error);
-    }
-
-    try {
-      DEV_LOG('[SavedLocations] Writing to Firestore collection:', this.savedLocationsCollection);
-      const docRef = await addDoc(collection(firestore, this.savedLocationsCollection), encrypted);
-      DEV_LOG('[SavedLocations] Firestore document created with ID:', docRef.id);
-      
-      const {
-        name,
-        water,
-        location: locationName,
-        lat,
-        lon,
-        notes
-      } = sanitized as SavedLocationCreateInput;
-
-      const savedLocation: SavedLocation = {
-        id: docRef.id,
-        userId: this.userId ?? undefined,
-        name,
-        water,
-        location: locationName,
-        lat,
-        lon,
-        notes,
-        createdAt: nowIso,
-        updatedAt: nowIso
-      };
-      
-      DEV_LOG('[SavedLocations] Emitting savedLocationsChanged event');
-      this.emitSavedLocationsChanged('created', docRef.id);
-      DEV_LOG('[SavedLocations] Successfully created saved location:', savedLocation);
-      return savedLocation;
-    } catch (error) {
-      PROD_ERROR('[SavedLocations] Error creating saved location:', error);
-      throw error;
-    }
   }
 
   async updateSavedLocation(id: string, updates: SavedLocationUpdateInput): Promise<void> {

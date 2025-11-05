@@ -7,7 +7,7 @@
  * Uses JSZip for proper zip file parsing and handles large files with streaming
  */
 
-import type { Trip, WeatherLog, FishCaught, ImportProgress } from "../types";
+import { MAX_SAVED_LOCATIONS, type Trip, type WeatherLog, type FishCaught, type ImportProgress, type SavedLocation } from "../types";
 import { firebaseDataService } from "./firebaseDataService";
 import { compressImage as coreCompressImage } from "../utils/imageCompression";
 import { databaseService } from "./databaseService";
@@ -24,8 +24,10 @@ export interface ZipImportResult {
   tripsImported: number;
   weatherLogsImported: number;
   fishCatchesImported: number;
+  savedLocationsImported: number;
   photosImported: number;
   durationMs: number;
+  filename?: string;
   duplicatesSkipped: {
     trips: number;
     weatherLogs: number;
@@ -46,6 +48,7 @@ export interface LegacyDataStructure {
   weatherLogs: WeatherLog[];
   fishCatches: FishCaught[];
   photos: { [key: string]: string }; // filename -> base64 data
+  savedLocations?: SavedLocation[];
   // Optional settings from legacy/localStorage export
   tacklebox?: any[];
   gearTypes?: string[];
@@ -104,6 +107,23 @@ export class BrowserZipImportService {
     });
   }
 
+  private safeCount(value: unknown): number {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === 'string' && value.trim() !== '') {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+    if (typeof value === 'bigint') {
+      const normalized = Number(value);
+      return Number.isFinite(normalized) ? normalized : 0;
+    }
+    return 0;
+  }
+
   /**
    * Process a zip file uploaded by the user
    * @param file - The zip file to process
@@ -120,8 +140,10 @@ export class BrowserZipImportService {
       tripsImported: 0,
       weatherLogsImported: 0,
       fishCatchesImported: 0,
+      savedLocationsImported: 0,
       photosImported: 0,
       durationMs: 0,
+      filename: file?.name,
       duplicatesSkipped: {
         trips: 0,
         weatherLogs: 0,
@@ -196,12 +218,16 @@ export class BrowserZipImportService {
   performance.mark('import-end');
 
       result.success = importResult.success;
-      result.tripsImported = importResult.tripsImported;
-      result.weatherLogsImported = importResult.weatherLogsImported;
-      result.fishCatchesImported = importResult.fishCatchesImported;
-      result.photosImported = importResult.photosImported;
+      result.tripsImported = this.safeCount(importResult.tripsImported);
+      result.weatherLogsImported = this.safeCount(importResult.weatherLogsImported);
+      result.fishCatchesImported = this.safeCount(importResult.fishCatchesImported);
+      result.savedLocationsImported = this.safeCount(importResult.savedLocationsImported);
+      result.photosImported = this.safeCount(importResult.photosImported);
       result.errors.push(...importResult.errors);
       result.warnings.push(...importResult.warnings);
+      if (!result.filename && importResult.filename) {
+        result.filename = importResult.filename;
+      }
 
   const zipTime = performance.measure('zip-total', 'zip-start', 'zip-extracted').duration;
   const importTime = performance.measure('import-total', 'import-start', 'import-end').duration;
@@ -329,7 +355,8 @@ export class BrowserZipImportService {
       trips: [],
       weatherLogs: [],
       fishCatches: [],
-      photos: {}
+      photos: {},
+      savedLocations: []
     };
 
     const photoWarnings: string[] = [];
@@ -376,6 +403,10 @@ export class BrowserZipImportService {
               console.log('Found gearTypes in localStorage:', data.localStorage.gearTypes.length);
               legacyData.gearTypes = Array.isArray(data.localStorage.gearTypes) ? data.localStorage.gearTypes : undefined;
             }
+          if (Array.isArray(data.localStorage.savedLocations)) {
+            console.log('Found savedLocations in localStorage:', data.localStorage.savedLocations.length);
+            legacyData.savedLocations = data.localStorage.savedLocations as SavedLocation[];
+          }
           }
 
           console.log('Final extracted data summary:', {
@@ -491,6 +522,7 @@ export class BrowserZipImportService {
       const hasData = legacyData.trips.length > 0 ||
                      legacyData.weatherLogs.length > 0 ||
                      legacyData.fishCatches.length > 0 ||
+                     (legacyData.savedLocations?.length ?? 0) > 0 ||
                      Object.keys(legacyData.photos).length > 0;
 
       console.log('Data validation - hasData:', hasData);
@@ -498,6 +530,7 @@ export class BrowserZipImportService {
         trips: legacyData.trips.length,
         weatherLogs: legacyData.weatherLogs.length,
         fishCatches: legacyData.fishCatches.length,
+        savedLocations: legacyData.savedLocations?.length ?? 0,
         photos: totalPhotos
       });
 
@@ -566,6 +599,7 @@ export class BrowserZipImportService {
       tripsImported: 0,
       weatherLogsImported: 0,
       fishCatchesImported: 0,
+      savedLocationsImported: 0,
       photosImported: 0,
       durationMs: 0,
       duplicatesSkipped: {
@@ -581,15 +615,55 @@ export class BrowserZipImportService {
       DEV_LOG('Starting legacy data import...');
 
       // Clear existing data first (as requested)
-  DEV_LOG('Clearing existing data before import...');
-  await this.clearExistingData(isAuthenticated, strategy);
+      DEV_LOG('Clearing existing data before import...');
+      await this.clearExistingData(isAuthenticated, strategy);
 
-  // Use all data from the zip file (no duplicate checking)
+      // Use all data from the zip file (no duplicate checking)
       const tripsToImport = legacyData.trips;
       const weatherLogsToImport = legacyData.weatherLogs;
       const fishCatchesToImport = legacyData.fishCatches;
+      const savedLocationsSource = Array.isArray(legacyData.savedLocations) ? legacyData.savedLocations : [];
+      let replaceSummary: Awaited<ReturnType<typeof firebaseDataService.replaceSavedLocations>> | null = null;
 
-      DEV_LOG(`Import summary: ${tripsToImport.length} trips, ${weatherLogsToImport.length} weather logs, ${fishCatchesToImport.length} fish catches`);
+      try {
+        if (firebaseDataService.isReady()) {
+          replaceSummary = await firebaseDataService.replaceSavedLocations(savedLocationsSource);
+          result.savedLocationsImported = this.safeCount(replaceSummary.imported);
+
+          const detailParts: string[] = [];
+          if (replaceSummary.duplicatesSkipped > 0) {
+            detailParts.push(`${replaceSummary.duplicatesSkipped} duplicate${replaceSummary.duplicatesSkipped === 1 ? '' : 's'}`);
+          }
+          if (replaceSummary.invalidSkipped > 0) {
+            detailParts.push(`${replaceSummary.invalidSkipped} invalid`);
+          }
+          if (replaceSummary.limitSkipped > 0) {
+            detailParts.push(`${replaceSummary.limitSkipped} over the limit of ${MAX_SAVED_LOCATIONS}`);
+          }
+          if (detailParts.length > 0) {
+            result.warnings.push(`Some saved locations were skipped during import (${detailParts.join(', ')}).`);
+          }
+        } else {
+          localStorage.setItem('savedLocations', JSON.stringify(savedLocationsSource.slice(0, MAX_SAVED_LOCATIONS)));
+          result.savedLocationsImported = Math.min(savedLocationsSource.length, MAX_SAVED_LOCATIONS);
+        }
+      } catch (error) {
+        DEV_WARN('Failed to replace saved locations during legacy import:', error);
+        try {
+          localStorage.setItem('savedLocations', JSON.stringify(savedLocationsSource.slice(0, MAX_SAVED_LOCATIONS)));
+          result.savedLocationsImported = Math.min(savedLocationsSource.length, MAX_SAVED_LOCATIONS);
+        } catch (persistError) {
+          DEV_WARN('Failed to persist saved locations fallback during legacy import:', persistError);
+          result.errors.push('Failed to import saved locations');
+        }
+      }
+
+      const savedLocationGap = Math.max(0, savedLocationsSource.length - result.savedLocationsImported);
+      if (savedLocationGap > 0 && !replaceSummary) {
+        result.warnings.push(`Imported saved locations truncated by ${savedLocationGap}. Maximum stored is ${MAX_SAVED_LOCATIONS}.`);
+      }
+
+      DEV_LOG(`Import summary: ${tripsToImport.length} trips, ${weatherLogsToImport.length} weather logs, ${fishCatchesToImport.length} fish catches, ${savedLocationsSource.length} saved locations`);
 
       // Persist tacklebox and gear types before records so UI reads correct values after import
       try {
@@ -907,7 +981,8 @@ export class BrowserZipImportService {
       trips: [],
       weatherLogs: [],
       fishCatches: [],
-      photos: {}
+      photos: {},
+      savedLocations: []
     };
 
     console.log('Trying alternative parsing methods for multiple formats...');
@@ -967,7 +1042,8 @@ export class BrowserZipImportService {
             trips: data.indexedDB.trips || [],
             weatherLogs: data.indexedDB.weather_logs || [],
             fishCatches: data.indexedDB.fish_caught || [],
-            photos: {}
+            photos: {},
+            savedLocations: Array.isArray(data.localStorage?.savedLocations) ? data.localStorage.savedLocations : []
           };
         }
       }
@@ -994,7 +1070,8 @@ export class BrowserZipImportService {
             trips: data.trips || [],
             weatherLogs: data.weatherLogs || [],
             fishCatches: data.fishCatches || [],
-            photos: {}
+            photos: {},
+            savedLocations: Array.isArray(data.savedLocations) ? data.savedLocations : []
           };
         }
       }
@@ -1016,7 +1093,8 @@ export class BrowserZipImportService {
             trips: data.trips || [],
             weatherLogs: data.weather_logs || [],
             fishCatches: data.fish_caught || [],
-            photos: {}
+            photos: {},
+            savedLocations: Array.isArray(data.savedLocations) ? data.savedLocations : []
           };
         }
       }
@@ -1038,7 +1116,8 @@ export class BrowserZipImportService {
       trips: [],
       weatherLogs: [],
       fishCatches: [],
-      photos: {}
+      photos: {},
+      savedLocations: []
     };
 
     for (const [fileName, fileContent] of csvFiles) {

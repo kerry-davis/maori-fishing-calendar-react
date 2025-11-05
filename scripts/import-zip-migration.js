@@ -58,6 +58,7 @@ async function importFromZipFile(zipFilePath) {
         console.log(`   • Trips: ${result.tripsImported}`);
         console.log(`   • Weather Logs: ${result.weatherImported}`);
         console.log(`   • Fish Catches: ${result.fishImported}`);
+        console.log(`   • Saved Locations: ${result.savedLocationsImported}`);
         console.log(`   • Tackle Items: ${result.tackleImported}`);
         console.log(`   • Photos: ${result.photosImported}`);
 
@@ -225,6 +226,9 @@ function validateImportData(data) {
         if (!Array.isArray(data.localStorage.tacklebox)) {
             console.warn('⚠️  localStorage.tacklebox should be an array');
         }
+        if (data.localStorage.savedLocations && !Array.isArray(data.localStorage.savedLocations)) {
+            console.warn('⚠️  localStorage.savedLocations should be an array');
+        }
     }
 
     if (errors.length > 0) {
@@ -252,7 +256,8 @@ async function performImport(data) {
         tripsImported: data.indexedDB.trips.length,
         weatherImported: data.indexedDB.weather_logs.length,
         fishImported: data.indexedDB.fish_caught.length,
-        tackleImported: data.localStorage.tacklebox.length,
+        savedLocationsImported: Array.isArray(data.localStorage.savedLocations) ? data.localStorage.savedLocations.length : 0,
+        tackleImported: Array.isArray(data.localStorage.tacklebox) ? data.localStorage.tacklebox.length : 0,
         photosImported: 0
     };
 

@@ -14,6 +14,14 @@ export interface DataMigrationModalProps {
   onMigrationComplete?: () => void;
 }
 
+const formatDuration = (durationMs?: number): string => {
+  const totalSeconds = Math.max(0, Math.floor((durationMs ?? 0) / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+};
+
 /**
  * Data Migration Modal - Prompts users to migrate existing local data to Firebase
  */
@@ -343,6 +351,10 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
                     <span className="font-medium">{zipImportResults.fishCatchesImported}</span>
                   </div>
                   <div className="flex justify-between">
+                    <span style={{ color: 'var(--secondary-text)' }}>Saved Locations:</span>
+                    <span className="font-medium">{zipImportResults.savedLocationsImported}</span>
+                  </div>
+                  <div className="flex justify-between">
                     <span style={{ color: 'var(--secondary-text)' }}>Photos:</span>
                     <span className="font-medium">{zipImportResults.photosImported}</span>
                   </div>
@@ -350,7 +362,7 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
                 {typeof zipImportResults.durationMs === 'number' && zipImportResults.durationMs > 0 && (
                   <div className="mt-3 pt-3 text-xs flex justify-between" style={{ borderTop: '1px solid var(--border-color)' }}>
                     <span style={{ color: 'var(--secondary-text)' }}>Duration</span>
-                    <span className="font-medium">{Math.max(0, Math.round((zipImportResults.durationMs || 0)/1000))}s</span>
+                    <span className="font-medium">{formatDuration(zipImportResults.durationMs)}</span>
                   </div>
                 )}
 

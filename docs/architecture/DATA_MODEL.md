@@ -126,6 +126,8 @@ Notes:
 - Saved locations are limited to 10 per user (hard cap enforced at service level).
 - Duplicate location prevention uses 11-meter coordinate tolerance (0.0001 degrees).
 - Saved locations encrypt name, water, location, and notes fields client-side.
+- Saved location exports include both JSON (`localStorage.savedLocations`) and CSV (`saved-locations.csv`) artefacts. Imports rely on `firebaseDataService.replaceSavedLocations()` which wipes and repopulates the `userSavedLocations` collection, preserving IDs/timestamps from backups while enforcing the 10-item limit and skipping duplicates by ID. Guest imports fall back to localStorage with the same limit enforcement.
+- Export/Import UI summaries surface the filename and duration of each operation. Durations are formatted as `hh:mm:ss` using a shared formatter so the Settings modal and migration flows stay consistent.
  
 ### Update semantics and guardrails (to prevent data loss and display drift)
 - FISH_CAUGHT photo fields are preserved on updates unless an explicit removal signal is provided. Clients MUST NOT clear photo-related fields by omission.
