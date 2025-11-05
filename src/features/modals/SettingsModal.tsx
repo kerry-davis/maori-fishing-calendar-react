@@ -20,6 +20,21 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
+const formatLocalDateForFilename = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const formatDuration = (durationMs?: number): string => {
+  const totalSeconds = Math.max(0, Math.floor((durationMs ?? 0) / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+};
+
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   const { user } = useAuth();
   const {
@@ -50,7 +65,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [checkingTideCoverage, setCheckingTideCoverage] = useState(false);
   // Export progress and stats
   const [exportProgress, setExportProgress] = useState<ImportProgress | null>(null);
-  const [exportStats, setExportStats] = useState<{ trips: number; weatherLogs: number; fishCatches: number; photos: number; filename: string; durationMs: number } | null>(null);
+  const [exportStats, setExportStats] = useState<{ trips: number; weatherLogs: number; fishCatches: number; savedLocations: number; photos: number; filename: string; durationMs: number } | null>(null);
   // Delete stats
   const [deleteStats, setDeleteStats] = useState<{ trips: number; weatherLogs: number; fishCatches: number } | null>(null);
   // PWA reset state
@@ -97,22 +112,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     const start = Date.now();
     try {
       const useFirebase = firebaseDataService.isReady();
-      const [trips, weather, fish] = await Promise.all([
+      const [trips, weather, fish, savedLocations] = await Promise.all([
         useFirebase ? firebaseDataService.getAllTrips() : databaseService.getAllTrips(),
         useFirebase ? firebaseDataService.getAllWeatherLogs() : databaseService.getAllWeatherLogs(),
         useFirebase ? firebaseDataService.getAllFishCaught() : databaseService.getAllFishCaught(),
+        firebaseDataService.isReady() ? firebaseDataService.getSavedLocations() : Promise.resolve([] as SavedLocation[]),
       ]);
       const photos = fish.filter((f: any) => (typeof f.photo === 'string' && f.photo.startsWith('data:')) || f.photoPath || f.photoUrl).length;
       const blob = await dataExportService.exportDataAsZip((p) => setExportProgress(p));
       const now = new Date();
-      const date = now.toISOString().split('T')[0];
+      const date = formatLocalDateForFilename(now);
       const hh = String(now.getHours()).padStart(2, '0');
       const mm = String(now.getMinutes()).padStart(2, '0');
       const filename = `fishing-calendar-data-${date}_${hh}${mm}.zip`;
       dataExportService.downloadBlob(blob, filename);
       setExportProgress({ phase: 'finalizing', current: 100, total: 100, percent: 100, message: 'Done' });
-      setExportStats({ trips: trips.length, weatherLogs: weather.length, fishCatches: fish.length, photos, filename, durationMs: Math.max(0, Date.now() - start) });
-      setExportSuccess(`Exported ZIP: ${filename}`);
+      setExportStats({ trips: trips.length, weatherLogs: weather.length, fishCatches: fish.length, savedLocations: Array.isArray(savedLocations) ? savedLocations.length : 0, photos, filename, durationMs: Math.max(0, Date.now() - start) });
+      setExportSuccess(null);
     } catch (error) {
       PROD_ERROR('Export error:', error);
       setExportError(error instanceof Error ? error.message : 'Failed to export data');
@@ -139,22 +155,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     const start = Date.now();
     try {
       const useFirebase = firebaseDataService.isReady();
-      const [trips, weather, fish] = await Promise.all([
+      const [trips, weather, fish, savedLocations] = await Promise.all([
         useFirebase ? firebaseDataService.getAllTrips() : databaseService.getAllTrips(),
         useFirebase ? firebaseDataService.getAllWeatherLogs() : databaseService.getAllWeatherLogs(),
         useFirebase ? firebaseDataService.getAllFishCaught() : databaseService.getAllFishCaught(),
+        firebaseDataService.isReady() ? firebaseDataService.getSavedLocations() : Promise.resolve([] as SavedLocation[]),
       ]);
       const photos = fish.filter((f: any) => (typeof f.photo === 'string' && f.photo.startsWith('data:')) || f.photoPath || f.photoUrl).length;
       const blob = await dataExportService.exportDataAsCSV((p) => setExportProgress(p));
       const now = new Date();
-      const date = now.toISOString().split('T')[0];
+      const date = formatLocalDateForFilename(now);
       const hh = String(now.getHours()).padStart(2, '0');
       const mm = String(now.getMinutes()).padStart(2, '0');
       const filename = `fishing-calendar-csv-${date}_${hh}${mm}.zip`;
       dataExportService.downloadBlob(blob, filename);
       setExportProgress({ phase: 'finalizing', current: 100, total: 100, percent: 100, message: 'Done' });
-      setExportStats({ trips: trips.length, weatherLogs: weather.length, fishCatches: fish.length, photos, filename, durationMs: Math.max(0, Date.now() - start) });
-      setExportSuccess(`Exported CSV ZIP: ${filename}`);
+      setExportStats({ trips: trips.length, weatherLogs: weather.length, fishCatches: fish.length, savedLocations: Array.isArray(savedLocations) ? savedLocations.length : 0, photos, filename, durationMs: Math.max(0, Date.now() - start) });
+      setExportSuccess(null);
     } catch (error) {
       PROD_ERROR('CSV export error:', error);
       setExportError(error instanceof Error ? error.message : 'Failed to export CSV data');
@@ -198,8 +215,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         window.dispatchEvent(new CustomEvent('databaseDataReady', { detail: { source: 'Import', timestamp: Date.now() } }));
         window.dispatchEvent(new CustomEvent('userDataReady', { detail: { userId: user?.uid ?? null, isGuest: !user, source: 'Import', timestamp: Date.now() } }));
       } catch {}
-      const seconds = Math.max(0, Math.round((stats.durationMs || 0) / 1000));
-      setImportSuccess(`Successfully imported data from "${file.name}" in ${seconds}s.`);
+      setImportSuccess(null);
       setShowImportConfirm(false);
       setPendingImportFile(null);
     } catch (error) {
@@ -682,7 +698,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         {/* Legacy section removed: single import handles both */}
 
         {/* Error/Success Messages + Import stats */}
-        {(exportError || importError || exportSuccess || deleteSuccess || importSuccess || importStats) && (
+        {(exportError || importError || exportStats || deleteSuccess || importStats) && (
           <div className="space-y-3">
             {exportError && (
               <div className="p-3 rounded-lg" style={{ backgroundColor: 'var(--error-background)', border: '1px solid var(--error-border)' }}>
@@ -742,7 +758,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               </div>
             )}
 
-            {exportSuccess && (
+            {exportStats && (
               <div className="p-3 rounded-lg" style={{ backgroundColor: 'var(--success-background)', border: '1px solid var(--success-border)' }}>
                 <div className="flex items-start">
                   <i className="fas fa-check-circle mr-2 mt-0.5" style={{ color: 'var(--success-text)' }}></i>
@@ -750,20 +766,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     <p className="text-sm font-medium" style={{ color: 'var(--success-text)' }}>
                       Export Successful
                     </p>
-                    <p className="text-sm mt-1" style={{ color: 'var(--success-text)' }}>
-                      {exportSuccess}
-                    </p>
-                    {exportStats && (
-                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                        <div className="flex justify-between"><span>Trips</span><span className="font-medium">{exportStats.trips}</span></div>
-                        <div className="flex justify-between"><span>Weather</span><span className="font-medium">{exportStats.weatherLogs}</span></div>
-                        <div className="flex justify-between"><span>Fish</span><span className="font-medium">{exportStats.fishCatches}</span></div>
-                        <div className="flex justify-between"><span>Photos</span><span className="font-medium">{exportStats.photos}</span></div>
-                        <div className="col-span-2 flex justify-between pt-2" style={{ borderTop: '1px solid var(--border-color)' }}>
-                          <span>Filename</span><span className="font-medium">{exportStats.filename}</span>
-                        </div>
-                      </div>
+                    {exportSuccess && exportSuccess.trim().length > 0 && (
+                      <p className="text-sm mt-1" style={{ color: 'var(--success-text)' }}>
+                        {exportSuccess}
+                      </p>
                     )}
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                      <div className="flex justify-between"><span>Trips</span><span className="font-medium">{exportStats.trips}</span></div>
+                      <div className="flex justify-between"><span>Weather</span><span className="font-medium">{exportStats.weatherLogs}</span></div>
+                      <div className="flex justify-between"><span>Fish</span><span className="font-medium">{exportStats.fishCatches}</span></div>
+                      <div className="flex justify-between" data-testid="export-stat-saved-locations"><span>Saved Locations</span><span className="font-medium">{exportStats.savedLocations}</span></div>
+                      <div className="flex justify-between"><span>Photos</span><span className="font-medium">{exportStats.photos}</span></div>
+                      <div className="col-span-2 flex flex-col gap-2 pt-2" style={{ borderTop: '1px solid var(--border-color)' }}>
+                        <div className="flex justify-between"><span>Filename</span><span className="font-medium">{exportStats.filename}</span></div>
+                        <div className="flex justify-between"><span>Duration</span><span className="font-medium">{formatDuration(exportStats.durationMs)}</span></div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -792,7 +810,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               </div>
             )}
 
-            {importSuccess && (
+            {importStats && (
               <div className="p-3 rounded-lg" style={{ backgroundColor: 'var(--success-background)', border: '1px solid var(--success-border)' }}>
                 <div className="flex items-start">
                   <i className="fas fa-check-circle mr-2 mt-0.5" style={{ color: 'var(--success-text)' }}></i>
@@ -800,20 +818,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     <p className="text-sm font-medium" style={{ color: 'var(--success-text)' }}>
                       Import Successful
                     </p>
-                    <p className="text-sm mt-1" style={{ color: 'var(--success-text)' }}>
-                      {importSuccess}
-                    </p>
-                    {importStats && (
-                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                        <div className="flex justify-between"><span>Trips</span><span className="font-medium">{importStats.tripsImported}</span></div>
-                        <div className="flex justify-between"><span>Weather</span><span className="font-medium">{importStats.weatherLogsImported}</span></div>
-                        <div className="flex justify-between"><span>Fish</span><span className="font-medium">{importStats.fishCatchesImported}</span></div>
-                        <div className="flex justify-between"><span>Photos</span><span className="font-medium">{importStats.photosImported}</span></div>
-                        <div className="col-span-2 flex justify-between pt-2" style={{ borderTop: '1px solid var(--border-color)' }}>
-                          <span>Duration</span><span className="font-medium">{Math.max(0, Math.round((importStats.durationMs || 0)/1000))}s</span>
-                        </div>
-                      </div>
+                    {importSuccess && importSuccess.trim().length > 0 && (
+                      <p className="text-sm mt-1" style={{ color: 'var(--success-text)' }}>
+                        {importSuccess}
+                      </p>
                     )}
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                      <div className="flex justify-between"><span>Trips</span><span className="font-medium">{importStats.tripsImported}</span></div>
+                      <div className="flex justify-between"><span>Weather</span><span className="font-medium">{importStats.weatherLogsImported}</span></div>
+                      <div className="flex justify-between"><span>Fish</span><span className="font-medium">{importStats.fishCatchesImported}</span></div>
+                      <div className="flex justify-between"><span>Saved Locations</span><span className="font-medium">{importStats.savedLocationsImported}</span></div>
+                      <div className="flex justify-between"><span>Photos</span><span className="font-medium">{importStats.photosImported}</span></div>
+                      <div className="col-span-2 flex flex-col gap-2 pt-2" style={{ borderTop: '1px solid var(--border-color)' }}>
+                        {importStats.filename && (
+                          <div className="flex justify-between"><span>Filename</span><span className="font-medium">{importStats.filename}</span></div>
+                        )}
+                        <div className="flex justify-between"><span>Duration</span><span className="font-medium">{formatDuration(importStats.durationMs)}</span></div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

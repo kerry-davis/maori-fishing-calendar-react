@@ -50,7 +50,7 @@ const mockFirebaseService = vi.hoisted(() => ({
   getAllTrips: vi.fn(async () => [{ id: 'trip-1' }]),
   getAllWeatherLogs: vi.fn(async () => [{ id: 'weather-1' }]),
   getAllFishCaught: vi.fn(async () => [{ id: 'fish-1', photo: null }]),
-  getAllSavedLocationsForExport: vi.fn(async () => mockLocationContext.savedLocations),
+  getSavedLocations: vi.fn(async () => mockLocationContext.savedLocations),
 }));
 
 vi.mock('@shared/services/firebaseDataService', () => ({
@@ -92,11 +92,14 @@ describe('SettingsModal export stats', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText(/Successfully exported data to/)).toBeInTheDocument();
+      expect(screen.getByText(/Export Successful/i)).toBeInTheDocument();
     });
 
-    const row = await screen.findByTestId('export-stat-saved-locations');
-    expect(row).toHaveTextContent(/Saved Locations\s*2/);
+    const savedRow = await screen.findByTestId('export-stat-saved-locations');
+    expect(savedRow).toHaveTextContent(/Saved Locations\s*2/);
+
+    const durationRow = await screen.findByText(/Duration/i);
+    expect(durationRow).toBeInTheDocument();
   });
 
   it('hides save controls for guests', () => {
@@ -104,7 +107,7 @@ describe('SettingsModal export stats', () => {
 
     render(<SettingsModal isOpen={true} onClose={vi.fn()} />);
 
-    expect(screen.queryByText(/Save Current Location/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/Sign in to save locations/i)).toBeInTheDocument();
+    const saveCurrentButton = screen.getByRole('button', { name: /Save Current Location/i });
+    expect(saveCurrentButton).toBeDisabled();
   });
 });

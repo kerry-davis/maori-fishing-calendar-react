@@ -1,8 +1,8 @@
-import type { FishCaught } from "../types";
+import { MAX_SAVED_LOCATIONS, type FishCaught, type SavedLocation } from "../types";
 import { databaseService } from "./databaseService";
 import { firebaseDataService } from "./firebaseDataService";
 import JSZip from "jszip";
-import { DEV_LOG, PROD_ERROR } from '../utils/loggingHelpers';
+import { DEV_LOG, DEV_WARN, PROD_ERROR } from '../utils/loggingHelpers';
 import Papa from "papaparse";
 import { auth, firestore } from "./firebase";
 import {
@@ -51,6 +51,23 @@ export class DataExportService {
     return btoa(binary);
   }
 
+  private sanitizeCount(value: unknown): number {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === 'string' && value.trim() !== '') {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+    if (typeof value === 'bigint') {
+      const normalized = Number(value);
+      return Number.isFinite(normalized) ? normalized : 0;
+    }
+    return 0;
+  }
+
   // class body
   // Utility to emit progress with ETA based on start time and completed units
   private emitProgress(
@@ -85,6 +102,15 @@ export class DataExportService {
         firebaseDataService.isReady() ? firebaseDataService.getAllWeatherLogs() : databaseService.getAllWeatherLogs(),
         firebaseDataService.isReady() ? firebaseDataService.getAllFishCaught() : databaseService.getAllFishCaught(),
       ]);
+      let savedLocations: SavedLocation[] = [];
+      try {
+        savedLocations = firebaseDataService.isReady()
+          ? await firebaseDataService.getSavedLocations()
+          : this.getLocalStorageData('savedLocations', []);
+      } catch (error) {
+        DEV_LOG('Failed to collect saved locations for export, falling back to local cache:', error);
+        savedLocations = this.getLocalStorageData('savedLocations', []);
+      }
       this.emitProgress(onProgress, 'collecting', 1, 3, start, 'Collected data');
 
       // Get tackle box data
@@ -135,6 +161,7 @@ export class DataExportService {
         localStorage: {
           tacklebox,
           gearTypes,
+          savedLocations,
         },
       };
 
@@ -240,6 +267,15 @@ export class DataExportService {
         firebaseDataService.isReady() ? firebaseDataService.getAllWeatherLogs() : databaseService.getAllWeatherLogs(),
         firebaseDataService.isReady() ? firebaseDataService.getAllFishCaught() : databaseService.getAllFishCaught(),
       ]);
+      let savedLocations: SavedLocation[] = [];
+      try {
+        savedLocations = firebaseDataService.isReady()
+          ? await firebaseDataService.getSavedLocations()
+          : this.getLocalStorageData('savedLocations', []);
+      } catch (error) {
+        DEV_LOG('Failed to collect saved locations for CSV export, using local cache:', error);
+        savedLocations = this.getLocalStorageData('savedLocations', []);
+      }
       this.emitProgress(onProgress, 'collecting', 1, 3, start, 'Collected data');
 
       // Create ZIP file
@@ -256,6 +292,15 @@ export class DataExportService {
       if (weatherLogs.length > 0) {
         const weatherCsv = Papa.unparse(weatherLogs);
         zip.file("weather.csv", weatherCsv);
+      }
+
+      if (savedLocations.length > 0) {
+        const savedLocationsCsv = Papa.unparse(savedLocations.map((location) => {
+          const loc = location as SavedLocation & { firebaseDocId?: string };
+          const { firebaseDocId: _firebaseDocId, userId, ...rest } = loc;
+          return rest;
+        }));
+        zip.file('saved-locations.csv', savedLocationsCsv);
       }
 
       // Export fish caught as CSV (with photo handling from inline, Storage, or URL)
@@ -426,7 +471,7 @@ export class DataExportService {
           }
 
           this.emitProgress(onProgress, 'importing', 0, 1, start, 'Writing data…');
-          await this.processImportData(data, filename, onProgress, start);
+          const savedLocationsImported = await this.processImportData(data, filename, onProgress, start);
           this.emitProgress(onProgress, 'finalizing', 1, 1, start, 'Finalizing…');
           const end = performance.now?.() ?? Date.now();
           return {
@@ -434,8 +479,10 @@ export class DataExportService {
             tripsImported: preTrips,
             weatherLogsImported: preWeather,
             fishCatchesImported: preFish,
+            savedLocationsImported,
             photosImported: photosCount,
             durationMs: Math.max(0, end - start),
+            filename,
             errors: [],
             warnings: []
           };
@@ -443,7 +490,7 @@ export class DataExportService {
 
         // No photos folder, proceed to import
         this.emitProgress(onProgress, 'importing', 0, 1, start, 'Writing data…');
-        await this.processImportData(data, filename, onProgress, start);
+        const savedLocationsImported = await this.processImportData(data, filename, onProgress, start);
         this.emitProgress(onProgress, 'finalizing', 1, 1, start, 'Finalizing…');
         const end = performance.now?.() ?? Date.now();
         // Photos might be embedded; count those
@@ -455,8 +502,10 @@ export class DataExportService {
           tripsImported: Array.isArray(data.indexedDB?.trips) ? data.indexedDB.trips.length : 0,
           weatherLogsImported: Array.isArray(data.indexedDB?.weather_logs) ? data.indexedDB.weather_logs.length : 0,
           fishCatchesImported: Array.isArray(data.indexedDB?.fish_caught) ? data.indexedDB.fish_caught.length : 0,
+          savedLocationsImported,
           photosImported: embeddedPhotos,
           durationMs: Math.max(0, end - start),
+          filename,
           errors: [],
           warnings: []
         };
@@ -515,6 +564,52 @@ export class DataExportService {
       this.emitProgress(onProgress, 'parsing', i + 1, csvFiles.length, start, 'Parsing CSV…');
     }
 
+    // Saved locations CSV (optional)
+    const savedLocationsFile = zip.file('saved-locations.csv');
+    let savedLocations: SavedLocation[] = [];
+    if (savedLocationsFile) {
+      try {
+        const csvContent = await savedLocationsFile.async('string');
+        const parsed = Papa.parse(csvContent, {
+          header: true,
+          skipEmptyLines: true,
+        });
+        if (parsed.errors.length > 0) {
+          DEV_LOG('Errors parsing saved-locations.csv:', parsed.errors);
+        }
+        savedLocations = (parsed.data as any[]).map((row) => {
+          const normalizeNumber = (value: unknown): number | undefined => {
+            if (value === null || value === undefined || value === '') {
+              return undefined;
+            }
+            const num = Number(value);
+            return Number.isFinite(num) ? num : undefined;
+          };
+          const normalizeString = (value: unknown): string | undefined => {
+            if (typeof value === 'string') {
+              const trimmed = value.trim();
+              return trimmed.length > 0 ? trimmed : undefined;
+            }
+            return undefined;
+          };
+          return {
+            id: normalizeString((row as any).id),
+            name: normalizeString((row as any).name),
+            water: normalizeString((row as any).water),
+            location: normalizeString((row as any).location),
+            lat: normalizeNumber((row as any).lat),
+            lon: normalizeNumber((row as any).lon),
+            notes: normalizeString((row as any).notes),
+            createdAt: normalizeString((row as any).createdAt),
+            updatedAt: normalizeString((row as any).updatedAt),
+          } as SavedLocation;
+        });
+      } catch (error) {
+        DEV_WARN('Failed to parse saved-locations.csv during import:', error);
+      }
+    }
+    data.localStorage.savedLocations = savedLocations;
+
     // Handle photos for fish data
     const photosFolder = zip.folder("photos");
     let photosCount = 0;
@@ -558,7 +653,7 @@ export class DataExportService {
     }
 
     this.emitProgress(onProgress, 'importing', 0, 1, start, 'Writing data…');
-    await this.processImportData(data, filename, onProgress, start);
+    const savedLocationsImported = await this.processImportData(data, filename, onProgress, start);
     this.emitProgress(onProgress, 'finalizing', 1, 1, start, 'Finalizing…');
     const end = performance.now?.() ?? Date.now();
     return {
@@ -566,8 +661,10 @@ export class DataExportService {
       tripsImported: data.indexedDB.trips.length,
       weatherLogsImported: data.indexedDB.weather_logs.length,
       fishCatchesImported: data.indexedDB.fish_caught.length,
+      savedLocationsImported,
       photosImported: photosCount,
       durationMs: Math.max(0, end - start),
+      filename,
       errors: [],
       warnings: []
     };
@@ -584,7 +681,7 @@ export class DataExportService {
       this.emitProgress(onProgress, 'parsing', 1, 1, start, 'Parsing JSON…');
       const data = JSON.parse(text);
       this.emitProgress(onProgress, 'importing', 0, 1, start, 'Writing data…');
-      await this.processImportData(data, filename, onProgress, start);
+      const savedLocationsImported = await this.processImportData(data, filename, onProgress, start);
       this.emitProgress(onProgress, 'finalizing', 1, 1, start, 'Finalizing…');
       const end = performance.now?.() ?? Date.now();
       const photosEmbedded = Array.isArray(data.indexedDB?.fish_caught)
@@ -595,8 +692,10 @@ export class DataExportService {
         tripsImported: Array.isArray(data.indexedDB?.trips) ? data.indexedDB.trips.length : 0,
         weatherLogsImported: Array.isArray(data.indexedDB?.weather_logs) ? data.indexedDB.weather_logs.length : 0,
         fishCatchesImported: Array.isArray(data.indexedDB?.fish_caught) ? data.indexedDB.fish_caught.length : 0,
+        savedLocationsImported,
         photosImported: photosEmbedded,
         durationMs: Math.max(0, end - start),
+        filename,
         errors: [],
         warnings: []
       };
@@ -611,7 +710,7 @@ export class DataExportService {
   /**
    * Process and validate import data
    */
-  private async processImportData(data: any, filename: string, onProgress?: (p: import("../types").ImportProgress) => void, startTs?: number): Promise<void> {
+  private async processImportData(data: any, filename: string, onProgress?: (p: import("../types").ImportProgress) => void, startTs?: number): Promise<number> {
     try {
       // Validate data structure
       if (!this.validateImportData(data)) {
@@ -628,15 +727,18 @@ export class DataExportService {
         ? firebaseDataService.isAuthenticated()
         : (firebaseDataService.isReady() && !(firebaseDataService as any).isGuest);
 
+      let savedLocationsImported = 0;
+
       if (useFirebase) {
         DEV_LOG("Importing data to Firebase (authenticated user)...");
-        await this.importToFirebase(cleanData, onProgress, startTs);
+        savedLocationsImported = await this.importToFirebase(cleanData, onProgress, startTs);
       } else {
         DEV_LOG("Importing data to local storage (guest mode)...");
-        await this.importToLocal(cleanData, onProgress, startTs);
+        savedLocationsImported = await this.importToLocal(cleanData, onProgress, startTs);
       }
 
       DEV_LOG(`Successfully imported data from "${filename}"`);
+      return this.sanitizeCount(savedLocationsImported);
     } catch (error) {
       PROD_ERROR("Error processing import data:", error);
       throw new Error(
@@ -648,12 +750,11 @@ export class DataExportService {
   /**
    * Import data to Firebase
    */
-  private async importToFirebase(data: any, onProgress?: (p: import("../types").ImportProgress) => void, startTs?: number): Promise<void> {
+  private async importToFirebase(data: any, onProgress?: (p: import("../types").ImportProgress) => void, startTs?: number): Promise<number> {
     // Defensive: if not authenticated, route to local import instead
     if (!firebaseDataService.isAuthenticated?.()) {
       DEV_LOG("importToFirebase called without an authenticated user. Falling back to local import.");
-      await this.importToLocal(data, onProgress, startTs);
-      return;
+      return await this.importToLocal(data, onProgress, startTs);
     }
     // Import tackle box data via Firebase hooks (this will handle localStorage too)
     if (data.localStorage?.tacklebox) {
@@ -661,6 +762,17 @@ export class DataExportService {
     }
     if (data.localStorage?.gearTypes) {
       localStorage.setItem("gearTypes", JSON.stringify(data.localStorage.gearTypes));
+    }
+
+    let savedLocationsImported = 0;
+    try {
+      const savedLocations = Array.isArray(data.localStorage?.savedLocations)
+        ? data.localStorage.savedLocations as SavedLocation[]
+        : [];
+      const replaceResult = await firebaseDataService.replaceSavedLocations(savedLocations);
+      savedLocationsImported = replaceResult.imported;
+    } catch (error) {
+      DEV_WARN('Failed to replace saved locations during Firebase import:', error);
     }
 
     // Additionally, persist gear types for authenticated users into Firestore userSettings
@@ -805,12 +917,14 @@ export class DataExportService {
         this.emitProgress(onProgress, 'importing', doneUnits, totalUnits || 1, startTs ?? (performance.now?.() ?? Date.now()), 'Writing fish…');
       }
     }
+
+    return this.sanitizeCount(savedLocationsImported);
   }
 
   /**
    * Import data to local storage (fallback)
    */
-  private async importToLocal(data: any, onProgress?: (p: import("../types").ImportProgress) => void, startTs?: number): Promise<void> {
+  private async importToLocal(data: any, onProgress?: (p: import("../types").ImportProgress) => void, startTs?: number): Promise<number> {
     // Clear existing data
     await this.clearAllData();
 
@@ -826,6 +940,28 @@ export class DataExportService {
         "gearTypes",
         JSON.stringify(data.localStorage.gearTypes),
       );
+    }
+
+    let savedLocationsImported = 0;
+    const savedLocations = Array.isArray(data.localStorage?.savedLocations)
+      ? data.localStorage.savedLocations as SavedLocation[]
+      : [];
+    try {
+      if (firebaseDataService.isReady()) {
+        const replaceResult = await firebaseDataService.replaceSavedLocations(savedLocations);
+        savedLocationsImported = replaceResult.imported;
+      } else {
+        localStorage.setItem('savedLocations', JSON.stringify(savedLocations.slice(0, MAX_SAVED_LOCATIONS)));
+        savedLocationsImported = Math.min(savedLocations.length, MAX_SAVED_LOCATIONS);
+      }
+    } catch (error) {
+      DEV_WARN('Failed to replace saved locations during local import, attempting direct persist:', error);
+      try {
+        localStorage.setItem('savedLocations', JSON.stringify(savedLocations.slice(0, MAX_SAVED_LOCATIONS)));
+        savedLocationsImported = Math.min(savedLocations.length, MAX_SAVED_LOCATIONS);
+      } catch (persistError) {
+        PROD_ERROR('Failed to persist saved locations locally during import:', persistError);
+      }
     }
 
     // Import IndexedDB data
@@ -915,6 +1051,8 @@ export class DataExportService {
         this.emitProgress(onProgress, 'importing', doneUnits, totalUnits || 1, startTs ?? (performance.now?.() ?? Date.now()), 'Writing fish…');
       }
     }
+
+    return this.sanitizeCount(savedLocationsImported);
   }
 
   /**
@@ -1005,8 +1143,10 @@ export interface ImportResult {
   tripsImported: number;
   weatherLogsImported: number;
   fishCatchesImported: number;
+  savedLocationsImported: number;
   photosImported: number;
   durationMs: number;
+  filename?: string;
   errors: string[];
   warnings: string[];
 }

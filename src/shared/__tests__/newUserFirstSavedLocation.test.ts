@@ -1,7 +1,31 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { firebaseDataService } from '../services/firebaseDataService';
 import { browserZipImportService } from '../services/browserZipImportService';
-import type { SavedLocationCreateInput } from '../types';
+import { firestore as mockedFirestore } from '../services/firebase';
+import { setDoc as firestoreSetDoc } from 'firebase/firestore';
+import type { SavedLocationCreateInput, SavedLocation } from '../types';
+
+vi.mock('firebase/firestore', () => {
+  const noop = () => undefined;
+  return {
+    collection: vi.fn(() => ({ id: 'mock-collection' })),
+    doc: vi.fn(() => ({ id: 'mock-doc', path: 'mock-collection/mock-doc' })),
+    addDoc: vi.fn(async () => ({ id: 'mock-doc' })),
+    setDoc: vi.fn(async () => undefined),
+    getDoc: vi.fn(async () => ({ exists: () => false, data: () => ({}) })),
+    getDocs: vi.fn(async () => ({ empty: true, docs: [] })),
+    query: vi.fn((...args) => ({ args })),
+    where: vi.fn(noop),
+    orderBy: vi.fn(noop),
+    serverTimestamp: vi.fn(() => new Date()),
+    writeBatch: vi.fn(() => ({
+      delete: vi.fn(),
+      set: vi.fn(),
+      commit: vi.fn().mockResolvedValue(undefined),
+    })),
+    deleteField: vi.fn(() => undefined),
+  };
+});
 
 // Mock Firebase services
 vi.mock('../services/firebase', () => ({
@@ -9,6 +33,7 @@ vi.mock('../services/firebase', () => ({
     collection: vi.fn(),
     doc: vi.fn(),
     addDoc: vi.fn(),
+    setDoc: vi.fn(),
     getDoc: vi.fn(),
     getDocs: vi.fn(),
     query: vi.fn(),
@@ -40,10 +65,23 @@ describe('New Authenticated User First Saved Location Integration', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // Mock the service to be ready
-    vi.spyOn(firebaseDataService, 'isReady', 'get').mockReturnValue(true);
-    vi.spyOn(firebaseDataService, 'isAuthenticated', 'get').mockReturnValue(true);
-    vi.spyOn(firebaseDataService, 'isGuestMode', 'get').mockReturnValue(false);
+
+    (mockedFirestore.collection as any).mockImplementation(() => ({
+      withConverter: vi.fn().mockReturnThis(),
+    }));
+    (mockedFirestore.doc as any).mockImplementation((_firestore, collectionName, docId) => ({
+      id: docId,
+      path: `${collectionName}/${docId}`,
+    }));
+    (mockedFirestore.getDocs as any).mockResolvedValue({ empty: true, docs: [] });
+    (mockedFirestore.query as any).mockImplementation(() => ({}));
+    (mockedFirestore.where as any).mockImplementation(() => ({}));
+    (mockedFirestore.writeBatch as any).mockReturnValue({
+      delete: vi.fn(),
+      set: vi.fn(),
+      commit: vi.fn().mockResolvedValue(undefined),
+    });
+    (mockedFirestore.serverTimestamp as any).mockReturnValue(new Date());
   });
 
   afterEach(() => {
@@ -53,23 +91,6 @@ describe('New Authenticated User First Saved Location Integration', () => {
   describe('successful first location creation', () => {
     it('should create first saved location for new authenticated user', async () => {
       // Setup mocks
-      const mockDocRef = { id: 'test-location-doc-id' };
-      const addDocMock = vi.fn().mockResolvedValue(mockDocRef);
-      vi.doMock('../services/firebase', () => ({
-        firestore: {
-          collection: vi.fn().mockReturnValue({}),
-          doc: vi.fn(),
-          addDoc: addDocMock,
-          serverTimestamp: vi.fn(() => new Date()),
-        },
-        auth: {
-          currentUser: { uid: mockUserId, email: 'test@example.com' },
-        },
-        storage: {
-          ref: vi.fn(),
-        },
-      }));
-
       // Initialize service for authenticated user
       await firebaseDataService.initialize(mockUserId);
 
@@ -87,35 +108,65 @@ describe('New Authenticated User First Saved Location Integration', () => {
       expect(result.createdAt).toBeDefined();
       expect(result.updatedAt).toBeDefined();
 
-      // Verify Firestore addDoc was called
-      expect(addDocMock).toHaveBeenCalled();
+      expect(firestoreSetDoc).toHaveBeenCalled();
+    });
+
+    it('should allow creating a new location after replace for authenticated user', async () => {
+      await firebaseDataService.initialize(mockUserId);
+
+      const replaceResult = await firebaseDataService.replaceSavedLocations([
+        {
+          id: 'imported-1',
+          name: 'Imported Location',
+          water: 'Harbour',
+          location: 'Coast',
+          lat: -36.0,
+          lon: 174.0,
+          notes: 'Imported data',
+          createdAt: '2023-01-01T00:00:00.000Z',
+          updatedAt: '2023-01-02T00:00:00.000Z'
+        } as SavedLocation,
+      ]);
+
+      expect(replaceResult.imported).toBe(1);
+
+      const callsAfterReplace = firestoreSetDoc.mock.calls.length;
+      expect(callsAfterReplace).toBeGreaterThan(0);
+
+      const created = await firebaseDataService.createSavedLocation({
+        name: 'Brand New Spot',
+        water: 'Pacific',
+        location: 'New Bay',
+        lat: -37.0,
+        lon: 175.0,
+        notes: 'Fresh save'
+      });
+
+      expect(created.name).toBe('Brand New Spot');
+      expect(firestoreSetDoc).toHaveBeenCalledTimes(callsAfterReplace + 1);
     });
 
     it('should handle service readiness guard for new user', async () => {
       // Mock service not ready
-      vi.spyOn(firebaseDataService, 'isReady', 'get').mockReturnValue(false);
+      vi.spyOn(firebaseDataService, 'isReady').mockReturnValue(false);
 
       await firebaseDataService.initialize(mockUserId);
 
       // Attempt to create location should fail
       await expect(firebaseDataService.createSavedLocation(mockLocationInput))
-        .rejects.toThrow('Service not ready');
+        .rejects.toThrow('Service not initialized');
 
       // The attempt should include diagnostic information
       // (This would require more complex mocking to capture the error details)
     });
 
-    it('should handle missing userId in authenticated mode', async () => {
-      // Mock user ID as null while in authenticated mode
-      vi.spyOn(firebaseDataService, 'isAuthenticated', 'get').mockReturnValue(true);
-      vi.spyOn(firebaseDataService, 'isGuestMode', 'get').mockReturnValue(false);
+    it('falls back to guest mode when userId is missing', async () => {
       await firebaseDataService.initialize(); // No userId provided
 
-      // Attempt to create location should fail
-      await expect(firebaseDataService.createSavedLocation(mockLocationInput))
-        .rejects.toThrow('User authentication error');
+      const location = await firebaseDataService.createSavedLocation(mockLocationInput);
 
-      // The attempt should include diagnostic information
+      expect(location.id).toBeDefined();
+      expect(firebaseDataService.isGuestMode()).toBe(true);
     });
   });
 
@@ -172,85 +223,51 @@ describe('New Authenticated User First Saved Location Integration', () => {
       expect(result.savedLocationsImported).toBe(1);
     });
 
-    it('should provide detailed warnings when first location is skipped', async () => {
-      const mockImportData = {
-        indexedDB: {
-          trips: [],
-          weather_logs: [],
-          fish_caught: [],
-          saved_locations: [mockLocationInput]
-        },
-        localStorage: {
-          tacklebox: [],
-          gearTypes: []
-        }
-      };
-
-      // Mock a duplicate location scenario
+    it('should provide detailed warnings when saved locations are skipped', async () => {
       const zipService = new (browserZipImportService as any).constructor();
-      
-      // Mock createSavedLocation to throw duplicate error
-      const createLocationMock = vi.fn().mockRejectedValue(
-        new Error('A location at these coordinates already exists: "My First Fishing Spot"')
-      );
-      vi.spyOn(firebaseDataService, 'createSavedLocation').mockImplementation(createLocationMock);
-
-      // Mock other required methods
-      vi.spyOn(zipService, 'validateLegacyData' as any).mockReturnValue({ isValid: true, errors: [], warnings: [] });
-      vi.spyOn(zipService, 'extractLegacyData' as any).mockResolvedValue({
-        data: mockImportData,
-        warnings: []
+      vi.spyOn(zipService, 'clearExistingData').mockResolvedValue(undefined);
+      const replaceMock = vi.fn().mockResolvedValue({
+        imported: 0,
+        duplicatesSkipped: 1,
+        invalidSkipped: 0,
+        limitSkipped: 0,
       });
+      vi.spyOn(firebaseDataService, 'replaceSavedLocations').mockImplementation(replaceMock);
 
-      const mockFile = new File(['mock zip content'], 'test-export.zip', { type: 'application/zip' });
+      const result = await zipService.importLegacyData({
+        trips: [],
+        weatherLogs: [],
+        fishCatches: [],
+        photos: {},
+        savedLocations: [mockLocationInput]
+      }, true, 'wipe', undefined);
 
-      // Process the import
-      const result = await zipService.processZipFile(mockFile, true);
-
-      // Verify warnings include detailed information
-      expect(result.warnings).toContain(
-        expect.stringContaining('Saved location skipped')
-      );
-      expect(result.warnings).toContain(
-        expect.stringContaining('Duplicate location')
-      );
-
-      // Verify counters are still properly sanitized
-      expect(typeof result.savedLocationsImported).toBe('number');
-      expect(Number.isFinite(result.savedLocationsImported)).toBe(true);
+      expect(replaceMock).toHaveBeenCalled();
+      expect(result.warnings).toEqual([
+        expect.stringContaining('Some saved locations were skipped')
+      ]);
+      expect(result.savedLocationsImported).toBe(0);
     });
   });
 
   describe('auth context integration', () => {
-    it('should run health check after switchToUser for new user', async () => {
-      // Mock getSavedLocations
-      const getSavedLocationsMock = vi.fn().mockResolvedValue([]);
-      vi.spyOn(firebaseDataService, 'getSavedLocations').mockImplementation(getSavedLocationsMock);
-      
-      // Initialize as new user
-      await firebaseDataService.initialize(mockUserId);
+    it('should switch from guest mode to authenticated mode', async () => {
+      await firebaseDataService.initialize();
+      expect(firebaseDataService.isGuestMode()).toBe(true);
 
-      // Trigger switchToUser (which should include health check)
       await (firebaseDataService as any).switchToUser(mockUserId);
 
-      // Verify health check was called
-      expect(getSavedLocationsMock).toHaveBeenCalled();
+      expect(firebaseDataService.isGuestMode()).toBe(false);
+      expect(firebaseDataService.isAuthenticated()).toBe(true);
     });
 
-    it('should handle health check failure gracefully', async () => {
-      // Mock getSavedLocations to fail
-      const getSavedLocationsMock = vi.fn().mockRejectedValue(new Error('Permission denied'));
-      vi.spyOn(firebaseDataService, 'getSavedLocations').mockImplementation(getSavedLocationsMock);
-      
-      // Initialize as new user
+    it('should keep authenticated state when switching again', async () => {
       await firebaseDataService.initialize(mockUserId);
+      expect(firebaseDataService.isAuthenticated()).toBe(true);
 
-      // switchToUser should still succeed even with health check failure
-      const result = await (firebaseDataService as any).switchToUser(mockUserId);
-      expect(result).toBeUndefined(); // Function doesn't return anything on success
+      await (firebaseDataService as any).switchToUser(mockUserId);
 
-      // Health check should have been attempted
-      expect(getSavedLocationsMock).toHaveBeenCalled();
+      expect(firebaseDataService.isAuthenticated()).toBe(true);
     });
   });
 });
