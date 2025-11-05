@@ -3104,10 +3104,14 @@ export class FirebaseDataService {
       throw error;
     }
 
+    const resolvedName = typeof sanitizedInput.name === 'string' && sanitizedInput.name.trim().length > 0
+      ? sanitizedInput.name
+      : 'Saved Location';
+
     const savedLocation: SavedLocation = {
       id: docId,
       userId: this.userId ?? undefined,
-      name: sanitizedInput.name as string | undefined,
+      name: resolvedName,
       water: sanitizedInput.water as string | undefined,
       location: sanitizedInput.location as string | undefined,
       lat: sanitizedInput.lat as number | undefined,

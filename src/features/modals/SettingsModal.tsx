@@ -215,7 +215,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         window.dispatchEvent(new CustomEvent('databaseDataReady', { detail: { source: 'Import', timestamp: Date.now() } }));
         window.dispatchEvent(new CustomEvent('userDataReady', { detail: { userId: user?.uid ?? null, isGuest: !user, source: 'Import', timestamp: Date.now() } }));
       } catch {}
-      const seconds = Math.max(0, Math.round((stats.durationMs || 0) / 1000));
       setImportSuccess(null);
       setShowImportConfirm(false);
       setPendingImportFile(null);

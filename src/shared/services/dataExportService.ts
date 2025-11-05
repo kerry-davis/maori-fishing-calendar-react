@@ -2,7 +2,7 @@ import { MAX_SAVED_LOCATIONS, type FishCaught, type SavedLocation } from "../typ
 import { databaseService } from "./databaseService";
 import { firebaseDataService } from "./firebaseDataService";
 import JSZip from "jszip";
-import { DEV_LOG, PROD_ERROR } from '../utils/loggingHelpers';
+import { DEV_LOG, DEV_WARN, PROD_ERROR } from '../utils/loggingHelpers';
 import Papa from "papaparse";
 import { auth, firestore } from "./firebase";
 import {
@@ -296,7 +296,8 @@ export class DataExportService {
 
       if (savedLocations.length > 0) {
         const savedLocationsCsv = Papa.unparse(savedLocations.map((location) => {
-          const { firebaseDocId, userId, ...rest } = location;
+          const loc = location as SavedLocation & { firebaseDocId?: string };
+          const { firebaseDocId: _firebaseDocId, userId, ...rest } = loc;
           return rest;
         }));
         zip.file('saved-locations.csv', savedLocationsCsv);
