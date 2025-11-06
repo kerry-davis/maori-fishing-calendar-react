@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { Button } from '@shared/components/Button';
 import ConfirmationDialog from '@shared/components/ConfirmationDialog';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@features/modals/Modal';
@@ -106,13 +106,23 @@ export const SavedLocationSelector: React.FC<SavedLocationSelectorProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<SavedLocation | null>(null);
   const [isSelecting, setIsSelecting] = useState(false);
+  const idBase = useId();
+  const inputIds = {
+    name: `${idBase}-name`,
+    water: `${idBase}-water`,
+    location: `${idBase}-location`,
+    lat: `${idBase}-lat`,
+    lon: `${idBase}-lon`,
+    notes: `${idBase}-notes`,
+  } as const;
 
   useEffect(() => {
     setInternalSelectedId(selectedId ?? '');
   }, [selectedId]);
 
   const limitReached = savedLocations.length >= savedLocationsLimit;
-  const shouldShowSearch = allowManage || savedLocations.length > 5;
+  const hasSavedLocations = savedLocations.length > 0;
+  const shouldShowSearch = hasSavedLocations && (allowManage || savedLocations.length > 5);
 
   const filteredLocations = useMemo(() => {
     if (!searchTerm.trim()) {
@@ -301,15 +311,6 @@ export const SavedLocationSelector: React.FC<SavedLocationSelectorProps> = ({
               Save Current Location
             </Button>
           )}
-          {allowManage && (
-            <Button
-              type="button"
-              onClick={() => openForm('add', null)}
-              disabled={limitReached}
-            >
-              Add Location
-            </Button>
-          )}
         </div>
       </div>
 
@@ -334,25 +335,31 @@ export const SavedLocationSelector: React.FC<SavedLocationSelectorProps> = ({
         />
       )}
 
-      <select
-        value={internalSelectedId}
-        onChange={(event) => void handleSelection(event.target.value)}
-        className="w-full px-3 py-2 rounded-md border"
-        style={{
-          borderColor: 'var(--border-color)',
-          backgroundColor: 'var(--input-background)',
-          color: 'var(--primary-text)',
-        }}
-        disabled={!savedLocations.length}
-      >
-        <option value="">{placeholder}</option>
-        {filteredLocations.map((location) => (
-          <option key={location.id} value={location.id}>
-            {location.name}
-            {location.water ? ` • ${location.water}` : ''}
-          </option>
-        ))}
-      </select>
+      {hasSavedLocations ? (
+        <select
+          value={internalSelectedId}
+          onChange={(event) => void handleSelection(event.target.value)}
+          className="w-full px-3 py-2 rounded-md border"
+          style={{
+            borderColor: 'var(--border-color)',
+            backgroundColor: 'var(--input-background)',
+            color: 'var(--primary-text)',
+          }}
+          disabled={!savedLocations.length}
+        >
+          <option value="">{placeholder}</option>
+          {filteredLocations.map((location) => (
+            <option key={location.id} value={location.id}>
+              {location.name}
+              {location.water ? ` • ${location.water}` : ''}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <p className="text-sm rounded-md border px-3 py-2" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--card-background)', color: 'var(--secondary-text)' }}>
+          You haven't saved any locations yet. Save your current location or find one below to get started.
+        </p>
+      )}
 
       {savedLocationsLoading && (
         <p className="text-sm" style={{ color: 'var(--secondary-text)' }}>
@@ -366,7 +373,7 @@ export const SavedLocationSelector: React.FC<SavedLocationSelectorProps> = ({
         </p>
       )}
 
-      {(allowManage || internalSelectedId) && savedLocations.length > 0 && (
+      {(allowManage || internalSelectedId) && hasSavedLocations && (
         <div className="space-y-3">
           <div className="grid gap-3">
             {(allowManage ? filteredLocations : filteredLocations.filter(loc => loc.id === internalSelectedId)).map((location) => (
@@ -439,11 +446,12 @@ export const SavedLocationSelector: React.FC<SavedLocationSelectorProps> = ({
               </div>
             )}
             <div>
-              <label className="block text-sm mb-1" style={{ color: 'var(--primary-text)' }}>
+              <label htmlFor={inputIds.name} className="block text-sm mb-1" style={{ color: 'var(--primary-text)' }}>
                 Name
               </label>
               <input
                 type="text"
+                id={inputIds.name}
                 value={formState.name}
                 onChange={(event) => handleFormStateChange('name', event.target.value)}
                 required
@@ -453,11 +461,12 @@ export const SavedLocationSelector: React.FC<SavedLocationSelectorProps> = ({
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm mb-1" style={{ color: 'var(--primary-text)' }}>
+                <label htmlFor={inputIds.water} className="block text-sm mb-1" style={{ color: 'var(--primary-text)' }}>
                   Water Body
                 </label>
                 <input
                   type="text"
+                  id={inputIds.water}
                   value={formState.water}
                   onChange={(event) => handleFormStateChange('water', event.target.value)}
                   className="w-full px-3 py-2 rounded border"
@@ -465,11 +474,12 @@ export const SavedLocationSelector: React.FC<SavedLocationSelectorProps> = ({
                 />
               </div>
               <div>
-                <label className="block text-sm mb-1" style={{ color: 'var(--primary-text)' }}>
+                <label htmlFor={inputIds.location} className="block text-sm mb-1" style={{ color: 'var(--primary-text)' }}>
                   Specific Location
                 </label>
                 <input
                   type="text"
+                  id={inputIds.location}
                   value={formState.location}
                   onChange={(event) => handleFormStateChange('location', event.target.value)}
                   className="w-full px-3 py-2 rounded border"
@@ -479,12 +489,13 @@ export const SavedLocationSelector: React.FC<SavedLocationSelectorProps> = ({
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm mb-1" style={{ color: 'var(--primary-text)' }}>
+                <label htmlFor={inputIds.lat} className="block text-sm mb-1" style={{ color: 'var(--primary-text)' }}>
                   Latitude
                 </label>
                 <input
                   type="number"
                   step="0.0001"
+                  id={inputIds.lat}
                   value={formState.lat}
                   onChange={(event) => handleFormStateChange('lat', event.target.value)}
                   className="w-full px-3 py-2 rounded border"
@@ -492,12 +503,13 @@ export const SavedLocationSelector: React.FC<SavedLocationSelectorProps> = ({
                 />
               </div>
               <div>
-                <label className="block text-sm mb-1" style={{ color: 'var(--primary-text)' }}>
+                <label htmlFor={inputIds.lon} className="block text-sm mb-1" style={{ color: 'var(--primary-text)' }}>
                   Longitude
                 </label>
                 <input
                   type="number"
                   step="0.0001"
+                  id={inputIds.lon}
                   value={formState.lon}
                   onChange={(event) => handleFormStateChange('lon', event.target.value)}
                   className="w-full px-3 py-2 rounded border"
@@ -506,10 +518,11 @@ export const SavedLocationSelector: React.FC<SavedLocationSelectorProps> = ({
               </div>
             </div>
             <div>
-              <label className="block text-sm mb-1" style={{ color: 'var(--primary-text)' }}>
+              <label htmlFor={inputIds.notes} className="block text-sm mb-1" style={{ color: 'var(--primary-text)' }}>
                 Notes
               </label>
               <textarea
+                id={inputIds.notes}
                 value={formState.notes}
                 onChange={(event) => handleFormStateChange('notes', event.target.value)}
                 className="w-full px-3 py-2 rounded border"
