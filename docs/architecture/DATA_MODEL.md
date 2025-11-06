@@ -370,6 +370,7 @@ erDiagram
 Notes:
 - Saved locations are managed exclusively through Settings modal (consolidated from previously duplicated UI in CurrentMoonInfo, LunarModal, and Settings).
 - Settings modal surfaces a single saved location card at a time: the dropdown (or search) selection becomes the active record for management actions (edit/delete). When nothing is selected, the manage panel shows guidance instead of listing every saved location.
+- When an authenticated session starts, saved-location reads pause until the login background sync marks user data ready; this avoids rendering an empty list while encrypted Firestore documents are still decrypting/merging. If Firestore fetches fail, the hook now keeps the last successful snapshot and retries automatically after emitting a `savedLocationsSyncPending` browser event.
 - CurrentMoonInfo and LunarModal provide read-only location displays with "Change Location" / "Set Location" buttons that open Settings.
 - LocationContext provides app-wide access to saved locations state and CRUD operations.
 - Saved locations can be selected to auto-fill water and location fields in trip forms.

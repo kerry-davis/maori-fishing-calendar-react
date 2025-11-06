@@ -218,6 +218,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // User is logging in - handle data operations in background
         console.log('User logging in, handling data operations in background...');
         setUserDataReady(false); // Reset userDataReady for new login
+        firebaseDataService.setUserDataReady(false);
+        window.dispatchEvent(new CustomEvent('savedLocationsSyncPending', {
+          detail: {
+            userId: newUser.uid,
+            phase: 'initializing',
+            timestamp: Date.now()
+          }
+        }));
 
         // Define background login operations
         const runLoginBackgroundOps = async () => {
@@ -290,12 +298,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             
             // Set userDataReady to true and emit calendar refresh signal
             setUserDataReady(true);
+            firebaseDataService.setUserDataReady(true);
+            window.dispatchEvent(new CustomEvent('savedLocationsSyncResolved', {
+              detail: {
+                userId: newUser.uid,
+                timestamp: Date.now()
+              }
+            }));
             console.log('Background: User data ready - emitting calendar refresh signal');
             window.dispatchEvent(new CustomEvent('userDataReady', { detail: { userId: newUser.uid, timestamp: Date.now(), source: 'AuthContext', isGuest: false } }));
           } catch (error) {
             console.error('Background data operations error:', error);
             // Still set userDataReady to allow UI to function, albeit with limited data
             setUserDataReady(true);
+            firebaseDataService.setUserDataReady(true);
+            window.dispatchEvent(new CustomEvent('savedLocationsSyncFailed', {
+              detail: {
+                userId: newUser.uid,
+                error,
+                timestamp: Date.now()
+              }
+            }));
             window.dispatchEvent(new CustomEvent('userDataReady', { detail: { userId: newUser.uid, error, timestamp: Date.now(), source: 'AuthContext', isGuest: false } }));
           }
         };
@@ -321,6 +344,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         encryptionService.clear();
         setEncryptionReady(false);
         setUserDataReady(false); // Reset userDataReady on logout
+        firebaseDataService.setUserDataReady(false);
         // Reset migration flag
         migrationStartedRef.current = false;
         // Don't clear local data - keep it visible for better UX
@@ -334,6 +358,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             
             // Set userDataReady to true for guest mode and emit refresh
             setUserDataReady(true);
+            firebaseDataService.setUserDataReady(true);
             try {
               localStorage.setItem('lastActiveUser', 'guest');
             } catch (storageError) {
