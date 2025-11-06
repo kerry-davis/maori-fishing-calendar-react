@@ -72,6 +72,7 @@ export class FirebaseDataService {
   private readonly savedLocationsStorageKey = STORAGE_KEYS.SAVED_LOCATIONS;
   private readonly savedLocationsLimit = MAX_SAVED_LOCATIONS;
   private hasRehydratedAfterEncryption = false;
+  private userDataReady = true;
 
   constructor() {
     // Monitor online/offline status
@@ -439,11 +440,13 @@ export class FirebaseDataService {
       this.loadSyncQueue(); // Load user-specific queue
       void this.processSyncQueue();
       DEV_LOG('Firebase Data Service initialized for user:', userId);
+      this.userDataReady = true;
     } else {
       this.userId = null;
       this.isGuest = true;
       this.hasRehydratedAfterEncryption = false;
       DEV_LOG('Firebase Data Service initialized for guest');
+      this.userDataReady = true;
     }
     this.isInitialized = true;
   }
@@ -467,6 +470,14 @@ export class FirebaseDataService {
    */
   isGuestMode(): boolean {
     return this.isInitialized && this.isGuest;
+  }
+
+  setUserDataReady(ready: boolean): void {
+    this.userDataReady = ready;
+  }
+
+  getUserDataReady(): boolean {
+    return this.userDataReady;
   }
 
   async switchToUser(userId: string): Promise<void> {
