@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { SettingsModal } from '@features/modals/SettingsModal';
+import userEvent from '@testing-library/user-event';
 
 const authState = vi.hoisted(() => ({
   user: { uid: 'user-123' } as { uid: string } | null,
@@ -77,6 +78,7 @@ describe('SettingsModal saved location management', () => {
   beforeEach(() => {
     mockLocationContext.savedLocations = [];
     authState.user = { uid: 'user-123' };
+    mockLocationContext.selectSavedLocation.mockReset();
   });
 
   it('shows empty-state guidance without add button for authenticated user with no saved locations', () => {
@@ -86,5 +88,28 @@ describe('SettingsModal saved location management', () => {
     expect(screen.getByText(/You haven't saved any locations yet/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Save Current Location/i })).toBeDisabled();
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+  });
+
+  it('shows only the chosen saved location details in the manage section', async () => {
+    const user = userEvent.setup();
+    const locations = [
+      { id: '1', name: 'Auckland Marina', water: 'Waitematā', location: '', lat: -36.84, lon: 174.76 },
+      { id: '2', name: 'Wellington Harbour', water: 'Te Whanganui-a-Tara', location: '', lat: -41.29, lon: 174.78 },
+    ];
+    mockLocationContext.savedLocations = locations as any[];
+    mockLocationContext.selectSavedLocation.mockResolvedValue(locations[1] as any);
+
+    render(<SettingsModal isOpen={true} onClose={vi.fn()} />);
+
+    const select = await screen.findByRole('combobox');
+    await user.selectOptions(select, '2');
+
+    await waitFor(() => {
+      expect(mockLocationContext.selectSavedLocation).toHaveBeenCalledWith('2');
+    });
+
+    expect(screen.getByText('Wellington Harbour', { selector: 'p' })).toBeInTheDocument();
+    expect(screen.queryByText('Auckland Marina', { selector: 'p' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Delete$/i })).toBeInTheDocument();
   });
 });

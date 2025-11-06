@@ -79,6 +79,29 @@ describe('SavedLocationSelector', () => {
       render(<SavedLocationSelector showSaveCurrentButton={true} allowManage={true} />);
       expect(screen.getByText(/Save Current Location/i)).toBeInTheDocument();
     });
+
+    it('shows manage prompt when no location is selected', () => {
+      mockLocationContext.savedLocations = [
+        createMockLocation('1', 'Kawhia', -38.0661, 174.8196),
+      ];
+
+      render(<SavedLocationSelector allowManage={true} />);
+
+      expect(screen.getByText(/Select a saved location above to manage its details/i)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Edit/i })).not.toBeInTheDocument();
+    });
+
+    it('shows only the selected location details', () => {
+      mockLocationContext.savedLocations = [
+        createMockLocation('1', 'Kawhia', -38.0661, 174.8196),
+        createMockLocation('2', 'Raglan', -37.8019, 174.8630),
+      ];
+
+      render(<SavedLocationSelector allowManage={true} selectedId="2" />);
+
+      expect(screen.getByText('Raglan', { selector: 'p' })).toBeInTheDocument();
+      expect(screen.queryByText('Kawhia', { selector: 'p' })).not.toBeInTheDocument();
+    });
   });
 
   describe('Form validation', () => {
@@ -191,7 +214,7 @@ describe('SavedLocationSelector', () => {
         createMockLocation('1', 'Test Location', -36.8485, 174.7633),
       ];
 
-      render(<SavedLocationSelector allowManage={true} />);
+      render(<SavedLocationSelector allowManage={true} selectedId="1" />);
 
       // Click delete button
       const deleteButton = screen.getByRole('button', { name: /Delete/i });
@@ -208,7 +231,7 @@ describe('SavedLocationSelector', () => {
       ];
       mockLocationContext.deleteSavedLocation.mockResolvedValue(undefined);
 
-      render(<SavedLocationSelector allowManage={true} />);
+      render(<SavedLocationSelector allowManage={true} selectedId="1" />);
 
       // Click delete
       const deleteButton = screen.getByRole('button', { name: /Delete/i });
@@ -231,7 +254,7 @@ describe('SavedLocationSelector', () => {
         createMockLocation('1', 'Kawhia Harbour', -38.0661, 174.8196),
       ];
 
-      render(<SavedLocationSelector allowManage={true} />);
+      render(<SavedLocationSelector allowManage={true} selectedId="1" />);
 
       // Click edit button
       const editButton = screen.getByRole('button', { name: /Edit/i });
@@ -254,7 +277,7 @@ describe('SavedLocationSelector', () => {
         name: 'Updated Name',
       });
 
-      render(<SavedLocationSelector allowManage={true} />);
+      render(<SavedLocationSelector allowManage={true} selectedId="1" />);
 
       // Open edit form
       await user.click(screen.getByRole('button', { name: /Edit/i }));

@@ -105,7 +105,6 @@ export const SavedLocationSelector: React.FC<SavedLocationSelectorProps> = ({
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<SavedLocation | null>(null);
-  const [isSelecting, setIsSelecting] = useState(false);
   const idBase = useId();
   const inputIds = {
     name: `${idBase}-name`,
@@ -137,6 +136,13 @@ export const SavedLocationSelector: React.FC<SavedLocationSelectorProps> = ({
       return haystack.includes(query);
     });
   }, [savedLocations, searchTerm]);
+
+  const selectedLocation = useMemo(() => {
+    if (!internalSelectedId) {
+      return null;
+    }
+    return savedLocations.find((location) => location.id === internalSelectedId) ?? null;
+  }, [internalSelectedId, savedLocations]);
 
   const openForm = useCallback((mode: FormMode, location: SavedLocation | null = null) => {
     setFormMode(mode);
@@ -176,7 +182,6 @@ export const SavedLocationSelector: React.FC<SavedLocationSelectorProps> = ({
       return;
     }
 
-    setIsSelecting(true);
     try {
       const location = await selectSavedLocation(id);
       if (!location) {
@@ -188,8 +193,6 @@ export const SavedLocationSelector: React.FC<SavedLocationSelectorProps> = ({
     } catch (error) {
       const message = resolveErrorMessage(error, 'Failed to select saved location.');
       setSelectorError(message);
-    } finally {
-      setIsSelecting(false);
     }
   }, [onSelect, selectSavedLocation]);
 
@@ -373,66 +376,57 @@ export const SavedLocationSelector: React.FC<SavedLocationSelectorProps> = ({
         </p>
       )}
 
-      {(allowManage || internalSelectedId) && hasSavedLocations && (
+      {allowManage && hasSavedLocations && (
         <div className="space-y-3">
-          <div className="grid gap-3">
-            {(allowManage ? filteredLocations : filteredLocations.filter(loc => loc.id === internalSelectedId)).map((location) => (
-              <div
-                key={location.id}
-                className="rounded-lg border px-3 py-2"
-                style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--card-background)' }}
-              >
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-semibold" style={{ color: 'var(--primary-text)' }}>
-                      {location.name}
-                    </p>
+          {selectedLocation ? (
+            <div
+              className="rounded-lg border px-3 py-2"
+              style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--card-background)' }}
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: 'var(--primary-text)' }}>
+                    {selectedLocation.name}
+                  </p>
+                  <p className="text-xs" style={{ color: 'var(--secondary-text)' }}>
+                    {[selectedLocation.water, selectedLocation.location].filter(Boolean).join(' • ') || 'No extra details'}
+                  </p>
+                  {(selectedLocation.lat != null || selectedLocation.lon != null) && (
                     <p className="text-xs" style={{ color: 'var(--secondary-text)' }}>
-                      {[location.water, location.location].filter(Boolean).join(' • ') || 'No extra details'}
+                      {selectedLocation.lat != null ? `Lat: ${selectedLocation.lat.toFixed(4)}` : 'Lat: —'} · {selectedLocation.lon != null ? `Lon: ${selectedLocation.lon.toFixed(4)}` : 'Lon: —'}
                     </p>
-                    {(location.lat != null || location.lon != null) && (
-                      <p className="text-xs" style={{ color: 'var(--secondary-text)' }}>
-                        {location.lat != null ? `Lat: ${location.lat.toFixed(4)}` : 'Lat: —'} · {location.lon != null ? `Lon: ${location.lon.toFixed(4)}` : 'Lon: —'}
-                      </p>
-                    )}
-                    {location.notes && (
-                      <p className="text-xs mt-1" style={{ color: 'var(--secondary-text)' }}>
-                        Notes: {location.notes}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {allowManage && (
-                      <Button
-                        type="button"
-                        onClick={() => void handleSelection(location.id)}
-                        disabled={isSelecting}
-                        size="sm"
-                      >
-                        Use
-                      </Button>
-                    )}
-                    <Button
-                      type="button"
-                      onClick={() => openForm('edit', location)}
-                      variant="secondary"
-                      size="sm"
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      type="button"
-                      onClick={() => setDeleteTarget(location)}
-                      variant="danger"
-                      size="sm"
-                    >
-                      Delete
-                    </Button>
-                  </div>
+                  )}
+                  {selectedLocation.notes && (
+                    <p className="text-xs mt-1" style={{ color: 'var(--secondary-text)' }}>
+                      Notes: {selectedLocation.notes}
+                    </p>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    onClick={() => openForm('edit', selectedLocation)}
+                    variant="secondary"
+                    size="sm"
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => setDeleteTarget(selectedLocation)}
+                    variant="danger"
+                    size="sm"
+                  >
+                    Delete
+                  </Button>
                 </div>
               </div>
-            ))}
-          </div>
+            </div>
+          ) : (
+            <p className="text-sm" style={{ color: 'var(--secondary-text)' }}>
+              Select a saved location above to manage its details.
+            </p>
+          )}
         </div>
       )}
 
