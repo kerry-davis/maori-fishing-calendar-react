@@ -503,7 +503,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               selectedId={selectedSavedLocationId}
               onSelect={handleSavedLocationSwitch}
               showSaveCurrentButton
-              allowManage={false}
+              allowManage
               placeholder="Select a saved location"
             />
           </div>
