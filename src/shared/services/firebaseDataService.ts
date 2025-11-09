@@ -6,6 +6,7 @@ import type {
   SavedLocation,
   SavedLocationCreateInput,
   SavedLocationUpdateInput,
+  UserLocation,
 } from "../types";
 import { MAX_SAVED_LOCATIONS, STORAGE_KEYS } from "../types";
 import { generateULID } from "../utils/ulid";
@@ -73,6 +74,8 @@ export class FirebaseDataService {
   private readonly savedLocationsLimit = MAX_SAVED_LOCATIONS;
   private hasRehydratedAfterEncryption = false;
   private userDataReady = true;
+  private lastKnownLocationCache: { userId: string; location: UserLocation | null } | null = null;
+  private pendingLastKnownLocation: UserLocation | null = null;
 
   constructor() {
     // Monitor online/offline status
@@ -437,16 +440,22 @@ export class FirebaseDataService {
       this.userId = userId;
       this.isGuest = false;
       this.hasRehydratedAfterEncryption = false;
+      this.lastKnownLocationCache = null;
       this.loadSyncQueue(); // Load user-specific queue
       void this.processSyncQueue();
       DEV_LOG('Firebase Data Service initialized for user:', userId);
       this.userDataReady = true;
+      if (this.pendingLastKnownLocation) {
+        await this.flushPendingLastKnownLocation();
+      }
     } else {
       this.userId = null;
       this.isGuest = true;
       this.hasRehydratedAfterEncryption = false;
+      this.lastKnownLocationCache = null;
       DEV_LOG('Firebase Data Service initialized for guest');
       this.userDataReady = true;
+      this.pendingLastKnownLocation = null;
     }
     this.isInitialized = true;
   }
@@ -480,14 +489,146 @@ export class FirebaseDataService {
     return this.userDataReady;
   }
 
+  private sanitizeLocationForPersistence(location: UserLocation): UserLocation | null {
+    if (!location) {
+      return null;
+    }
+
+    const { lat, lon, name } = location;
+
+    if (typeof lat !== 'number' || Number.isNaN(lat) || typeof lon !== 'number' || Number.isNaN(lon)) {
+      return null;
+    }
+
+    const trimmedName = typeof name === 'string' ? name.trim().slice(0, 120) : 'Current Location';
+
+    return {
+      lat,
+      lon,
+      name: trimmedName.length > 0 ? trimmedName : 'Current Location'
+    };
+  }
+
+  private async flushPendingLastKnownLocation(): Promise<void> {
+    if (!this.pendingLastKnownLocation || !this.userId || this.isGuest) {
+      return;
+    }
+
+    const toPersist = this.pendingLastKnownLocation;
+    this.pendingLastKnownLocation = null;
+    try {
+      await this.updateLastKnownLocation(toPersist);
+    } catch (error) {
+      DEV_WARN('[SavedLocations] Failed to flush pending last known location:', error);
+      this.pendingLastKnownLocation = toPersist;
+    }
+  }
+
+  async updateLastKnownLocation(location: UserLocation | null): Promise<void> {
+    this.ensureServiceReady();
+
+    const sanitized = location ? this.sanitizeLocationForPersistence(location) : null;
+
+    if (location && !sanitized) {
+      DEV_WARN('[SavedLocations] Ignoring invalid location payload for last known location update');
+      return;
+    }
+
+    if (this.isGuest || !this.userId) {
+      DEV_LOG('[SavedLocations] Queuing pending last known location for guest or unauthenticated user', sanitized);
+      this.pendingLastKnownLocation = sanitized ? { ...sanitized } : null;
+      return;
+    }
+
+    DEV_LOG('[SavedLocations] Persisting last known location for user', this.userId, sanitized);
+    this.lastKnownLocationCache = { userId: this.userId, location: sanitized ? { ...sanitized } : null };
+
+    if (!firestore) {
+      return;
+    }
+
+    const docRef = doc(firestore, 'userSettings', this.userId);
+
+    const payload = sanitized
+      ? {
+          lastKnownLocation: {
+            lat: sanitized.lat,
+            lon: sanitized.lon,
+            name: sanitized.name,
+            updatedAt: new Date().toISOString()
+          }
+        }
+      : {
+          lastKnownLocation: deleteField()
+        };
+
+    try {
+      await setDoc(docRef, payload, { merge: true });
+    } catch (error) {
+      if (!navigator.onLine) {
+        DEV_WARN('[SavedLocations] Unable to persist last known location while offline; will retry on next update');
+        this.pendingLastKnownLocation = sanitized ? { ...sanitized } : null;
+        throw error instanceof Error ? error : new Error('Offline while saving last known location');
+      }
+
+      PROD_ERROR('[SavedLocations] Failed to persist last known location:', error);
+      throw error;
+    }
+  }
+
+  async getLastKnownLocation(): Promise<UserLocation | null> {
+    this.ensureServiceReady();
+
+    if (this.isGuest || !this.userId) {
+      return null;
+    }
+
+    if (this.lastKnownLocationCache && this.lastKnownLocationCache.userId === this.userId) {
+      return this.lastKnownLocationCache.location ? { ...this.lastKnownLocationCache.location } : null;
+    }
+
+    if (!firestore) {
+      return null;
+    }
+
+    try {
+      const docRef = doc(firestore, 'userSettings', this.userId);
+      const snapshot = await getDoc(docRef);
+
+      if (!snapshot.exists()) {
+        this.lastKnownLocationCache = { userId: this.userId, location: null };
+        return null;
+      }
+
+      const data = snapshot.data();
+      const location = data?.lastKnownLocation;
+
+      if (!location) {
+        this.lastKnownLocationCache = { userId: this.userId, location: null };
+        return null;
+      }
+
+      const parsed = this.sanitizeLocationForPersistence(location as UserLocation);
+      this.lastKnownLocationCache = { userId: this.userId, location: parsed ? { ...parsed } : null };
+      return parsed ? { ...parsed } : null;
+    } catch (error) {
+      PROD_ERROR('[SavedLocations] Failed to retrieve last known location:', error);
+      return null;
+    }
+  }
+
   async switchToUser(userId: string): Promise<void> {
     if (this.isGuest) {
       this.userId = userId;
       this.isGuest = false;
       this.hasRehydratedAfterEncryption = false;
+      this.lastKnownLocationCache = null;
       this.loadSyncQueue();
       void this.processSyncQueue();
       DEV_LOG('Switched to user mode:', userId);
+      if (this.pendingLastKnownLocation) {
+        await this.flushPendingLastKnownLocation();
+      }
     }
   }
 

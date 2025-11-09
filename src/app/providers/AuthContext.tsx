@@ -169,6 +169,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     removeActivityListeners();
   }, [clearInactivityTimer, removeActivityListeners]);
 
+  const notifyBeforeLogout = useCallback(async (userId: string | null): Promise<void> => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    console.log('AuthContext: notifying before logout for user', userId ?? 'guest');
+
+    const tasks: Array<Promise<unknown>> = [];
+    const eventDetail = {
+      userId,
+      register: (promise: Promise<unknown>) => {
+        console.log('AuthContext: beforeLogout handler registered a task');
+        tasks.push(promise);
+      }
+    };
+
+    window.dispatchEvent(new CustomEvent('beforeUserLogout', { detail: eventDetail }));
+
+    if (tasks.length === 0) {
+      return;
+    }
+
+    try {
+      await Promise.race([
+        Promise.allSettled(tasks),
+        new Promise((resolve) => setTimeout(resolve, 500))
+      ]);
+      console.log('AuthContext: beforeLogout handlers completed');
+    } catch (error) {
+      console.warn('beforeUserLogout handlers encountered an error:', error);
+    }
+  }, []);
+
   const purgeLocalUserState = useCallback(async ({ runContextClear = true }: { runContextClear?: boolean } = {}) => {
     if (runContextClear) {
       try {
@@ -210,7 +243,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ? 'Force logout completed'
         : 'Signed out successfully';
 
+    const logoutUserId = auth?.currentUser?.uid ?? user?.uid ?? previousUserRef.current?.uid ?? null;
+
     try {
+      await notifyBeforeLogout(logoutUserId);
       await secureLogoutWithCleanup();
       await purgeLocalUserState({ runContextClear: false });
       setSuccessMessage(successMessageText);

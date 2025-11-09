@@ -1,7 +1,8 @@
-import { createContext, useContext, useCallback, useEffect, useState } from "react";
+import { createContext, useContext, useCallback, useEffect, useState, useRef } from "react";
 import type { ReactNode } from "react";
 import { useLocationStorage } from "@shared/hooks/useLocalStorage";
 import { useSavedLocations } from "@shared/hooks/useSavedLocations";
+import { firebaseDataService } from "@shared/services/firebaseDataService";
 import type {
   LocationContextType,
   SavedLocation,
@@ -15,6 +16,7 @@ import {
   getTideErrorMessage,
   type TideError,
 } from "@shared/services/tideService";
+import { useAuth } from "./AuthContext";
 
 // Create the location context
 const LocationContext = createContext<LocationContextType | undefined>(
@@ -29,6 +31,9 @@ interface LocationProviderProps {
 export function LocationProvider({ children }: LocationProviderProps) {
   const [userLocation, setUserLocationStorage, clearUserLocationStorage, storageError] =
     useLocationStorage();
+  const userIdRef = useRef<string | null>(null);
+  const { user, userDataReady } = useAuth();
+  const [pendingLocation, setPendingLocation] = useState<UserLocation | null>(null);
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
   const [tideCoverage, setTideCoverage] = useState<TideCoverageStatus | null>(null);
   const {
@@ -42,12 +47,53 @@ export function LocationProvider({ children }: LocationProviderProps) {
     savedLocationsLimit,
   } = useSavedLocations();
 
+  const persistLastKnownLocation = useCallback((location: UserLocation | null) => {
+    if (!location) {
+      setPendingLocation(null);
+    }
+
+    if (!firebaseDataService.isReady()) {
+      setPendingLocation(location);
+      return;
+    }
+
+    if (!firebaseDataService.isAuthenticated() || !firebaseDataService.getUserDataReady()) {
+      setPendingLocation(location);
+      return;
+    }
+
+    setPendingLocation(null);
+
+    void firebaseDataService.updateLastKnownLocation(location).catch((error) => {
+      console.warn("Failed to persist last known location:", error);
+    });
+  }, []);
+  const flushPendingLocation = useCallback(() => {
+    if (!pendingLocation) {
+      return;
+    }
+
+    if (!firebaseDataService.isReady() || !firebaseDataService.isAuthenticated() || !firebaseDataService.getUserDataReady()) {
+      return;
+    }
+
+    const toPersist = pendingLocation;
+    setPendingLocation(null);
+
+    void firebaseDataService.updateLastKnownLocation(toPersist).catch((error) => {
+      console.warn("Failed to persist pending last known location:", error);
+      setPendingLocation(toPersist);
+    });
+  }, [pendingLocation]);
+
   // Set location and persist to localStorage
   const setLocation = useCallback(
     (location: UserLocation | null) => {
       setUserLocationStorage(location);
+
+      persistLastKnownLocation(location);
     },
-    [setUserLocationStorage],
+    [setUserLocationStorage, persistLastKnownLocation],
   );
 
   // Request user's current location using geolocation API
@@ -272,9 +318,101 @@ export function LocationProvider({ children }: LocationProviderProps) {
   }, [savedLocationsError]);
 
   useEffect(() => {
+    if (!user || !user.uid) {
+      userIdRef.current = null;
+      setPendingLocation(null);
+      return;
+    }
+
+    if (!userDataReady || !firebaseDataService.isReady() || !firebaseDataService.isAuthenticated()) {
+      return;
+    }
+
+    flushPendingLocation();
+
+    if (userIdRef.current === user.uid) {
+      return;
+    }
+
+    userIdRef.current = user.uid;
+    let cancelled = false;
+
+    console.log("LocationContext: attempting restore for user", user.uid);
+
+    const restoreLastLocation = async () => {
+      try {
+        const lastLocation = await firebaseDataService.getLastKnownLocation();
+
+        if (cancelled) {
+          return;
+        }
+
+        if (!lastLocation) {
+          console.log("LocationContext: no last location found for", user.uid);
+          return;
+        }
+
+        console.log("LocationContext: retrieved last known location", lastLocation);
+
+        if (!userLocation) {
+          setLocation(lastLocation);
+          return;
+        }
+
+        const isSameLocation =
+          Math.abs(userLocation.lat - lastLocation.lat) < 0.00001 &&
+          Math.abs(userLocation.lon - lastLocation.lon) < 0.00001 &&
+          userLocation.name === lastLocation.name;
+
+        if (isSameLocation) {
+          console.log("LocationContext: stored location matches current, skipping update");
+          return;
+        }
+
+        console.log("LocationContext: restoring last known location", lastLocation);
+        setLocation(lastLocation);
+      } catch (error) {
+        console.warn("Failed to restore last known location:", error);
+        userIdRef.current = null;
+      }
+    };
+
+    void restoreLastLocation();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, userDataReady, userLocation, setLocation, flushPendingLocation]);
+
+  useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
+
+    const handleBeforeLogout = (event: Event) => {
+      const customEvent = event as CustomEvent<{ userId: string | null; register?: (promise: Promise<unknown>) => void }>;
+      const { userId: targetUserId, register } = customEvent.detail ?? {};
+
+      if (typeof register !== "function") {
+        return;
+      }
+
+      if (!user || !user.uid || user.uid !== targetUserId) {
+        return;
+      }
+
+      if (!userLocation) {
+        return;
+      }
+
+      console.log("LocationContext: persisting last known location at logout", userLocation);
+
+      const persistPromise = firebaseDataService.updateLastKnownLocation(userLocation).catch((error) => {
+        console.warn("LocationContext: failed to persist last known location during logout:", error);
+      });
+
+      register(persistPromise);
+    };
 
     const handleReset = () => {
       clearUserLocationStorage();
@@ -282,11 +420,13 @@ export function LocationProvider({ children }: LocationProviderProps) {
     };
 
     window.addEventListener("userLocationReset", handleReset);
+    window.addEventListener("beforeUserLogout", handleBeforeLogout);
 
     return () => {
       window.removeEventListener("userLocationReset", handleReset);
+      window.removeEventListener("beforeUserLogout", handleBeforeLogout);
     };
-  }, [clearUserLocationStorage]);
+  }, [clearUserLocationStorage, user, userLocation, userDataReady]);
 
   const createSavedLocation = useCallback((input: SavedLocationCreateInput) => {
     return createSavedLocationInternal(input);
