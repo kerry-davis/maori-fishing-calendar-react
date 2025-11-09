@@ -27,7 +27,7 @@ interface LocationProviderProps {
 }
 
 export function LocationProvider({ children }: LocationProviderProps) {
-  const [userLocation, setUserLocationStorage, , storageError] =
+  const [userLocation, setUserLocationStorage, clearUserLocationStorage, storageError] =
     useLocationStorage();
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
   const [tideCoverage, setTideCoverage] = useState<TideCoverageStatus | null>(null);
@@ -270,6 +270,23 @@ export function LocationProvider({ children }: LocationProviderProps) {
       console.error("Saved locations error:", savedLocationsError);
     }
   }, [savedLocationsError]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const handleReset = () => {
+      clearUserLocationStorage();
+      setTideCoverage(null);
+    };
+
+    window.addEventListener("userLocationReset", handleReset);
+
+    return () => {
+      window.removeEventListener("userLocationReset", handleReset);
+    };
+  }, [clearUserLocationStorage]);
 
   const createSavedLocation = useCallback((input: SavedLocationCreateInput) => {
     return createSavedLocationInternal(input);
