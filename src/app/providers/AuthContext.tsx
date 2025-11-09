@@ -17,7 +17,7 @@ import { encryptionService } from '@shared/services/encryptionService';
 import { usePWA } from './PWAContext';
 import { mapFirebaseError } from '@shared/utils/firebaseErrorMessages';
 import { clearUserState } from '@shared/utils/userStateCleared';
-import { secureLogoutWithCleanup } from '@shared/utils/clearUserContext';
+import { secureLogoutWithCleanup, clearUserContext } from '@shared/utils/clearUserContext';
 import { SyncStatusProvider, useSyncStatusContext } from './SyncStatusContext';
 
 interface AuthContextType {
@@ -79,6 +79,8 @@ const stampLastAuthTime = (): void => {
     extendedWindow.lastAuthTime = Date.now();
   }
 };
+
+const INACTIVITY_TIMEOUT_MS = 60 * 60 * 1000;
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -144,6 +146,204 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const backgroundOpsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const logoutBackgroundTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const redirectHandlerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isLoggingOutRef = useRef(false);
+  const inactivityTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activityListenersCleanupRef = useRef<(() => void) | null>(null);
+
+  const clearInactivityTimer = useCallback(() => {
+    if (inactivityTimeoutRef.current) {
+      clearTimeout(inactivityTimeoutRef.current);
+      inactivityTimeoutRef.current = null;
+    }
+  }, []);
+
+  const removeActivityListeners = useCallback(() => {
+    if (activityListenersCleanupRef.current) {
+      activityListenersCleanupRef.current();
+      activityListenersCleanupRef.current = null;
+    }
+  }, []);
+
+  const stopInactivityTracking = useCallback(() => {
+    clearInactivityTimer();
+    removeActivityListeners();
+  }, [clearInactivityTimer, removeActivityListeners]);
+
+  const notifyBeforeLogout = useCallback(async (userId: string | null): Promise<void> => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    console.log('AuthContext: notifying before logout for user', userId ?? 'guest');
+
+    const tasks: Array<Promise<unknown>> = [];
+    const eventDetail = {
+      userId,
+      register: (promise: Promise<unknown>) => {
+        console.log('AuthContext: beforeLogout handler registered a task');
+        tasks.push(promise);
+      }
+    };
+
+    window.dispatchEvent(new CustomEvent('beforeUserLogout', { detail: eventDetail }));
+
+    if (tasks.length === 0) {
+      return;
+    }
+
+    try {
+      await Promise.race([
+        Promise.allSettled(tasks),
+        new Promise((resolve) => setTimeout(resolve, 500))
+      ]);
+      console.log('AuthContext: beforeLogout handlers completed');
+    } catch (error) {
+      console.warn('beforeUserLogout handlers encountered an error:', error);
+    }
+  }, []);
+
+  const purgeLocalUserState = useCallback(async ({ runContextClear = true }: { runContextClear?: boolean } = {}) => {
+    if (runContextClear) {
+      try {
+        await clearUserContext({ preserveGuestData: false });
+      } catch (purgeError) {
+        console.warn('Failed to clear user context during purge:', purgeError);
+      }
+    }
+
+    try {
+      await firebaseDataService.clearAllData();
+    } catch (dataError) {
+      console.warn('Failed to clear local Firebase data during purge:', dataError);
+    }
+
+    encryptionService.clear();
+    setEncryptionReady(false);
+    setUserDataReady(false);
+    firebaseDataService.setUserDataReady(false);
+    migrationStartedRef.current = false;
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('userLocationReset'));
+    }
+  }, [setEncryptionReady, setUserDataReady]);
+
+  const performLogout = useCallback(async (reason: 'manual' | 'timeout' | 'force' = 'manual') => {
+    if (isLoggingOutRef.current) {
+      return;
+    }
+
+    isLoggingOutRef.current = true;
+    stopInactivityTracking();
+    setError(null);
+
+    const successMessageText = reason === 'timeout'
+      ? 'Session expired due to inactivity. Please sign in again.'
+      : reason === 'force'
+        ? 'Force logout completed'
+        : 'Signed out successfully';
+
+    const logoutUserId = auth?.currentUser?.uid ?? user?.uid ?? previousUserRef.current?.uid ?? null;
+
+    try {
+      await notifyBeforeLogout(logoutUserId);
+      await secureLogoutWithCleanup();
+      await purgeLocalUserState({ runContextClear: false });
+      setSuccessMessage(successMessageText);
+    } catch (err) {
+      console.error('Enhanced logout failed, falling back:', err);
+
+      try {
+        setError(null);
+
+        if (auth) {
+          await signOut(auth);
+        }
+
+        await clearUserState();
+        await purgeLocalUserState();
+        setSuccessMessage(successMessageText);
+      } catch (fallbackError) {
+        console.error('Fallback logout failed:', fallbackError);
+        const friendly = mapFirebaseError(fallbackError, 'generic');
+        setError(friendly);
+
+        setUser(null);
+        setError(null);
+        setSuccessMessage('Force logged out locally');
+      }
+    } finally {
+      isLoggingOutRef.current = false;
+    }
+  }, [stopInactivityTracking, purgeLocalUserState, setError, setSuccessMessage, setUser]);
+
+  const handleAutoLogout = useCallback(() => {
+    if (!user) {
+      return;
+    }
+
+    console.log('Auto logout triggered after inactivity');
+    void performLogout('timeout');
+  }, [performLogout, user]);
+
+  const resetInactivityTimer = useCallback(() => {
+    if (!user || typeof window === 'undefined') {
+      clearInactivityTimer();
+      return;
+    }
+
+    clearInactivityTimer();
+    stampLastAuthTime();
+    inactivityTimeoutRef.current = setTimeout(() => {
+      handleAutoLogout();
+    }, INACTIVITY_TIMEOUT_MS);
+  }, [user, clearInactivityTimer, handleAutoLogout]);
+
+  const startInactivityTracking = useCallback(() => {
+    if (!user || typeof window === 'undefined') {
+      return;
+    }
+
+    if (activityListenersCleanupRef.current) {
+      return;
+    }
+
+    const handler = (event: Event) => {
+      if (
+        event.type === 'visibilitychange' &&
+        typeof document !== 'undefined' &&
+        document.visibilityState === 'hidden'
+      ) {
+        return;
+      }
+
+      resetInactivityTimer();
+    };
+
+    const windowEvents: Array<keyof WindowEventMap> = ['mousemove', 'keydown', 'touchstart', 'focus'];
+
+    windowEvents.forEach((eventName) => {
+      const options = eventName === 'touchstart' ? { passive: true } : undefined;
+      window.addEventListener(eventName, handler as EventListener, options);
+    });
+
+    const visibilityTarget = typeof document !== 'undefined' ? document : null;
+    if (visibilityTarget) {
+      visibilityTarget.addEventListener('visibilitychange', handler as EventListener);
+    }
+
+    activityListenersCleanupRef.current = () => {
+      windowEvents.forEach((eventName) => {
+        window.removeEventListener(eventName, handler as EventListener);
+      });
+
+      if (visibilityTarget) {
+        visibilityTarget.removeEventListener('visibilitychange', handler as EventListener);
+      }
+    };
+
+    resetInactivityTimer();
+  }, [user, resetInactivityTimer]);
 
   useEffect(() => {
     if (!auth) {
@@ -338,25 +538,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
       } else if (!newUser && prevUser) {
-        // User is logging out
         console.log('User logging out, switching to guest mode...');
-        // Clear encryption key when logging out
-        encryptionService.clear();
-        setEncryptionReady(false);
-        setUserDataReady(false); // Reset userDataReady on logout
-        firebaseDataService.setUserDataReady(false);
-        // Reset migration flag
-        migrationStartedRef.current = false;
-        // Don't clear local data - keep it visible for better UX
+        stopInactivityTracking();
+
         if (logoutBackgroundTimeoutRef.current) {
           clearTimeout(logoutBackgroundTimeoutRef.current);
         }
+
         logoutBackgroundTimeoutRef.current = setTimeout(async () => {
           try {
-            await firebaseDataService.initialize(); // Re-initialize in guest mode.
-            console.log('Background: Switched to guest mode - local data remains visible');
-            
-            // Set userDataReady to true for guest mode and emit refresh
+            await purgeLocalUserState({ runContextClear: !isLoggingOutRef.current });
+          } catch (cleanupError) {
+            console.warn('Logout purge encountered an issue:', cleanupError);
+          }
+
+          try {
+            await firebaseDataService.initialize();
+            console.log('Background: Switched to guest mode with fresh state');
+
             setUserDataReady(true);
             firebaseDataService.setUserDataReady(true);
             try {
@@ -367,11 +566,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             window.dispatchEvent(new CustomEvent('userDataReady', { detail: { userId: null, isGuest: true, timestamp: Date.now(), source: 'AuthContext' } }));
           } catch (error) {
             console.error('Background logout data operations error:', error);
-            // Still set userDataReady to allow UI to function
             setUserDataReady(true);
+            firebaseDataService.setUserDataReady(true);
             window.dispatchEvent(new CustomEvent('userDataReady', { detail: { userId: null, isGuest: true, error, timestamp: Date.now(), source: 'AuthContext' } }));
           }
-        }, 100);
+        }, 0);
       }
 
       // Update previous user reference at the end
@@ -456,7 +655,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         redirectHandlerTimeoutRef.current = null;
       }
     };
-    }, [isPWA]);
+    }, [isPWA, stopInactivityTracking, purgeLocalUserState]);
+
+  useEffect(() => {
+    if (user) {
+      startInactivityTracking();
+    } else {
+      stopInactivityTracking();
+    }
+
+    return () => {
+      stopInactivityTracking();
+    };
+  }, [user, startInactivityTracking, stopInactivityTracking]);
 
   const login = async (email: string, password: string) => {
     if (!auth) {
@@ -616,74 +827,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     console.log('Logout called, auth available:', !!auth);
-
-    try {
-      setError(null);
-      
-      // Use the enhanced comprehensive logout with listener cleanup
-      console.log('Using enhanced secure logout with comprehensive cleanup...');
-      await secureLogoutWithCleanup();
-      setSuccessMessage('Signed out successfully');
-      
-    } catch (err) {
-      console.error('Enhanced logout failed, falling back to basic logout:', err);
-      
-      // Fallback to basic logout if enhanced fails
-      try {
-        setError(null);
-
-        // Call basic Firebase signOut
-        if (auth) {
-          console.log('Calling Firebase signOut...');
-          await signOut(auth);
-          console.log('Firebase signOut successful');
-        }
-
-        // Clear all local data (no backup needed - cloud is source of truth)
-        await clearUserState();
-        
-        setSuccessMessage('Signed out successfully');
-      } catch (fallbackError) {
-        console.error('Even basic logout failed:', fallbackError);
-        const friendly = mapFirebaseError(fallbackError, 'generic');
-        setError(friendly);
-        
-        // Last resort - just clear local state
-        setUser(null);
-        setError(null);
-        setSuccessMessage('Force logged out locally');
-      }
-    }
+    await performLogout('manual');
   };
 
-  // Alternative logout method that always works (for debugging)
   const forceLogout = () => {
     console.log('Force logout called - clearing all user state');
-
-    // Clear encryption key
-    encryptionService.clear();
-    setEncryptionReady(false);
-    
-    // Clear sync queue
-    try {
-      firebaseDataService.clearSyncQueue();
-      console.log('Sync queue cleared during force logout');
-      // Dispatch custom event to notify sync status hook
-      window.dispatchEvent(new CustomEvent('syncQueueCleared'));
-    } catch (syncError) {
-      console.warn('Failed to clear sync queue during force logout:', syncError);
-    }
-
-    // Use comprehensive state clearing
-    clearUserState().then(() => {
-      console.log('Force logout state cleanup completed');
-    }).catch(err => {
-      console.warn('Force logout state cleanup failed:', err);
-    });
-
-    setUser(null);
-    setError(null);
-    setSuccessMessage('Force logout completed');
+    window.dispatchEvent(new CustomEvent('syncQueueCleared'));
+    void performLogout('force');
   };
 
   const clearSuccessMessage = () => {
