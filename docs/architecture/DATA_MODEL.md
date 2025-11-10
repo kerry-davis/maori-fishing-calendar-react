@@ -129,7 +129,7 @@ Notes:
 - Saved locations encrypt name, water, location, and notes fields client-side.
 - Authenticated users persist their most recent selection to `userSettings.lastKnownLocation` (lat, lon, name, updatedAt ISO). LocationContext restores it on login once `userDataReady` and encryption are true; guest sessions clear it when users change.
 - Saved location imports now re-use `createSavedLocation` per entry so the 10-item limit and 0.0001° duplicate guard rail are enforced; duplicate coordinates surface as skipped-with-warning entries rather than overwriting existing documents.
-- Inactivity auto-logout stores timestamps in `localStorage` under `lastUserActivityAt` tagged with `lastUserActivityUid`; AuthContext ignores stale values recorded for other accounts and refreshes the pair as soon as a session starts, preventing re-login loops after long idle windows.
+- Inactivity auto-logout stores timestamps in `localStorage` under `lastUserActivityAt` tagged with `lastUserActivityUid`; AuthContext ignores stale values recorded for other accounts and only refreshes the timestamp when actual activity occurs (initial login now tags the UID without touching the last timestamp), so overdue sessions are force-signed-out while still preventing cross-account reuse.
  
 ### Update semantics and guardrails (to prevent data loss and display drift)
 - FISH_CAUGHT photo fields are preserved on updates unless an explicit removal signal is provided. Clients MUST NOT clear photo-related fields by omission.

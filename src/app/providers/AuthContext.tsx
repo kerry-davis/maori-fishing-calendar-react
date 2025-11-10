@@ -134,6 +134,22 @@ const writeLastActivity = (currentUserId?: string | null): void => {
   }
 };
 
+const tagLastActivityUser = (currentUserId?: string | null): void => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    if (currentUserId) {
+      localStorage.setItem(LAST_ACTIVITY_USER_KEY, currentUserId);
+    } else {
+      localStorage.removeItem(LAST_ACTIVITY_USER_KEY);
+    }
+  } catch (error) {
+    console.warn('Failed to tag last activity user:', error);
+  }
+};
+
 const clearLastActivity = (): void => {
   if (typeof window === 'undefined') {
     return;
@@ -283,7 +299,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Handle data operations asynchronously WITHOUT blocking UI
       if (newUser && !prevUser) {
-        writeLastActivity(newUser.uid);
+        tagLastActivityUser(newUser.uid);
         // User is logging in - handle data operations in background
         console.log('User logging in, handling data operations in background...');
         setUserDataReady(false); // Reset userDataReady for new login
