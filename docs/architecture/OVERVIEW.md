@@ -18,6 +18,7 @@ Client-only React application (no custom backend) leveraging Firebase (Auth, Fir
 - **Location hand-off**: LocationContext persists the last selected location to `userSettings.lastKnownLocation` for authenticated users and restores it once encryption/user data readiness flags resolve on the next session.
 
 AuthContext now records user activity timestamps in `localStorage` and invokes the secure logout pipeline after the configured inactivity timeout (5 minutes in QA, 60 minutes in production).
+Each activity write includes the active user ID (`lastUserActivityUid`), so timestamps from prior accounts are ignored and cannot trigger the auto-logout loop immediately after a fresh login.
 
 High-level flow:
 
