@@ -80,8 +80,46 @@ const stampLastAuthTime = (): void => {
   }
 };
 
-const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000;
+const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // QA-friendly timeout; production uses 60 minutes
 const LAST_ACTIVITY_STORAGE_KEY = 'lastUserActivityAt';
+
+const readLastActivity = (): number => {
+  if (typeof window === 'undefined') {
+    return 0;
+  }
+
+  try {
+    const raw = localStorage.getItem(LAST_ACTIVITY_STORAGE_KEY);
+    return raw ? Number(raw) : 0;
+  } catch (error) {
+    console.warn('Failed to read last activity timestamp:', error);
+    return 0;
+  }
+};
+
+const writeLastActivity = (): void => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    localStorage.setItem(LAST_ACTIVITY_STORAGE_KEY, String(Date.now()));
+  } catch (error) {
+    console.warn('Failed to record last activity timestamp:', error);
+  }
+};
+
+const clearLastActivity = (): void => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    localStorage.removeItem(LAST_ACTIVITY_STORAGE_KEY);
+  } catch (error) {
+    console.warn('Failed to clear last activity timestamp:', error);
+  }
+};
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -598,12 +636,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       setError(null);
-      
+
       // Use the enhanced comprehensive logout with listener cleanup
       console.log('Using enhanced secure logout with comprehensive cleanup...');
       await secureLogoutWithCleanup();
+      clearLastActivity();
       setSuccessMessage('Signed out successfully');
-      
+
     } catch (err) {
       console.error('Enhanced logout failed, falling back to basic logout:', err);
       
@@ -620,7 +659,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Clear all local data (no backup needed - cloud is source of truth)
         await clearUserState();
-        
+        clearLastActivity();
+
         setSuccessMessage('Signed out successfully');
       } catch (fallbackError) {
         console.error('Even basic logout failed:', fallbackError);
@@ -631,6 +671,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(null);
         setError(null);
         setSuccessMessage('Force logged out locally');
+        clearLastActivity();
       }
     }
   };
@@ -663,6 +704,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
     setError(null);
     setSuccessMessage('Force logout completed');
+    clearLastActivity();
   };
 
   const clearSuccessMessage = () => {
@@ -677,35 +719,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     if (!user) {
-      try {
-        localStorage.removeItem(LAST_ACTIVITY_STORAGE_KEY);
-      } catch (storageError) {
-        console.warn('Failed to clear last activity timestamp:', storageError);
-      }
       return;
     }
 
-    const recordActivity = () => {
-      try {
-        localStorage.setItem(LAST_ACTIVITY_STORAGE_KEY, String(Date.now()));
-      } catch (storageError) {
-        console.warn('Failed to record last activity timestamp:', storageError);
-      }
-    };
-
-    const checkAndMaybeLogout = async () => {
+    const checkAndMaybeLogout = async (refreshTimestampAfterCheck = false) => {
       if (pendingAutoLogoutRef.current) {
         return;
       }
 
-      let lastActivity = 0;
-
-      try {
-        const raw = localStorage.getItem(LAST_ACTIVITY_STORAGE_KEY);
-        lastActivity = raw ? Number(raw) : 0;
-      } catch (storageError) {
-        console.warn('Failed to read last activity timestamp:', storageError);
-      }
+      const lastActivity = readLastActivity();
 
       if (lastActivity && Number.isFinite(lastActivity)) {
         const inactiveFor = Date.now() - lastActivity;
@@ -720,35 +742,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      recordActivity();
+      if (refreshTimestampAfterCheck) {
+        writeLastActivity();
+      }
     };
 
     const handleVisibilityChange = () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        void checkAndMaybeLogout();
+        void checkAndMaybeLogout(true);
       }
     };
 
     const handleFocus = () => {
-      void checkAndMaybeLogout();
+      void checkAndMaybeLogout(true);
     };
 
     const visibilityTarget = typeof document !== 'undefined' ? document : null;
     const touchOptions: AddEventListenerOptions = { passive: true };
 
-    recordActivity();
-    void checkAndMaybeLogout();
+    void checkAndMaybeLogout(true);
 
-    window.addEventListener('mousemove', recordActivity);
-    window.addEventListener('keydown', recordActivity);
-    window.addEventListener('touchstart', recordActivity, touchOptions);
+    window.addEventListener('mousemove', writeLastActivity);
+    window.addEventListener('keydown', writeLastActivity);
+    window.addEventListener('touchstart', writeLastActivity, touchOptions);
     window.addEventListener('focus', handleFocus);
     visibilityTarget?.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      window.removeEventListener('mousemove', recordActivity);
-      window.removeEventListener('keydown', recordActivity);
-      window.removeEventListener('touchstart', recordActivity, touchOptions);
+      window.removeEventListener('mousemove', writeLastActivity);
+      window.removeEventListener('keydown', writeLastActivity);
+      window.removeEventListener('touchstart', writeLastActivity, touchOptions);
       window.removeEventListener('focus', handleFocus);
       visibilityTarget?.removeEventListener('visibilitychange', handleVisibilityChange);
     };
