@@ -80,6 +80,9 @@ const stampLastAuthTime = (): void => {
   }
 };
 
+const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000;
+const LAST_ACTIVITY_STORAGE_KEY = 'lastUserActivityAt';
+
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
@@ -144,6 +147,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const backgroundOpsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const logoutBackgroundTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const redirectHandlerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingAutoLogoutRef = useRef(false);
 
   useEffect(() => {
     if (!auth) {
@@ -666,6 +670,89 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const isFirebaseConfigured = auth !== null;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (!user) {
+      try {
+        localStorage.removeItem(LAST_ACTIVITY_STORAGE_KEY);
+      } catch (storageError) {
+        console.warn('Failed to clear last activity timestamp:', storageError);
+      }
+      return;
+    }
+
+    const recordActivity = () => {
+      try {
+        localStorage.setItem(LAST_ACTIVITY_STORAGE_KEY, String(Date.now()));
+      } catch (storageError) {
+        console.warn('Failed to record last activity timestamp:', storageError);
+      }
+    };
+
+    const checkAndMaybeLogout = async () => {
+      if (pendingAutoLogoutRef.current) {
+        return;
+      }
+
+      let lastActivity = 0;
+
+      try {
+        const raw = localStorage.getItem(LAST_ACTIVITY_STORAGE_KEY);
+        lastActivity = raw ? Number(raw) : 0;
+      } catch (storageError) {
+        console.warn('Failed to read last activity timestamp:', storageError);
+      }
+
+      if (lastActivity && Number.isFinite(lastActivity)) {
+        const inactiveFor = Date.now() - lastActivity;
+        if (inactiveFor >= INACTIVITY_TIMEOUT_MS) {
+          pendingAutoLogoutRef.current = true;
+          try {
+            await logout();
+          } finally {
+            pendingAutoLogoutRef.current = false;
+          }
+          return;
+        }
+      }
+
+      recordActivity();
+    };
+
+    const handleVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        void checkAndMaybeLogout();
+      }
+    };
+
+    const handleFocus = () => {
+      void checkAndMaybeLogout();
+    };
+
+    const visibilityTarget = typeof document !== 'undefined' ? document : null;
+    const touchOptions: AddEventListenerOptions = { passive: true };
+
+    recordActivity();
+    void checkAndMaybeLogout();
+
+    window.addEventListener('mousemove', recordActivity);
+    window.addEventListener('keydown', recordActivity);
+    window.addEventListener('touchstart', recordActivity, touchOptions);
+    window.addEventListener('focus', handleFocus);
+    visibilityTarget?.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('mousemove', recordActivity);
+      window.removeEventListener('keydown', recordActivity);
+      window.removeEventListener('touchstart', recordActivity, touchOptions);
+      window.removeEventListener('focus', handleFocus);
+      visibilityTarget?.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [user, logout]);
 
   // Debug method to clear sync queue (exposed to window for debugging)
   const clearSyncQueue = useCallback(() => {
