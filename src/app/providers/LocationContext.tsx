@@ -1,7 +1,8 @@
-import { createContext, useContext, useCallback, useEffect, useState } from "react";
+import { createContext, useContext, useCallback, useEffect, useState, useRef } from "react";
 import type { ReactNode } from "react";
 import { useLocationStorage } from "@shared/hooks/useLocalStorage";
 import { useSavedLocations } from "@shared/hooks/useSavedLocations";
+import { firebaseDataService } from "@shared/services/firebaseDataService";
 import type {
   LocationContextType,
   SavedLocation,
@@ -15,6 +16,7 @@ import {
   getTideErrorMessage,
   type TideError,
 } from "@shared/services/tideService";
+import { useAuth } from "./AuthContext";
 
 // Create the location context
 const LocationContext = createContext<LocationContextType | undefined>(
@@ -31,6 +33,7 @@ export function LocationProvider({ children }: LocationProviderProps) {
     useLocationStorage();
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
   const [tideCoverage, setTideCoverage] = useState<TideCoverageStatus | null>(null);
+  const { user, userDataReady } = useAuth();
   const {
     savedLocations,
     savedLocationsLoading,
@@ -41,13 +44,37 @@ export function LocationProvider({ children }: LocationProviderProps) {
     getSavedLocationById,
     savedLocationsLimit,
   } = useSavedLocations();
+  const restoredUserRef = useRef<string | null>(null);
+
+  const persistLocation = useCallback(
+    (location: UserLocation | null, options?: { skipRemote?: boolean }) => {
+      setUserLocationStorage(location);
+
+      if (options?.skipRemote) {
+        return;
+      }
+
+      if (!user || !user.uid) {
+        return;
+      }
+
+      if (!firebaseDataService.isAuthenticated()) {
+        return;
+      }
+
+      void firebaseDataService.updateLastKnownLocation(location).catch((error) => {
+        console.warn("LocationContext: failed to persist last known location:", error);
+      });
+    },
+    [setUserLocationStorage, user],
+  );
 
   // Set location and persist to localStorage
   const setLocation = useCallback(
     (location: UserLocation | null) => {
-      setUserLocationStorage(location);
+      persistLocation(location);
     },
-    [setUserLocationStorage],
+    [persistLocation],
   );
 
   // Request user's current location using geolocation API
@@ -270,6 +297,63 @@ export function LocationProvider({ children }: LocationProviderProps) {
       console.error("Saved locations error:", savedLocationsError);
     }
   }, [savedLocationsError]);
+
+  useEffect(() => {
+    if (!user || !user.uid) {
+      restoredUserRef.current = null;
+      persistLocation(null, { skipRemote: true });
+      setTideCoverage(null);
+      return;
+    }
+
+    if (!userDataReady || !firebaseDataService.isReady() || !firebaseDataService.isAuthenticated()) {
+      return;
+    }
+
+    if (restoredUserRef.current === user.uid) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const restoreLastKnownLocation = async () => {
+      try {
+        const lastLocation = await firebaseDataService.getLastKnownLocation();
+
+        if (cancelled) {
+          return;
+        }
+
+        restoredUserRef.current = user.uid;
+
+        if (!lastLocation) {
+          return;
+        }
+
+        const current = userLocation;
+        const isSame =
+          current &&
+          Math.abs(current.lat - lastLocation.lat) < 0.00001 &&
+          Math.abs(current.lon - lastLocation.lon) < 0.00001 &&
+          current.name === lastLocation.name;
+
+        if (isSame) {
+          return;
+        }
+
+        console.log("LocationContext: restoring last known location", lastLocation);
+        persistLocation(lastLocation, { skipRemote: true });
+      } catch (error) {
+        console.warn("LocationContext: failed to restore last known location:", error);
+      }
+    };
+
+    void restoreLastKnownLocation();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, userDataReady, userLocation, persistLocation, setTideCoverage]);
 
   const createSavedLocation = useCallback((input: SavedLocationCreateInput) => {
     return createSavedLocationInternal(input);
