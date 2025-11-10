@@ -37,6 +37,7 @@ erDiagram
     string userId PK  "doc id == userId"
     string[] gearTypes
     string encSaltB64
+    json lastKnownLocation "optional { lat, lon, name, updatedAt }"
     timestamp createdAt
     timestamp updatedAt
   }
@@ -126,6 +127,8 @@ Notes:
 - Saved locations are limited to 10 per user (hard cap enforced at service level).
 - Duplicate location prevention uses 11-meter coordinate tolerance (0.0001 degrees).
 - Saved locations encrypt name, water, location, and notes fields client-side.
+- Authenticated users persist their most recent selection to `userSettings.lastKnownLocation` (lat, lon, name, updatedAt ISO). LocationContext restores it on login once `userDataReady` and encryption are true; guest sessions clear it when users change.
+- Saved location imports now re-use `createSavedLocation` per entry so the 10-item limit and 0.0001° duplicate guard rail are enforced; duplicate coordinates surface as skipped-with-warning entries rather than overwriting existing documents.
  
 ### Update semantics and guardrails (to prevent data loss and display drift)
 - FISH_CAUGHT photo fields are preserved on updates unless an explicit removal signal is provided. Clients MUST NOT clear photo-related fields by omission.

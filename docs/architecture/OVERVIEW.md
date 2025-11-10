@@ -15,6 +15,9 @@ Client-only React application (no custom backend) leveraging Firebase (Auth, Fir
 - **Logout**: All IndexedDB cleared after 30-second sync attempt
 - **Caching**: All Firestore reads/writes automatically cache to IndexedDB using `put()` (upsert)
 - **Deduplication**: Automatic on read, keeps newest by `updatedAt` timestamp
+- **Location hand-off**: LocationContext persists the last selected location to `userSettings.lastKnownLocation` for authenticated users and restores it once encryption/user data readiness flags resolve on the next session.
+
+AuthContext now records user activity timestamps in `localStorage` and invokes the secure logout pipeline after the configured inactivity timeout (5 minutes in QA, 60 minutes in production).
 
 High-level flow:
 

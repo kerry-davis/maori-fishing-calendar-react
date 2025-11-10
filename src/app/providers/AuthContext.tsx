@@ -82,28 +82,53 @@ const stampLastAuthTime = (): void => {
 
 const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // QA-friendly timeout; production uses 60 minutes
 const LAST_ACTIVITY_STORAGE_KEY = 'lastUserActivityAt';
+const LAST_ACTIVITY_USER_KEY = 'lastUserActivityUid';
 
-const readLastActivity = (): number => {
+const readLastActivity = (currentUserId?: string | null): number => {
   if (typeof window === 'undefined') {
     return 0;
   }
 
   try {
     const raw = localStorage.getItem(LAST_ACTIVITY_STORAGE_KEY);
-    return raw ? Number(raw) : 0;
+    if (!raw) {
+      return 0;
+    }
+
+    const ts = Number(raw);
+    if (!Number.isFinite(ts)) {
+      return 0;
+    }
+
+    // Backward compatibility: if no UID stored, treat as valid for all users
+    const storedUid = localStorage.getItem(LAST_ACTIVITY_USER_KEY);
+    if (!storedUid || !storedUid.length || !currentUserId) {
+      return ts;
+    }
+
+    if (storedUid === currentUserId) {
+      return ts;
+    }
+
+    return 0;
   } catch (error) {
     console.warn('Failed to read last activity timestamp:', error);
     return 0;
   }
 };
 
-const writeLastActivity = (): void => {
+const writeLastActivity = (currentUserId?: string | null): void => {
   if (typeof window === 'undefined') {
     return;
   }
 
   try {
     localStorage.setItem(LAST_ACTIVITY_STORAGE_KEY, String(Date.now()));
+    if (currentUserId) {
+      localStorage.setItem(LAST_ACTIVITY_USER_KEY, currentUserId);
+    } else {
+      localStorage.removeItem(LAST_ACTIVITY_USER_KEY);
+    }
   } catch (error) {
     console.warn('Failed to record last activity timestamp:', error);
   }
@@ -116,6 +141,7 @@ const clearLastActivity = (): void => {
 
   try {
     localStorage.removeItem(LAST_ACTIVITY_STORAGE_KEY);
+    localStorage.removeItem(LAST_ACTIVITY_USER_KEY);
   } catch (error) {
     console.warn('Failed to clear last activity timestamp:', error);
   }
@@ -257,6 +283,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Handle data operations asynchronously WITHOUT blocking UI
       if (newUser && !prevUser) {
+        writeLastActivity(newUser.uid);
         // User is logging in - handle data operations in background
         console.log('User logging in, handling data operations in background...');
         setUserDataReady(false); // Reset userDataReady for new login
@@ -722,12 +749,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
+    const activeUserId = user.uid;
+
+    const refreshActivity = () => {
+      writeLastActivity(activeUserId);
+    };
+
     const checkAndMaybeLogout = async (refreshTimestampAfterCheck = false) => {
       if (pendingAutoLogoutRef.current) {
         return;
       }
 
-      const lastActivity = readLastActivity();
+      const lastActivity = readLastActivity(activeUserId);
 
       if (lastActivity && Number.isFinite(lastActivity)) {
         const inactiveFor = Date.now() - lastActivity;
@@ -743,7 +776,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (refreshTimestampAfterCheck) {
-        writeLastActivity();
+        refreshActivity();
       }
     };
 
@@ -762,16 +795,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     void checkAndMaybeLogout(true);
 
-    window.addEventListener('mousemove', writeLastActivity);
-    window.addEventListener('keydown', writeLastActivity);
-    window.addEventListener('touchstart', writeLastActivity, touchOptions);
+    window.addEventListener('mousemove', refreshActivity);
+    window.addEventListener('keydown', refreshActivity);
+    window.addEventListener('touchstart', refreshActivity, touchOptions);
     window.addEventListener('focus', handleFocus);
     visibilityTarget?.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      window.removeEventListener('mousemove', writeLastActivity);
-      window.removeEventListener('keydown', writeLastActivity);
-      window.removeEventListener('touchstart', writeLastActivity, touchOptions);
+      window.removeEventListener('mousemove', refreshActivity);
+      window.removeEventListener('keydown', refreshActivity);
+      window.removeEventListener('touchstart', refreshActivity, touchOptions);
       window.removeEventListener('focus', handleFocus);
       visibilityTarget?.removeEventListener('visibilitychange', handleVisibilityChange);
     };
