@@ -37,12 +37,6 @@ erDiagram
     string userId PK  "doc id == userId"
     string[] gearTypes
     string encSaltB64
-    object lastKnownLocation {
-      number lat
-      number lon
-      string name
-      timestamp updatedAt
-    }
     timestamp createdAt
     timestamp updatedAt
   }
@@ -130,11 +124,8 @@ Notes:
 - **Tackle Items Encryption**: `name`, `brand`, and `colour` fields are encrypted before writing to Firestore. The `type` field remains plaintext to enable filtering/grouping. Decryption occurs automatically when loading tackle items, with a timing consideration: tackle items are reloaded once the encryption service is initialized after login to ensure proper decryption.
 - Weather/Fish IDs are opaque and use a ULID-based suffix; UI should not parse IDs.
 - Saved locations are limited to 10 per user (hard cap enforced at service level).
-- `userSettings.lastKnownLocation` tracks the most recently selected location per authenticated user. It is updated on every location change (and immediately before logout) and restored on login; guests never populate this field.
 - Duplicate location prevention uses 11-meter coordinate tolerance (0.0001 degrees).
 - Saved locations encrypt name, water, location, and notes fields client-side.
-- Saved location exports include both JSON (`localStorage.savedLocations`) and CSV (`saved-locations.csv`) artefacts. Imports rely on `firebaseDataService.replaceSavedLocations()` which wipes and repopulates the `userSavedLocations` collection, preserving IDs/timestamps from backups while enforcing the 10-item limit and skipping duplicates by ID. Guest imports fall back to localStorage with the same limit enforcement.
-- Export/Import UI summaries surface the filename and duration of each operation. Durations are formatted as `hh:mm:ss` using a shared formatter so the Settings modal and migration flows stay consistent.
  
 ### Update semantics and guardrails (to prevent data loss and display drift)
 - FISH_CAUGHT photo fields are preserved on updates unless an explicit removal signal is provided. Clients MUST NOT clear photo-related fields by omission.
@@ -173,7 +164,7 @@ erDiagram
 
   LS_SAVED_LOCATIONS {
     string key        "savedLocations"
-    json[] locations  "array of SavedLocation objects"
+    json[] locations  "array of SavedLocation objects. Included in the main data.json file."
   }
 
   IDB_WEATHER_LOGS {
@@ -376,8 +367,6 @@ erDiagram
 
 Notes:
 - Saved locations are managed exclusively through Settings modal (consolidated from previously duplicated UI in CurrentMoonInfo, LunarModal, and Settings).
-- Settings modal surfaces a single saved location card at a time: the dropdown (or search) selection becomes the active record for management actions (edit/delete). When nothing is selected, the manage panel shows guidance instead of listing every saved location.
-- When an authenticated session starts, saved-location reads pause until the login background sync marks user data ready; this avoids rendering an empty list while encrypted Firestore documents are still decrypting/merging. If Firestore fetches fail, the hook now keeps the last successful snapshot and retries automatically after emitting a `savedLocationsSyncPending` browser event.
 - CurrentMoonInfo and LunarModal provide read-only location displays with "Change Location" / "Set Location" buttons that open Settings.
 - LocationContext provides app-wide access to saved locations state and CRUD operations.
 - Saved locations can be selected to auto-fill water and location fields in trip forms.

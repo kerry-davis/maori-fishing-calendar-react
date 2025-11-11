@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@shared/components/Button';
 import ConfirmationDialog from '@shared/components/ConfirmationDialog';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@features/modals/Modal';
@@ -105,23 +105,14 @@ export const SavedLocationSelector: React.FC<SavedLocationSelectorProps> = ({
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<SavedLocation | null>(null);
-  const idBase = useId();
-  const inputIds = {
-    name: `${idBase}-name`,
-    water: `${idBase}-water`,
-    location: `${idBase}-location`,
-    lat: `${idBase}-lat`,
-    lon: `${idBase}-lon`,
-    notes: `${idBase}-notes`,
-  } as const;
+  const [isSelecting, setIsSelecting] = useState(false);
 
   useEffect(() => {
     setInternalSelectedId(selectedId ?? '');
   }, [selectedId]);
 
   const limitReached = savedLocations.length >= savedLocationsLimit;
-  const hasSavedLocations = savedLocations.length > 0;
-  const shouldShowSearch = hasSavedLocations && (allowManage || savedLocations.length > 5);
+  const shouldShowSearch = allowManage || savedLocations.length > 5;
 
   const filteredLocations = useMemo(() => {
     if (!searchTerm.trim()) {
@@ -136,13 +127,6 @@ export const SavedLocationSelector: React.FC<SavedLocationSelectorProps> = ({
       return haystack.includes(query);
     });
   }, [savedLocations, searchTerm]);
-
-  const selectedLocation = useMemo(() => {
-    if (!internalSelectedId) {
-      return null;
-    }
-    return savedLocations.find((location) => location.id === internalSelectedId) ?? null;
-  }, [internalSelectedId, savedLocations]);
 
   const openForm = useCallback((mode: FormMode, location: SavedLocation | null = null) => {
     setFormMode(mode);
@@ -182,6 +166,7 @@ export const SavedLocationSelector: React.FC<SavedLocationSelectorProps> = ({
       return;
     }
 
+    setIsSelecting(true);
     try {
       const location = await selectSavedLocation(id);
       if (!location) {
@@ -193,6 +178,8 @@ export const SavedLocationSelector: React.FC<SavedLocationSelectorProps> = ({
     } catch (error) {
       const message = resolveErrorMessage(error, 'Failed to select saved location.');
       setSelectorError(message);
+    } finally {
+      setIsSelecting(false);
     }
   }, [onSelect, selectSavedLocation]);
 
@@ -314,6 +301,15 @@ export const SavedLocationSelector: React.FC<SavedLocationSelectorProps> = ({
               Save Current Location
             </Button>
           )}
+          {allowManage && (
+            <Button
+              type="button"
+              onClick={() => openForm('add', null)}
+              disabled={limitReached}
+            >
+              Add Location
+            </Button>
+          )}
         </div>
       </div>
 
@@ -338,31 +334,25 @@ export const SavedLocationSelector: React.FC<SavedLocationSelectorProps> = ({
         />
       )}
 
-      {hasSavedLocations ? (
-        <select
-          value={internalSelectedId}
-          onChange={(event) => void handleSelection(event.target.value)}
-          className="w-full px-3 py-2 rounded-md border"
-          style={{
-            borderColor: 'var(--border-color)',
-            backgroundColor: 'var(--input-background)',
-            color: 'var(--primary-text)',
-          }}
-          disabled={!savedLocations.length}
-        >
-          <option value="">{placeholder}</option>
-          {filteredLocations.map((location) => (
-            <option key={location.id} value={location.id}>
-              {location.name}
-              {location.water ? ` • ${location.water}` : ''}
-            </option>
-          ))}
-        </select>
-      ) : (
-        <p className="text-sm rounded-md border px-3 py-2" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--card-background)', color: 'var(--secondary-text)' }}>
-          You haven't saved any locations yet. Save your current location or find one below to get started.
-        </p>
-      )}
+      <select
+        value={internalSelectedId}
+        onChange={(event) => void handleSelection(event.target.value)}
+        className="w-full px-3 py-2 rounded-md border"
+        style={{
+          borderColor: 'var(--border-color)',
+          backgroundColor: 'var(--input-background)',
+          color: 'var(--primary-text)',
+        }}
+        disabled={!savedLocations.length}
+      >
+        <option value="">{placeholder}</option>
+        {filteredLocations.map((location) => (
+          <option key={location.id} value={location.id}>
+            {location.name}
+            {location.water ? ` • ${location.water}` : ''}
+          </option>
+        ))}
+      </select>
 
       {savedLocationsLoading && (
         <p className="text-sm" style={{ color: 'var(--secondary-text)' }}>
@@ -376,57 +366,66 @@ export const SavedLocationSelector: React.FC<SavedLocationSelectorProps> = ({
         </p>
       )}
 
-      {allowManage && hasSavedLocations && (
+      {(allowManage || internalSelectedId) && savedLocations.length > 0 && (
         <div className="space-y-3">
-          {selectedLocation ? (
-            <div
-              className="rounded-lg border px-3 py-2"
-              style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--card-background)' }}
-            >
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                <div>
-                  <p className="text-sm font-semibold" style={{ color: 'var(--primary-text)' }}>
-                    {selectedLocation.name}
-                  </p>
-                  <p className="text-xs" style={{ color: 'var(--secondary-text)' }}>
-                    {[selectedLocation.water, selectedLocation.location].filter(Boolean).join(' • ') || 'No extra details'}
-                  </p>
-                  {(selectedLocation.lat != null || selectedLocation.lon != null) && (
+          <div className="grid gap-3">
+            {(allowManage ? filteredLocations : filteredLocations.filter(loc => loc.id === internalSelectedId)).map((location) => (
+              <div
+                key={location.id}
+                className="rounded-lg border px-3 py-2"
+                style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--card-background)' }}
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold" style={{ color: 'var(--primary-text)' }}>
+                      {location.name}
+                    </p>
                     <p className="text-xs" style={{ color: 'var(--secondary-text)' }}>
-                      {selectedLocation.lat != null ? `Lat: ${selectedLocation.lat.toFixed(4)}` : 'Lat: —'} · {selectedLocation.lon != null ? `Lon: ${selectedLocation.lon.toFixed(4)}` : 'Lon: —'}
+                      {[location.water, location.location].filter(Boolean).join(' • ') || 'No extra details'}
                     </p>
-                  )}
-                  {selectedLocation.notes && (
-                    <p className="text-xs mt-1" style={{ color: 'var(--secondary-text)' }}>
-                      Notes: {selectedLocation.notes}
-                    </p>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    onClick={() => openForm('edit', selectedLocation)}
-                    variant="secondary"
-                    size="sm"
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={() => setDeleteTarget(selectedLocation)}
-                    variant="danger"
-                    size="sm"
-                  >
-                    Delete
-                  </Button>
+                    {(location.lat != null || location.lon != null) && (
+                      <p className="text-xs" style={{ color: 'var(--secondary-text)' }}>
+                        {location.lat != null ? `Lat: ${location.lat.toFixed(4)}` : 'Lat: —'} · {location.lon != null ? `Lon: ${location.lon.toFixed(4)}` : 'Lon: —'}
+                      </p>
+                    )}
+                    {location.notes && (
+                      <p className="text-xs mt-1" style={{ color: 'var(--secondary-text)' }}>
+                        Notes: {location.notes}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {allowManage && (
+                      <Button
+                        type="button"
+                        onClick={() => void handleSelection(location.id)}
+                        disabled={isSelecting}
+                        size="sm"
+                      >
+                        Use
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      onClick={() => openForm('edit', location)}
+                      variant="secondary"
+                      size="sm"
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => setDeleteTarget(location)}
+                      variant="danger"
+                      size="sm"
+                    >
+                      Delete
+                    </Button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ) : (
-            <p className="text-sm" style={{ color: 'var(--secondary-text)' }}>
-              Select a saved location above to manage its details.
-            </p>
-          )}
+            ))}
+          </div>
         </div>
       )}
 
@@ -440,12 +439,11 @@ export const SavedLocationSelector: React.FC<SavedLocationSelectorProps> = ({
               </div>
             )}
             <div>
-              <label htmlFor={inputIds.name} className="block text-sm mb-1" style={{ color: 'var(--primary-text)' }}>
+              <label className="block text-sm mb-1" style={{ color: 'var(--primary-text)' }}>
                 Name
               </label>
               <input
                 type="text"
-                id={inputIds.name}
                 value={formState.name}
                 onChange={(event) => handleFormStateChange('name', event.target.value)}
                 required
@@ -455,12 +453,11 @@ export const SavedLocationSelector: React.FC<SavedLocationSelectorProps> = ({
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label htmlFor={inputIds.water} className="block text-sm mb-1" style={{ color: 'var(--primary-text)' }}>
+                <label className="block text-sm mb-1" style={{ color: 'var(--primary-text)' }}>
                   Water Body
                 </label>
                 <input
                   type="text"
-                  id={inputIds.water}
                   value={formState.water}
                   onChange={(event) => handleFormStateChange('water', event.target.value)}
                   className="w-full px-3 py-2 rounded border"
@@ -468,12 +465,11 @@ export const SavedLocationSelector: React.FC<SavedLocationSelectorProps> = ({
                 />
               </div>
               <div>
-                <label htmlFor={inputIds.location} className="block text-sm mb-1" style={{ color: 'var(--primary-text)' }}>
+                <label className="block text-sm mb-1" style={{ color: 'var(--primary-text)' }}>
                   Specific Location
                 </label>
                 <input
                   type="text"
-                  id={inputIds.location}
                   value={formState.location}
                   onChange={(event) => handleFormStateChange('location', event.target.value)}
                   className="w-full px-3 py-2 rounded border"
@@ -483,13 +479,12 @@ export const SavedLocationSelector: React.FC<SavedLocationSelectorProps> = ({
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label htmlFor={inputIds.lat} className="block text-sm mb-1" style={{ color: 'var(--primary-text)' }}>
+                <label className="block text-sm mb-1" style={{ color: 'var(--primary-text)' }}>
                   Latitude
                 </label>
                 <input
                   type="number"
                   step="0.0001"
-                  id={inputIds.lat}
                   value={formState.lat}
                   onChange={(event) => handleFormStateChange('lat', event.target.value)}
                   className="w-full px-3 py-2 rounded border"
@@ -497,13 +492,12 @@ export const SavedLocationSelector: React.FC<SavedLocationSelectorProps> = ({
                 />
               </div>
               <div>
-                <label htmlFor={inputIds.lon} className="block text-sm mb-1" style={{ color: 'var(--primary-text)' }}>
+                <label className="block text-sm mb-1" style={{ color: 'var(--primary-text)' }}>
                   Longitude
                 </label>
                 <input
                   type="number"
                   step="0.0001"
-                  id={inputIds.lon}
                   value={formState.lon}
                   onChange={(event) => handleFormStateChange('lon', event.target.value)}
                   className="w-full px-3 py-2 rounded border"
@@ -512,11 +506,10 @@ export const SavedLocationSelector: React.FC<SavedLocationSelectorProps> = ({
               </div>
             </div>
             <div>
-              <label htmlFor={inputIds.notes} className="block text-sm mb-1" style={{ color: 'var(--primary-text)' }}>
+              <label className="block text-sm mb-1" style={{ color: 'var(--primary-text)' }}>
                 Notes
               </label>
               <textarea
-                id={inputIds.notes}
                 value={formState.notes}
                 onChange={(event) => handleFormStateChange('notes', event.target.value)}
                 className="w-full px-3 py-2 rounded border"

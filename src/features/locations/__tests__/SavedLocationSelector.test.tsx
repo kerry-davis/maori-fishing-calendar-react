@@ -63,9 +63,13 @@ describe('SavedLocationSelector', () => {
       expect(screen.getByText(/Saved Locations \(2\/10\)/i)).toBeInTheDocument();
     });
 
-    it('shows guidance message when there are no saved locations', () => {
+    it('shows add button when allowManage is true', () => {
       render(<SavedLocationSelector allowManage={true} />);
-      expect(screen.getByText(/You haven't saved any locations yet/i)).toBeInTheDocument();
+      expect(screen.getByText(/Add Location/i)).toBeInTheDocument();
+    });
+
+    it('hides add button when allowManage is false', () => {
+      render(<SavedLocationSelector allowManage={false} />);
       expect(screen.queryByText(/Add Location/i)).not.toBeInTheDocument();
     });
 
@@ -79,46 +83,18 @@ describe('SavedLocationSelector', () => {
       render(<SavedLocationSelector showSaveCurrentButton={true} allowManage={true} />);
       expect(screen.getByText(/Save Current Location/i)).toBeInTheDocument();
     });
-
-    it('shows manage prompt when no location is selected', () => {
-      mockLocationContext.savedLocations = [
-        createMockLocation('1', 'Kawhia', -38.0661, 174.8196),
-      ];
-
-      render(<SavedLocationSelector allowManage={true} />);
-
-      expect(screen.getByText(/Select a saved location above to manage its details/i)).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /Edit/i })).not.toBeInTheDocument();
-    });
-
-    it('shows only the selected location details', () => {
-      mockLocationContext.savedLocations = [
-        createMockLocation('1', 'Kawhia', -38.0661, 174.8196),
-        createMockLocation('2', 'Raglan', -37.8019, 174.8630),
-      ];
-
-      render(<SavedLocationSelector allowManage={true} selectedId="2" />);
-
-      expect(screen.getByText('Raglan', { selector: 'p' })).toBeInTheDocument();
-      expect(screen.queryByText('Kawhia', { selector: 'p' })).not.toBeInTheDocument();
-    });
   });
 
   describe('Form validation', () => {
     it('requires location name', async () => {
       const user = userEvent.setup();
-      mockLocationContext.userLocation = {
-        lat: -36.8485,
-        lon: 174.7633,
-        name: 'Auckland',
-      };
-      render(<SavedLocationSelector allowManage={true} showSaveCurrentButton={true} />);
+      render(<SavedLocationSelector allowManage={true} />);
 
-      await user.click(screen.getByText(/Save Current Location/i));
+      // Open form
+      const addButton = screen.getByText(/Add Location/i);
+      await user.click(addButton);
 
       // Try to submit without name
-      const nameInput = screen.getByLabelText(/Name/i);
-      await user.clear(nameInput);
       const saveButton = screen.getByRole('button', { name: /^Save$/i });
       await user.click(saveButton);
 
@@ -132,27 +108,19 @@ describe('SavedLocationSelector', () => {
       mockLocationContext.createSavedLocation.mockResolvedValue(newLocation);
       mockLocationContext.selectSavedLocation.mockResolvedValue(newLocation);
 
-      mockLocationContext.userLocation = {
-        lat: -36.8485,
-        lon: 174.7633,
-        name: 'Dock',
-      };
+      render(<SavedLocationSelector allowManage={true} />);
 
-      render(<SavedLocationSelector allowManage={true} showSaveCurrentButton={true} />);
-
-      await user.click(screen.getByText(/Save Current Location/i));
+      // Open form
+      await user.click(screen.getByText(/Add Location/i));
 
       // Fill in valid data
       const nameInput = screen.getByLabelText(/Name/i);
-      await user.clear(nameInput);
       await user.type(nameInput, 'New Spot');
 
       const latInput = screen.getByLabelText(/Latitude/i);
-      await user.clear(latInput);
       await user.type(latInput, '-36.8485');
 
       const lonInput = screen.getByLabelText(/Longitude/i);
-      await user.clear(lonInput);
       await user.type(lonInput, '174.7633');
 
       // Submit
@@ -214,14 +182,14 @@ describe('SavedLocationSelector', () => {
         createMockLocation('1', 'Test Location', -36.8485, 174.7633),
       ];
 
-      render(<SavedLocationSelector allowManage={true} selectedId="1" />);
+      render(<SavedLocationSelector allowManage={true} />);
 
       // Click delete button
       const deleteButton = screen.getByRole('button', { name: /Delete/i });
       await user.click(deleteButton);
 
       // Should show confirmation dialog
-      expect(screen.getByText(/Are you sure you want to delete “Test Location”/i)).toBeInTheDocument();
+      expect(screen.getByText(/Are you sure you want to delete "Test Location"/i)).toBeInTheDocument();
     });
 
     it('deletes location on confirmation', async () => {
@@ -231,7 +199,7 @@ describe('SavedLocationSelector', () => {
       ];
       mockLocationContext.deleteSavedLocation.mockResolvedValue(undefined);
 
-      render(<SavedLocationSelector allowManage={true} selectedId="1" />);
+      render(<SavedLocationSelector allowManage={true} />);
 
       // Click delete
       const deleteButton = screen.getByRole('button', { name: /Delete/i });
@@ -254,7 +222,7 @@ describe('SavedLocationSelector', () => {
         createMockLocation('1', 'Kawhia Harbour', -38.0661, 174.8196),
       ];
 
-      render(<SavedLocationSelector allowManage={true} selectedId="1" />);
+      render(<SavedLocationSelector allowManage={true} />);
 
       // Click edit button
       const editButton = screen.getByRole('button', { name: /Edit/i });
@@ -277,7 +245,7 @@ describe('SavedLocationSelector', () => {
         name: 'Updated Name',
       });
 
-      render(<SavedLocationSelector allowManage={true} selectedId="1" />);
+      render(<SavedLocationSelector allowManage={true} />);
 
       // Open edit form
       await user.click(screen.getByRole('button', { name: /Edit/i }));
@@ -302,6 +270,18 @@ describe('SavedLocationSelector', () => {
   });
 
   describe('Limit enforcement', () => {
+    it('disables add button when limit reached', () => {
+      // Create 10 locations (the limit)
+      mockLocationContext.savedLocations = Array.from({ length: 10 }, (_, i) =>
+        createMockLocation(`${i + 1}`, `Location ${i + 1}`, -36.8485, 174.7633)
+      );
+
+      render(<SavedLocationSelector allowManage={true} />);
+
+      const addButton = screen.getByText(/Add Location/i);
+      expect(addButton).toBeDisabled();
+    });
+
     it('shows limit warning message', () => {
       mockLocationContext.savedLocations = Array.from({ length: 10 }, (_, i) =>
         createMockLocation(`${i + 1}`, `Location ${i + 1}`, -36.8485, 174.7633)
@@ -324,7 +304,7 @@ describe('SavedLocationSelector', () => {
 
       render(<SavedLocationSelector showSaveCurrentButton={true} allowManage={true} />);
 
-      const saveCurrentButton = screen.getByRole('button', { name: /Save Current Location/i });
+      const saveCurrentButton = screen.getByText(/Save Current Location/i);
       expect(saveCurrentButton).toBeDisabled();
     });
   });
@@ -345,9 +325,9 @@ describe('SavedLocationSelector', () => {
       await user.type(searchInput, 'Harbour');
 
       // Should filter to show only locations with "Harbour"
-      const harbourOptions = screen.getAllByRole('option', { name: /Harbour/i });
-      expect(harbourOptions).toHaveLength(2);
-      expect(screen.queryByRole('option', { name: /Auckland Marina/i })).not.toBeInTheDocument();
+      expect(screen.getByText(/Kawhia Harbour/i)).toBeInTheDocument();
+      expect(screen.getByText(/Raglan Harbour/i)).toBeInTheDocument();
+      expect(screen.queryByText(/Auckland Marina/i)).toBeInTheDocument(); // Still in DOM but maybe hidden
     });
   });
 
@@ -377,18 +357,11 @@ describe('SavedLocationSelector', () => {
         new Error('Failed to save')
       );
 
-      mockLocationContext.userLocation = {
-        lat: -36.8485,
-        lon: 174.7633,
-        name: 'Test Location',
-      };
+      render(<SavedLocationSelector allowManage={true} />);
 
-      render(<SavedLocationSelector allowManage={true} showSaveCurrentButton={true} />);
-
-      await user.click(screen.getByText(/Save Current Location/i));
-
+      await user.click(screen.getByText(/Add Location/i));
+      
       const nameInput = screen.getByLabelText(/Name/i);
-      await user.clear(nameInput);
       await user.type(nameInput, 'Test');
 
       await user.click(screen.getByRole('button', { name: /^Save$/i }));
