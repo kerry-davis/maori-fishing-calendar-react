@@ -83,6 +83,7 @@ const stampLastAuthTime = (): void => {
 const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // QA-friendly timeout; production uses 60 minutes
 const LAST_ACTIVITY_STORAGE_KEY = 'lastUserActivityAt';
 const LAST_ACTIVITY_USER_KEY = 'lastUserActivityUid';
+const MANUAL_LOGIN_FLAG_KEY = 'manualLoginPending';
 
 const readLastActivity = (currentUserId?: string | null): number => {
   if (typeof window === 'undefined') {
@@ -155,6 +156,48 @@ const clearLastActivity = (): void => {
     localStorage.removeItem(LAST_ACTIVITY_USER_KEY);
   } catch (error) {
     console.warn('Failed to clear last activity timestamp:', error);
+  }
+};
+
+const markManualLoginPending = (): void => {
+  if (typeof window === 'undefined' || typeof window.sessionStorage === 'undefined') {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(MANUAL_LOGIN_FLAG_KEY, '1');
+  } catch (error) {
+    console.warn('Failed to mark manual login pending:', error);
+  }
+};
+
+const consumeManualLoginPending = (): boolean => {
+  if (typeof window === 'undefined' || typeof window.sessionStorage === 'undefined') {
+    return false;
+  }
+
+  try {
+    const value = window.sessionStorage.getItem(MANUAL_LOGIN_FLAG_KEY);
+    if (value) {
+      window.sessionStorage.removeItem(MANUAL_LOGIN_FLAG_KEY);
+      return true;
+    }
+  } catch (error) {
+    console.warn('Failed to consume manual login pending flag:', error);
+  }
+
+  return false;
+};
+
+const clearManualLoginFlag = (): void => {
+  if (typeof window === 'undefined' || typeof window.sessionStorage === 'undefined') {
+    return;
+  }
+
+  try {
+    window.sessionStorage.removeItem(MANUAL_LOGIN_FLAG_KEY);
+  } catch (error) {
+    console.warn('Failed to clear manual login pending flag:', error);
   }
 };
 
@@ -296,6 +339,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (newUser && !prevUser) {
         // User is logging in - handle data operations in background
         console.log('User logging in, handling data operations in background...');
+        const manualLoginConfirmed = consumeManualLoginPending();
+        if (manualLoginConfirmed) {
+          writeLastActivity(newUser.uid);
+        }
         tagLastActivityUser(newUser.uid);
         setUserDataReady(false); // Reset userDataReady for new login
 
@@ -519,12 +566,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     try {
       setError(null);
+      markManualLoginPending();
       stampLastAuthTime();
       await signInWithEmailAndPassword(auth, email, password);
       setSuccessMessage('Successfully signed in!');
     } catch (err) {
       const friendly = mapFirebaseError(err, 'login');
       setError(friendly);
+      clearManualLoginFlag();
       throw new Error(friendly);
     }
   };
@@ -535,12 +584,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     try {
       setError(null);
+      markManualLoginPending();
       stampLastAuthTime();
       await createUserWithEmailAndPassword(auth, email, password);
       setSuccessMessage('Account created successfully!');
     } catch (err) {
       const friendly = mapFirebaseError(err, 'register');
       setError(friendly);
+      clearManualLoginFlag();
       throw new Error(friendly);
     }
   };
@@ -559,6 +610,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       setError(null);
+      markManualLoginPending();
 
       // Set authentication start timestamp for modal monitoring
       stampLastAuthTime();
@@ -663,6 +715,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     } catch (err) {
       console.error('signInWithGoogle error:', err);
+      clearManualLoginFlag();
       const friendly = mapFirebaseError(err, 'google');
       setError(friendly);
       throw new Error(friendly);
@@ -679,6 +732,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('Using enhanced secure logout with comprehensive cleanup...');
       await secureLogoutWithCleanup();
       clearLastActivity();
+      clearManualLoginFlag();
       setSuccessMessage('Signed out successfully');
 
     } catch (err) {
@@ -698,6 +752,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Clear all local data (no backup needed - cloud is source of truth)
         await clearUserState();
         clearLastActivity();
+        clearManualLoginFlag();
 
         setSuccessMessage('Signed out successfully');
       } catch (fallbackError) {
@@ -710,6 +765,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setError(null);
         setSuccessMessage('Force logged out locally');
         clearLastActivity();
+        clearManualLoginFlag();
       }
     }
   };
@@ -743,6 +799,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setError(null);
     setSuccessMessage('Force logout completed');
     clearLastActivity();
+    clearManualLoginFlag();
   };
 
   const clearSuccessMessage = () => {
