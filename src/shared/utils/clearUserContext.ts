@@ -2,6 +2,7 @@ import { encryptionService } from '@shared/services/encryptionService';
 import { firebaseDataService } from '@shared/services/firebaseDataService';
 import { databaseService } from '@shared/services/databaseService';
 import { auth } from '@shared/services/firebase';
+import { fallbackBasicCleanup } from './fallbackBasicCleanup';
 
 /**
  * Consolidated User Context Clearing Utility
