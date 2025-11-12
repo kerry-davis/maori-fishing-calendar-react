@@ -27,3 +27,6 @@ please review all changes on this branch and provide feedback
 
 6. Update docs
 please update @docs/architecture/DATA_MODEL.md and any other applicable docs with the changes made in the branch
+
+KISS
+7. KISS and DO NOT EVER CLEAR ANY LOGIC THAT WAS INTRODUCED TO FIX AN ISSUE UNLESS I GIVE YOU PERMISSION TO DO SO

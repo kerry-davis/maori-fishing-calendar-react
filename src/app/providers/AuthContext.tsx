@@ -835,11 +835,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const inactiveFor = Date.now() - lastActivity;
         if (inactiveFor >= INACTIVITY_TIMEOUT_MS) {
           pendingAutoLogoutRef.current = true;
+          const prevUser = user;
+          setUser(null);
+          setUserDataReady(false);
+          clearLastActivity();
+          clearManualLoginFlag();
           try {
-            await logout();
-          } finally {
-            pendingAutoLogoutRef.current = false;
+            localStorage.setItem('lastActiveUser', 'guest');
+          } catch (storageError) {
+            console.warn('Failed to update lastActiveUser key on auto logout:', storageError);
           }
+
+          window.dispatchEvent(new CustomEvent('authStateChanged', {
+            detail: {
+              fromUser: prevUser?.uid || null,
+              toUser: null,
+              isLogin: false,
+              isLogout: true,
+              timestamp: Date.now(),
+              user: null,
+              previousUser: prevUser
+            }
+          }));
+
+          void logout().finally(() => {
+            pendingAutoLogoutRef.current = false;
+          });
           return;
         }
       }

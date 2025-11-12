@@ -330,6 +330,11 @@ private deduplicateById<T extends { id: number | string; updatedAt?: string }>(r
 - `encryptionService.setDeterministicKey()` requires an existing salt (synced from Firestore or previously cached). If none is available it logs a warning and leaves the service in “not ready” mode.
 - Components must wait for `encryptionReady=true` before assuming decrypted data exists. When that flag flips, `firebaseDataService.rehydrateCachedData()` fetches trips/weather/fish to populate IndexedDB with plaintext.
 
+### Inactivity Auto-Logout Storage Contract
+- `AuthContext` writes `localStorage.lastUserActivityAt` for the latest interaction and pairs it with `localStorage.lastUserActivityUid` so timestamps are only honored for the currently signed-in user, preventing cross-account forced logouts.
+- Manual sign-in paths (email/password login, registration, Google auth) set a `sessionStorage.manualLoginPending` flag; once Firebase reports the user change the provider refreshes the activity timestamp one time and clears the flag so users are not immediately logged out after authenticating, while background session restores remain subject to stale timestamps.
+- When the inactivity watchdog fires, the provider clears `user` state, resets `userDataReady`, clears activity markers, and emits the standard `authStateChanged` logout event before delegating to the existing `logout()` routine. The UI flips to logged-out instantly while `secureLogoutWithCleanup()` continues syncing and tearing down storage asynchronously.
+
 ## 4) UI Data ERD
 
 ```mermaid
