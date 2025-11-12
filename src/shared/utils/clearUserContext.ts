@@ -698,10 +698,40 @@ export async function clearUserContext(options: ClearUserContextOptions = {}): P
 export async function secureLogoutWithCleanup(): Promise<void> {
   console.log('🔐 Starting secure logout with comprehensive cleanup...');
   
+  const getTimestamp = () => (typeof performance !== 'undefined' && typeof performance.now === 'function')
+    ? performance.now()
+    : Date.now();
+
+  const shouldLogTiming = (() => {
+    try {
+      if (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.MODE) {
+        return (import.meta as any).env.MODE !== 'production';
+      }
+    } catch {
+      // ignore import.meta access issues
+    }
+
+    if (typeof process !== 'undefined' && typeof process.env?.NODE_ENV === 'string') {
+      return process.env.NODE_ENV !== 'production';
+    }
+
+    return true;
+  })();
+
+  const logPhaseDuration = (label: string, startedAt: number) => {
+    if (!shouldLogTiming) {
+      return;
+    }
+
+    const duration = Math.round(getTimestamp() - startedAt);
+    console.log(`[logout][timing] ${label} took ${duration}ms`);
+  };
+
   try {
     // Step 0: Force sync any queued operations before logout (30s timeout)
     if (auth && auth.currentUser) {
       console.log('⏳ Syncing queued operations before logout...');
+      const syncStartedAt = getTimestamp();
       
       try {
         const syncPromise = firebaseDataService.processSyncQueue();
@@ -715,29 +745,60 @@ export async function secureLogoutWithCleanup(): Promise<void> {
         const errorMsg = syncError instanceof Error ? syncError.message : 'Unknown error';
         console.warn(`⚠️ Sync failed or timed out (${errorMsg}). Continuing with logout.`);
         console.warn('⚠️ Any unsync\'d data may be lost. Data in cloud is preserved.');
+      } finally {
+        logPhaseDuration('Sync queue drain', syncStartedAt);
       }
     }
-    
-    // Step 1: Complete user context cleanup BEFORE Firebase logout
-    // Clear ALL local data - cloud is the source of truth for authenticated users
-    const cleanupResult = await clearUserContext({ preserveGuestData: false });
-    
-    if (!cleanupResult.success) {
-      console.warn('⚠️ Cleanup had issues but continuing with logout:', cleanupResult.error);
-    } else {
-      console.log('✅ Cleanup completed successfully');
-    }
-    
-    // Step 2: Execute Firebase logout
+
+    const cleanupStartedAt = getTimestamp();
+    const cleanupPromise = clearUserContext({ preserveGuestData: false })
+      .finally(() => logPhaseDuration('clearUserContext', cleanupStartedAt));
+
+    let signOutPromise: Promise<void> = Promise.resolve();
     if (auth && auth.currentUser) {
-      await auth.signOut();
-      console.log('✅ Firebase logout completed');
+      const signOutStartedAt = getTimestamp();
+      signOutPromise = auth.signOut()
+        .then(() => {
+          console.log('✅ Firebase logout completed');
+        })
+        .finally(() => logPhaseDuration('Firebase signOut', signOutStartedAt));
     }
-    
+
+    const [cleanupOutcome, signOutOutcome] = await Promise.allSettled([cleanupPromise, signOutPromise]);
+
+    const errors: unknown[] = [];
+
+    if (cleanupOutcome.status === 'fulfilled') {
+      const cleanupResult = cleanupOutcome.value;
+      if (!cleanupResult.success) {
+        console.warn('⚠️ Cleanup had issues but continuing with logout:', cleanupResult.error);
+      } else {
+        console.log('✅ Cleanup completed successfully');
+      }
+    } else {
+      console.error('❌ clearUserContext failed during logout:', cleanupOutcome.reason);
+      errors.push(cleanupOutcome.reason);
+    }
+
+    if (signOutOutcome.status === 'rejected') {
+      console.error('❌ Firebase logout failed:', signOutOutcome.reason);
+      errors.push(signOutOutcome.reason);
+    }
+
+    if (errors.length > 0) {
+      throw errors.length === 1 ? errors[0] : new AggregateError(errors, 'Secure logout encountered errors');
+    }
+
     console.log('🎉 Secure logout completed successfully');
     
   } catch (error) {
     console.error('❌ Secure logout failed:', error);
+    try {
+      await fallbackBasicCleanup();
+      console.warn('⚠️ Fallback basic cleanup executed after secure logout failure');
+    } catch (fallbackError) {
+      console.error('❌ Fallback cleanup also failed:', fallbackError);
+    }
     throw error;
   }
 }

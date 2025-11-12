@@ -15,7 +15,7 @@ Client-only React application (no custom backend) leveraging Firebase (Auth, Fir
 - **Logout**: All IndexedDB cleared after 30-second sync attempt
 - **Caching**: All Firestore reads/writes automatically cache to IndexedDB using `put()` (upsert)
 - **Deduplication**: Automatic on read, keeps newest by `updatedAt` timestamp
-- **Inactivity guard**: `AuthContext` tracks `lastUserActivityAt` + owning UID in `localStorage`, tags manual sign-ins in `sessionStorage`, and flips UI state to logged-out immediately when the watchdog triggers while the existing `secureLogoutWithCleanup()` completes in the background.
+- **Inactivity guard**: `AuthContext` tracks `lastUserActivityAt` + owning UID in `localStorage`, tags manual sign-ins in `sessionStorage`, and flips UI state to logged-out immediately when the watchdog triggers while `secureLogoutWithCleanup()` drains the sync queue, kicks off Firebase sign-out, and runs the sanitation pipeline in parallel.
 
 High-level flow:
 

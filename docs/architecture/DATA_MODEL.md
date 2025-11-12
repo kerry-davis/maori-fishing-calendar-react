@@ -278,11 +278,12 @@ The application follows a cloud-first data model with temporary local caching:
 - **On Login**: Guest data merges to Firestore, then IndexedDB is cleared
 
 #### Logout Behavior
-1. **Sync Attempt**: 30-second attempt to sync queued operations
+1. **Sync Attempt**: 30-second attempt to sync queued operations (instrumented timing metrics log in non-production builds to catch regressions)
    - Success: All data uploaded to Firestore
    - Timeout: Warning displayed, user allowed to continue
-2. **Local Cleanup**: ALL IndexedDB data cleared (`preserveGuestData: false`)
-3. **Result**: Zero local data for authenticated users post-logout
+2. **Sign-out & Cleanup (Parallel)**: Firebase `signOut()` and `clearUserContext({ preserveGuestData: false })` start together so the auth session ends immediately while sanitation continues; both branches surface errors and an aggregate failure rethrows for the caller.
+3. **Fallback Guard**: If either branch fails, a lightweight `fallbackBasicCleanup()` runs to ensure critical local artifacts are purged before propagating the error.
+4. **Result**: Zero local data and revoked auth session for authenticated users post-logout
 
 #### Offline Support
 - **Authenticated Offline**: 
@@ -333,7 +334,7 @@ private deduplicateById<T extends { id: number | string; updatedAt?: string }>(r
 ### Inactivity Auto-Logout Storage Contract
 - `AuthContext` writes `localStorage.lastUserActivityAt` for the latest interaction and pairs it with `localStorage.lastUserActivityUid` so timestamps are only honored for the currently signed-in user, preventing cross-account forced logouts.
 - Manual sign-in paths (email/password login, registration, Google auth) set a `sessionStorage.manualLoginPending` flag; once Firebase reports the user change the provider refreshes the activity timestamp one time and clears the flag so users are not immediately logged out after authenticating, while background session restores remain subject to stale timestamps.
-- When the inactivity watchdog fires, the provider clears `user` state, resets `userDataReady`, clears activity markers, and emits the standard `authStateChanged` logout event before delegating to the existing `logout()` routine. The UI flips to logged-out instantly while `secureLogoutWithCleanup()` continues syncing and tearing down storage asynchronously.
+- When the inactivity watchdog fires, the provider clears `user` state, resets `userDataReady`, clears activity markers, and emits the standard `authStateChanged` logout event before delegating to the existing `logout()` routine. The UI flips to logged-out instantly while `secureLogoutWithCleanup()` drains sync queues, triggers Firebase sign-out, and performs storage teardown in parallel.
 
 ## 4) UI Data ERD
 
