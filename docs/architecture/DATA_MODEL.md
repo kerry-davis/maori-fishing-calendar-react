@@ -280,6 +280,7 @@ Notes:
   - Success → All data persisted to Firestore
   - Timeout → Warn but continue
   - Session already closed → Skip secure logout and run local cleanup immediately
+- **Redundant Cleanup Guard**: If `isUserContextCleared()` reports a fully sanitized state, the enhanced cleanup step is skipped to avoid redundant work during sessionless reopen scenarios.
 - **Cleanup & Sign-out (Parallel)**: `clearUserContext({ preserveGuestData: false })` runs alongside Firebase `signOut()` so auth ends immediately while sanitation proceeds; failures aggregate and rethrow.
 - **Fallback Guard**: `fallbackBasicCleanup()` purges critical local artifacts if either branch fails.
 - **Result**: Zero local data and revoked auth session for authenticated users post-logout.

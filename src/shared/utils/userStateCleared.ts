@@ -1,4 +1,4 @@
-import { clearUserContext as enhancedClearUserContext } from './clearUserContext';
+import { clearUserContext as enhancedClearUserContext, isUserContextCleared } from './clearUserContext';
 import { auth } from '@shared/services/firebase';
 import { fallbackBasicCleanup } from './fallbackBasicCleanup';
 
@@ -10,6 +10,11 @@ export async function clearUserState(): Promise<void> {
   console.log('🧹 Starting enhanced user state cleanup...');
   
   try {
+    if (isUserContextCleared()) {
+      console.log('✅ User context already cleared; skipping enhanced cleanup run');
+      return;
+    }
+
     // Use the comprehensive clearUserContext utility
     const result = await enhancedClearUserContext();
     
