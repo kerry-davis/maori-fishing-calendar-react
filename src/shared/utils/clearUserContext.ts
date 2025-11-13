@@ -729,19 +729,31 @@ export async function secureLogoutWithCleanup(): Promise<void> {
   };
 
   try {
-    // Step 0: Force sync any queued operations before logout (30s timeout)
+    // Step 0: Force sync any queued operations before logout (short timeout)
     if (auth && auth.currentUser) {
       console.log('⏳ Syncing queued operations before logout...');
       const syncStartedAt = getTimestamp();
+      const SYNC_TIMEOUT_MS = 5000;
       
       try {
-        const syncPromise = firebaseDataService.processSyncQueue();
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Sync timeout')), 30000)
-        );
-        
-        await Promise.race([syncPromise, timeoutPromise]);
-        console.log('✅ Sync completed successfully');
+        const syncPromise = firebaseDataService.processSyncQueue().then(() => 'completed' as const);
+        const timeoutPromise = new Promise<'timeout'>((resolve) => {
+          setTimeout(() => resolve('timeout'), SYNC_TIMEOUT_MS);
+        });
+
+        const outcome = await Promise.race([syncPromise, timeoutPromise]);
+
+        if (outcome === 'timeout') {
+          console.warn(`⚠️ Sync timed out after ${SYNC_TIMEOUT_MS}ms. Initiating aggressive drain.`);
+          try {
+            const drainReport = await firebaseDataService.drainSyncQueueAggressive();
+            console.warn('⚠️ Aggressive drain executed after sync timeout:', drainReport);
+          } catch (drainError) {
+            console.error('❌ Aggressive drain failed after sync timeout:', drainError);
+          }
+        } else {
+          console.log('✅ Sync completed successfully');
+        }
       } catch (syncError) {
         const errorMsg = syncError instanceof Error ? syncError.message : 'Unknown error';
         console.warn(`⚠️ Sync failed or timed out (${errorMsg}). Continuing with logout.`);
