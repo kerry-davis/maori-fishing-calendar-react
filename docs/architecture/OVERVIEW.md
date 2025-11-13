@@ -33,5 +33,5 @@ UI Components ◀── hooks / contexts ──▶ Services (weather, lunar, pho
 See also:
 
 - docs/architecture/blueprint.md
-- docs/architecture/DATA_MODEL.md (detailed persistence & caching)
+- docs/architecture/DATA_MODEL.md (detailed persistence, caching, and logout flows)
 - docs/security/SECURITY.md

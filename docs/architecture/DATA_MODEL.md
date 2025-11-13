@@ -260,9 +260,7 @@ Notes:
 
 ### Data Persistence & Caching Strategy
 
-**Cloud-First Architecture** (implemented 2025-11-02):
-
-The application follows a cloud-first data model with temporary local caching:
+**Cloud-First Architecture** (implemented 2025-11-02) keeps the cloud as the source of truth for authenticated users while preserving full offline functionality.
 
 #### Authenticated Users
 - **Source of Truth**: Firestore
@@ -277,20 +275,19 @@ The application follows a cloud-first data model with temporary local caching:
 - **Persistence**: Data remains until login
 - **On Login**: Guest data merges to Firestore, then IndexedDB is cleared
 
-#### Logout Behavior
-1. **Sync Attempt**: 30-second attempt to sync queued operations (instrumented timing metrics log in non-production builds to catch regressions)
-   - Success: All data uploaded to Firestore
-   - Timeout: Warning displayed, user allowed to continue
-   - Session already closed: Auth layer skips to local cleanup without waiting on sync
-2. **Sign-out & Cleanup (Parallel)**: Firebase `signOut()` and `clearUserContext({ preserveGuestData: false })` start together so the auth session ends immediately while sanitation continues; both branches surface errors and an aggregate failure rethrows for the caller.
-3. **Fallback Guard**: If either branch fails, a lightweight `fallbackBasicCleanup()` runs to ensure critical local artifacts are purged before propagating the error.
-4. **Result**: Zero local data and revoked auth session for authenticated users post-logout
+#### Logout Flow & Guardrails
+- **Sync Attempt (30s)**: Tries to upload queued operations (instrumented timing in non-prod).
+  - Success → All data persisted to Firestore
+  - Timeout → Warn but continue
+  - Session already closed → Skip secure logout and run local cleanup immediately
+- **Cleanup & Sign-out (Parallel)**: `clearUserContext({ preserveGuestData: false })` runs alongside Firebase `signOut()` so auth ends immediately while sanitation proceeds; failures aggregate and rethrow.
+- **Fallback Guard**: `fallbackBasicCleanup()` purges critical local artifacts if either branch fails.
+- **Result**: Zero local data and revoked auth session for authenticated users post-logout.
 
 #### Offline Support
 - **Authenticated Offline**: 
-  - Read from IndexedDB cache
-  - Writes queue in sync queue
-  - Auto-sync when reconnected
+  - Reads served from IndexedDB cache
+  - Writes queued for sync (processed automatically once online)
 - **Write Pattern**:
   ```typescript
   // Online: Write to both
@@ -302,30 +299,11 @@ The application follows a cloud-first data model with temporary local caching:
   this.queueOperation('create', 'trips', data);
   ```
 
-#### Duplicate Prevention
-**Issue**: Multiple Firestore documents can have the same local ID field, causing UI duplicates.
-
-**Solution**: Automatic deduplication on read
-- All read operations (`getAllTrips`, `getTripsByDate`, `getAllWeatherLogs`, `getWeatherLogsByTripId`, `getAllFishCaught`, `getFishCaughtByTripId`) deduplicate results by local ID
-- Keeps newest version based on `updatedAt` timestamp
-- Transparent logging: `Deduplication: Replacing ID {id} (older: {time}, newer: {time})`
-- No manual cleanup required
-
-**Implementation**:
-```typescript
-private deduplicateById<T extends { id: number | string; updatedAt?: string }>(records: T[]): T[] {
-  // Groups by ID, keeps newest by updatedAt timestamp
-  // Returns deduplicated array
-}
-```
-
-**Cache Method Safety**:
-- Uses `updateTrip()`, `updateWeatherLog()`, `updateFishCaught()` for caching
-- These methods use IndexedDB `put()` operation (upsert)
-- Prevents duplicate creation when ID already exists
-- Safe for both create and update scenarios
-- Trip Log consumer flows (trip list, weather, fish) now invoke the same cloud-first read paths, so IndexedDB stays hydrated before filtering in-memory.
-- If the encryption service is not ready (no deterministic key yet), Firestore reads skip IndexedDB caching altogether; once the key comes online the service triggers a rehydrate pass to refresh cached data with decrypted payloads.
+#### Duplicate Prevention & Cache Safety
+- All read paths (`getAllTrips`, `getTripsByDate`, `getAllWeatherLogs`, `getWeatherLogsByTripId`, `getAllFishCaught`, `getFishCaughtByTripId`) deduplicate by ID, keeping the newest `updatedAt` record and logging replacements.
+- Caching helpers (`updateTrip`, `updateWeatherLog`, `updateFishCaught`) rely on IndexedDB `put()` to avoid duplicate entries.
+- Trip Log, weather, and fish consumers all use the same cloud-first reads so IndexedDB stays hydrated before filtering in-memory.
+- If the encryption service isn’t ready, Firestore reads skip caching; once the key becomes available the service runs `rehydrateCachedData()` to refresh the cache with decrypted payloads.
 
 ### Encryption Salt & Key Lifecycle
 - `ensureUserSalt(uid)` will now bail if Firestore cannot provide a salt instead of inventing a new one; this prevents inadvertent key rotation when offline.
@@ -336,6 +314,16 @@ private deduplicateById<T extends { id: number | string; updatedAt?: string }>(r
 - `AuthContext` writes `localStorage.lastUserActivityAt` for the latest interaction and pairs it with `localStorage.lastUserActivityUid` so timestamps are only honored for the currently signed-in user, preventing cross-account forced logouts.
 - Manual sign-in paths (email/password login, registration, Google auth) set a `sessionStorage.manualLoginPending` flag; once Firebase reports the user change the provider refreshes the activity timestamp one time and clears the flag so users are not immediately logged out after authenticating, while background session restores remain subject to stale timestamps.
 - When the inactivity watchdog fires, the provider clears `user` state, resets `userDataReady`, clears activity markers, and emits the standard `authStateChanged` logout event before delegating to the existing `logout()` routine. The UI flips to logged-out instantly while `secureLogoutWithCleanup()` drains sync queues, triggers Firebase sign-out, and performs storage teardown in parallel.
+
+### Operational Checklist
+- Login → Create trip → Verify appears immediately in Trip Log
+- Create trip online → Go offline → Trip still visible
+- Go offline → Create trip → Reconnect → Trip syncs to cloud
+- Logout → Verify IndexedDB empty (all data cleared)
+- Login as different user → Verify no previous user data visible
+- Guest mode → Create data → Login → Verify data merges to cloud
+- Queued operations → Logout → Confirm 30s sync attempt, warning on timeout
+- Reopen after prolonged inactivity → Confirm immediate logout when Firebase session already expired
 
 ## 4) UI Data ERD
 
