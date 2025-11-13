@@ -278,9 +278,10 @@ The application follows a cloud-first data model with temporary local caching:
 - **On Login**: Guest data merges to Firestore, then IndexedDB is cleared
 
 #### Logout Behavior
-1. **Sync Attempt**: Short (5s) attempt to sync queued operations (instrumented timing metrics log in non-production builds to catch regressions)
+1. **Sync Attempt**: 30-second attempt to sync queued operations (instrumented timing metrics log in non-production builds to catch regressions)
    - Success: All data uploaded to Firestore
-   - Timeout: Aggressive drain kicks in immediately, quarantining any remaining queued operations while allowing logout to continue without delay
+   - Timeout: Warning displayed, user allowed to continue
+   - Session already closed: Auth layer skips to local cleanup without waiting on sync
 2. **Sign-out & Cleanup (Parallel)**: Firebase `signOut()` and `clearUserContext({ preserveGuestData: false })` start together so the auth session ends immediately while sanitation continues; both branches surface errors and an aggregate failure rethrows for the caller.
 3. **Fallback Guard**: If either branch fails, a lightweight `fallbackBasicCleanup()` runs to ensure critical local artifacts are purged before propagating the error.
 4. **Result**: Zero local data and revoked auth session for authenticated users post-logout

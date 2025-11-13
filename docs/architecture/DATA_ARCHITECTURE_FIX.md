@@ -51,14 +51,14 @@ await clearUserContext({ preserveGuestData: true });
 await clearUserContext({ preserveGuestData: false });
 ```
 
-### 4. Sync-Before-Logout (5s timeout + aggressive drain)
+### 4. Sync-Before-Logout (30s timeout)
 **File**: `src/shared/utils/clearUserContext.ts`
 
-Added short (5s) sync attempt before logout:
+Added 30-second sync attempt before logout:
 - Attempts to sync all queued operations
-- Waits up to 5 seconds before considering the queue stuck
-- If the timeout hits, immediately runs `drainSyncQueueAggressive()` to quarantine whatever remains so logout can proceed without delay
-- Warns if the drain or sync fail; cloud data remains the source of truth either way
+- Times out after 30 seconds
+- Warns user if sync fails/times out
+- Continues with logout regardless (cloud data is preserved)
 
 ### 5. Firestore Read Caching
 **File**: `src/shared/services/firebaseDataService.ts`
@@ -135,7 +135,8 @@ try {
 3. **Login**: Merge IndexedDB → Firestore, clear IndexedDB
 
 ### Logout Flow
-1. **Sync**: Attempt 5s sync of queued operations, falling back to the aggressive drain if the queue is still pending
+0. **Session Check**: If Firebase already dropped the auth session (e.g., inactivity timeout), skip secure logout and run the local cleanup path immediately so the UI doesn’t wait on a redundant sync.
+1. **Sync**: Attempt 30s sync of queued operations (warn if timeout)
 2. **Cleanup**: Clear ALL IndexedDB data (`preserveGuestData: false`)
 3. **Sign Out**: Firebase auth sign out
 4. **Guest Mode**: Initialize fresh guest session with empty IndexedDB
@@ -146,8 +147,9 @@ try {
 2. ✅ **Complete data isolation** - No user data persists after logout
 3. ✅ **Offline support** - Full read/write capability when authenticated offline
 4. ✅ **Guest data merge** - Existing flow preserved for guest→authenticated
-5. ✅ **Data integrity** - Short sync-before-logout minimizes data loss while the aggressive drain quarantines anything that can’t upload immediately
+5. ✅ **Data integrity** - 30s sync before logout minimizes data loss
 6. ✅ **Consistent behavior** - All modals use same data fetching pattern
+7. ✅ **Sessionless reopen speed** - When Firebase already ended the session, the auth provider now skips the secure logout pipeline and clears state immediately, avoiding unnecessary delays on app resume.
 
 ## Testing Checklist
 
@@ -157,7 +159,9 @@ try {
 - [ ] Logout → Verify IndexedDB empty (all data cleared)
 - [ ] Login as different user → Verify no previous user data visible
 - [ ] Guest mode → Create data → Login → Verify data merges to cloud
-- [ ] Queued operations → Logout → Verify 5s sync attempt + aggressive drain warning when applicable
+- [ ] Queued operations → Logout → Verify 30s sync attempt + warning
+- [ ] Reopen after prolonged inactivity → Confirm immediate logout without extra delay when Firebase session already expired
+- [ ] Reopen after inactivity (session already expired) → Confirm logout completes immediately without waiting on sync
 
 ## Related Files
 

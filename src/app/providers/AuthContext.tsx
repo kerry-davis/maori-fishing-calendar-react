@@ -728,6 +728,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setError(null);
 
+      if (!auth?.currentUser) {
+        console.log('No active Firebase session detected, performing local cleanup');
+        await clearUserState();
+        setUser(null);
+        setUserDataReady(false);
+        clearLastActivity();
+        clearManualLoginFlag();
+        setSuccessMessage('Signed out successfully');
+        return;
+      }
+
       // Use the enhanced comprehensive logout with listener cleanup
       console.log('Using enhanced secure logout with comprehensive cleanup...');
       await secureLogoutWithCleanup();
