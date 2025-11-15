@@ -318,6 +318,7 @@ Notes:
 ### Inactivity Auto-Logout Storage Contract
 - `AuthContext` writes `localStorage.lastUserActivityAt` for the latest interaction and pairs it with `localStorage.lastUserActivityUid` so timestamps are only honored for the currently signed-in user, preventing cross-account forced logouts.
 - Manual sign-in paths (email/password login, registration, Google auth) set a `sessionStorage.manualLoginPending` flag; once Firebase reports the user change the provider refreshes the activity timestamp one time and clears the flag so users are not immediately logged out after authenticating, while background session restores remain subject to stale timestamps.
+- Auto logout now triggers after 60 minutes of inactivity, aligning the timeout with production expectations while retaining the same storage contract.
 - When the inactivity watchdog fires, the provider clears `user` state, resets `userDataReady`, clears activity markers, and emits the standard `authStateChanged` logout event before delegating to the existing `logout()` routine. The UI flips to logged-out instantly while `secureLogoutWithCleanup()` drains sync queues, triggers Firebase sign-out, and performs storage teardown in parallel.
 
 ### Operational Checklist

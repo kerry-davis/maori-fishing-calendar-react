@@ -80,7 +80,7 @@ const stampLastAuthTime = (): void => {
   }
 };
 
-const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // QA-friendly timeout; production uses 60 minutes
+const INACTIVITY_TIMEOUT_MS = 60 * 60 * 1000; // 60-minute inactivity timeout
 const LAST_ACTIVITY_STORAGE_KEY = 'lastUserActivityAt';
 const LAST_ACTIVITY_USER_KEY = 'lastUserActivityUid';
 const MANUAL_LOGIN_FLAG_KEY = 'manualLoginPending';
