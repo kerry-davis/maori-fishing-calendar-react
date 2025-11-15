@@ -37,6 +37,8 @@ erDiagram
     string userId PK  "doc id == userId"
     string[] gearTypes
     string encSaltB64
+    string themePreference "light|dark (optional)"
+    timestamp themePreferenceUpdatedAt "optional"
     timestamp createdAt
     timestamp updatedAt
   }
@@ -121,6 +123,7 @@ erDiagram
 Notes:
 - Gear types are primarily stored in `userSettings.gearTypes`. The `gearTypes` collection exists but is deprecated for most flows to avoid drift.
 - Sensitive fields are deterministically encrypted client-side per `SECURITY.md` (selected string fields in trips/weatherLogs/fishCaught/tackleItems/userSavedLocations).
+- Theme preference is stored on `userSettings.themePreference` with client-side persistence that syncs on login, ensuring the preferred mode survives refreshes and reinstates immediately after authentication.
 - **Tackle Items Encryption**: `name`, `brand`, and `colour` fields are encrypted before writing to Firestore. The `type` field remains plaintext to enable filtering/grouping. Decryption occurs automatically when loading tackle items, with a timing consideration: tackle items are reloaded once the encryption service is initialized after login to ensure proper decryption.
 - Weather/Fish IDs are opaque and use a ULID-based suffix; UI should not parse IDs.
 - Saved locations are limited to 10 per user (hard cap enforced at service level).
@@ -256,6 +259,7 @@ Notes:
 - Saved locations use Firestore for authenticated users, localStorage for guests.
 - 10-location limit enforced at service level with duplicate coordinate detection.
 - CRUD operations emit `savedLocationsChanged` events for reactive UI updates.
+- Authenticated sessions now trigger a saved-location hydration as soon as the deterministic encryption key is established, eliminating the temporary blank state that previously occurred on refresh.
 - **Tackle Items Decryption Flow**: When authenticated users load tackle items, `useFirebaseTackleBox` and `firebaseDataService.getAllTackleItems()` automatically decrypt encrypted fields. The hook monitors `AuthContext.encryptionReady` to reload items once encryption service initialization completes, ensuring proper decryption timing after login.
 
 ### Data Persistence & Caching Strategy
@@ -365,6 +369,7 @@ Notes:
 - Saved locations are managed exclusively through Settings modal (consolidated from previously duplicated UI in CurrentMoonInfo, LunarModal, and Settings).
 - CurrentMoonInfo and LunarModal provide read-only location displays with "Change Location" / "Set Location" buttons that open Settings.
 - LocationContext provides app-wide access to saved locations state and CRUD operations.
+- Location context defers clearing the last known location until a confirmed logout, preserving the user's selection during short-lived auth transitions such as full-page refreshes.
 - Saved locations can be selected to auto-fill water and location fields in trip forms.
 - Location search includes GPS location detection, Google Places autocomplete, and manual coordinate entry.
 

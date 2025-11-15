@@ -65,17 +65,23 @@ export function useLocalStorage<T>(
   return [storedValue, setValue, removeValue, error];
 }
 
+type ThemeMode = 'light' | 'dark';
+
 // Specific hook for theme management
-export function useTheme(): [boolean, () => void, string | null] {
+export function useTheme(): [boolean, (mode?: ThemeMode) => void, string | null] {
   const [themeString, setThemeString, , error] = useLocalStorage<string>('theme', 'light');
 
   const isDark = themeString === 'dark';
 
-  const toggleTheme = useCallback(() => {
-    console.log('toggleTheme called, current isDark:', isDark, 'current themeString:', themeString);
-    const newTheme = isDark ? 'light' : 'dark';
-    console.log('Setting theme to:', newTheme);
-    setThemeString(newTheme);
+  const toggleTheme = useCallback((mode?: ThemeMode) => {
+    console.log('toggleTheme called, current isDark:', isDark, 'current themeString:', themeString, 'override:', mode);
+    const targetTheme: ThemeMode = mode ?? (isDark ? 'light' : 'dark');
+    if (targetTheme === themeString) {
+      console.log('Theme already set to target, skipping update');
+      return;
+    }
+    console.log('Setting theme to:', targetTheme);
+    setThemeString(targetTheme);
   }, [isDark, themeString, setThemeString]);
 
   // Apply theme class

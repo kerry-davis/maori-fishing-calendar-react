@@ -323,7 +323,7 @@ export interface CalendarDay {
 // Context types
 export interface ThemeContextType {
   isDark: boolean;
-  toggleTheme: () => void;
+  toggleTheme: (mode?: 'light' | 'dark') => void;
 }
 
 export interface LocationContextType {

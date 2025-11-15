@@ -33,7 +33,7 @@ export function LocationProvider({ children }: LocationProviderProps) {
     useLocationStorage();
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
   const [tideCoverage, setTideCoverage] = useState<TideCoverageStatus | null>(null);
-  const { user, userDataReady } = useAuth();
+  const { user, userDataReady, encryptionReady } = useAuth();
   const {
     savedLocations,
     savedLocationsLoading,
@@ -45,6 +45,8 @@ export function LocationProvider({ children }: LocationProviderProps) {
     savedLocationsLimit,
   } = useSavedLocations();
   const restoredUserRef = useRef<string | null>(null);
+  const hadAuthenticatedSessionRef = useRef<boolean>(false);
+  const hydrationRequestedRef = useRef<string | null>(null);
 
   const persistLocation = useCallback(
     (location: UserLocation | null, options?: { skipRemote?: boolean }) => {
@@ -300,11 +302,17 @@ export function LocationProvider({ children }: LocationProviderProps) {
 
   useEffect(() => {
     if (!user || !user.uid) {
+      if (hadAuthenticatedSessionRef.current) {
+        persistLocation(null, { skipRemote: true });
+        setTideCoverage(null);
+      }
       restoredUserRef.current = null;
-      persistLocation(null, { skipRemote: true });
-      setTideCoverage(null);
+      hadAuthenticatedSessionRef.current = false;
+      hydrationRequestedRef.current = null;
       return;
     }
+
+    hadAuthenticatedSessionRef.current = true;
 
     if (!userDataReady || !firebaseDataService.isReady() || !firebaseDataService.isAuthenticated()) {
       return;
@@ -354,6 +362,26 @@ export function LocationProvider({ children }: LocationProviderProps) {
       cancelled = true;
     };
   }, [user, userDataReady, userLocation, persistLocation, setTideCoverage]);
+
+  useEffect(() => {
+    if (!user?.uid || !encryptionReady) {
+      return;
+    }
+
+    if (hydrationRequestedRef.current === user.uid) {
+      return;
+    }
+
+    hydrationRequestedRef.current = user.uid;
+
+    void (async () => {
+      try {
+        await firebaseDataService.getSavedLocations();
+      } catch (error) {
+        console.warn("LocationContext: early saved locations hydration failed:", error);
+      }
+    })();
+  }, [user?.uid, encryptionReady]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
