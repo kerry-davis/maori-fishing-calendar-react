@@ -27,3 +27,9 @@ please review all changes on this branch and provide feedback
 
 6. Update docs
 please update @docs/architecture/DATA_MODEL.md and any other applicable docs with the changes made in the branch
+
+7. KISS
+KISS and DO NOT EVER CLEAR ANY LOGIC THAT WAS INTRODUCED TO FIX AN ISSUE UNLESS I GIVE YOU PERMISSION TO DO SO
+
+8. Build
+Always run a build and fix any errors.

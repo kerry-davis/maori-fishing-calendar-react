@@ -37,12 +37,8 @@ erDiagram
     string userId PK  "doc id == userId"
     string[] gearTypes
     string encSaltB64
-    object lastKnownLocation {
-      number lat
-      number lon
-      string name
-      timestamp updatedAt
-    }
+    string themePreference "light|dark (optional)"
+    timestamp themePreferenceUpdatedAt "optional"
     timestamp createdAt
     timestamp updatedAt
   }
@@ -127,14 +123,12 @@ erDiagram
 Notes:
 - Gear types are primarily stored in `userSettings.gearTypes`. The `gearTypes` collection exists but is deprecated for most flows to avoid drift.
 - Sensitive fields are deterministically encrypted client-side per `SECURITY.md` (selected string fields in trips/weatherLogs/fishCaught/tackleItems/userSavedLocations).
+- Theme preference is stored on `userSettings.themePreference` with client-side persistence that syncs on login, ensuring the preferred mode survives refreshes and reinstates immediately after authentication.
 - **Tackle Items Encryption**: `name`, `brand`, and `colour` fields are encrypted before writing to Firestore. The `type` field remains plaintext to enable filtering/grouping. Decryption occurs automatically when loading tackle items, with a timing consideration: tackle items are reloaded once the encryption service is initialized after login to ensure proper decryption.
 - Weather/Fish IDs are opaque and use a ULID-based suffix; UI should not parse IDs.
 - Saved locations are limited to 10 per user (hard cap enforced at service level).
-- `userSettings.lastKnownLocation` tracks the most recently selected location per authenticated user. It is updated on every location change (and immediately before logout) and restored on login; guests never populate this field.
 - Duplicate location prevention uses 11-meter coordinate tolerance (0.0001 degrees).
 - Saved locations encrypt name, water, location, and notes fields client-side.
-- Saved location exports include both JSON (`localStorage.savedLocations`) and CSV (`saved-locations.csv`) artefacts. Imports rely on `firebaseDataService.replaceSavedLocations()` which wipes and repopulates the `userSavedLocations` collection, preserving IDs/timestamps from backups while enforcing the 10-item limit and skipping duplicates by ID. Guest imports fall back to localStorage with the same limit enforcement.
-- Export/Import UI summaries surface the filename and duration of each operation. Durations are formatted as `hh:mm:ss` using a shared formatter so the Settings modal and migration flows stay consistent.
  
 ### Update semantics and guardrails (to prevent data loss and display drift)
 - FISH_CAUGHT photo fields are preserved on updates unless an explicit removal signal is provided. Clients MUST NOT clear photo-related fields by omission.
@@ -173,7 +167,7 @@ erDiagram
 
   LS_SAVED_LOCATIONS {
     string key        "savedLocations"
-    json[] locations  "array of SavedLocation objects"
+    json[] locations  "array of SavedLocation objects. Included in the main data.json file."
   }
 
   IDB_WEATHER_LOGS {
@@ -265,13 +259,12 @@ Notes:
 - Saved locations use Firestore for authenticated users, localStorage for guests.
 - 10-location limit enforced at service level with duplicate coordinate detection.
 - CRUD operations emit `savedLocationsChanged` events for reactive UI updates.
+- Authenticated sessions now trigger a saved-location hydration as soon as the deterministic encryption key is established, eliminating the temporary blank state that previously occurred on refresh.
 - **Tackle Items Decryption Flow**: When authenticated users load tackle items, `useFirebaseTackleBox` and `firebaseDataService.getAllTackleItems()` automatically decrypt encrypted fields. The hook monitors `AuthContext.encryptionReady` to reload items once encryption service initialization completes, ensuring proper decryption timing after login.
 
 ### Data Persistence & Caching Strategy
 
-**Cloud-First Architecture** (implemented 2025-11-02):
-
-The application follows a cloud-first data model with temporary local caching:
+**Cloud-First Architecture** (implemented 2025-11-02) keeps the cloud as the source of truth for authenticated users while preserving full offline functionality.
 
 #### Authenticated Users
 - **Source of Truth**: Firestore
@@ -286,18 +279,20 @@ The application follows a cloud-first data model with temporary local caching:
 - **Persistence**: Data remains until login
 - **On Login**: Guest data merges to Firestore, then IndexedDB is cleared
 
-#### Logout Behavior
-1. **Sync Attempt**: 30-second attempt to sync queued operations
-   - Success: All data uploaded to Firestore
-   - Timeout: Warning displayed, user allowed to continue
-2. **Local Cleanup**: ALL IndexedDB data cleared (`preserveGuestData: false`)
-3. **Result**: Zero local data for authenticated users post-logout
+#### Logout Flow & Guardrails
+- **Sync Attempt (30s)**: Tries to upload queued operations (instrumented timing in non-prod).
+  - Success → All data persisted to Firestore
+  - Timeout → Warn but continue
+  - Session already closed → Skip secure logout and run local cleanup immediately
+- **Redundant Cleanup Guard**: If `isUserContextCleared()` reports a fully sanitized state, the enhanced cleanup step is skipped to avoid redundant work during sessionless reopen scenarios.
+- **Cleanup & Sign-out (Parallel)**: `clearUserContext({ preserveGuestData: false })` runs alongside Firebase `signOut()` so auth ends immediately while sanitation proceeds; failures aggregate and rethrow.
+- **Fallback Guard**: `fallbackBasicCleanup()` purges critical local artifacts if either branch fails.
+- **Result**: Zero local data and revoked auth session for authenticated users post-logout.
 
 #### Offline Support
 - **Authenticated Offline**: 
-  - Read from IndexedDB cache
-  - Writes queue in sync queue
-  - Auto-sync when reconnected
+  - Reads served from IndexedDB cache
+  - Writes queued for sync (processed automatically once online)
 - **Write Pattern**:
   ```typescript
   // Online: Write to both
@@ -309,35 +304,32 @@ The application follows a cloud-first data model with temporary local caching:
   this.queueOperation('create', 'trips', data);
   ```
 
-#### Duplicate Prevention
-**Issue**: Multiple Firestore documents can have the same local ID field, causing UI duplicates.
-
-**Solution**: Automatic deduplication on read
-- All read operations (`getAllTrips`, `getTripsByDate`, `getAllWeatherLogs`, `getWeatherLogsByTripId`, `getAllFishCaught`, `getFishCaughtByTripId`) deduplicate results by local ID
-- Keeps newest version based on `updatedAt` timestamp
-- Transparent logging: `Deduplication: Replacing ID {id} (older: {time}, newer: {time})`
-- No manual cleanup required
-
-**Implementation**:
-```typescript
-private deduplicateById<T extends { id: number | string; updatedAt?: string }>(records: T[]): T[] {
-  // Groups by ID, keeps newest by updatedAt timestamp
-  // Returns deduplicated array
-}
-```
-
-**Cache Method Safety**:
-- Uses `updateTrip()`, `updateWeatherLog()`, `updateFishCaught()` for caching
-- These methods use IndexedDB `put()` operation (upsert)
-- Prevents duplicate creation when ID already exists
-- Safe for both create and update scenarios
-- Trip Log consumer flows (trip list, weather, fish) now invoke the same cloud-first read paths, so IndexedDB stays hydrated before filtering in-memory.
-- If the encryption service is not ready (no deterministic key yet), Firestore reads skip IndexedDB caching altogether; once the key comes online the service triggers a rehydrate pass to refresh cached data with decrypted payloads.
+#### Duplicate Prevention & Cache Safety
+- All read paths (`getAllTrips`, `getTripsByDate`, `getAllWeatherLogs`, `getWeatherLogsByTripId`, `getAllFishCaught`, `getFishCaughtByTripId`) deduplicate by ID, keeping the newest `updatedAt` record and logging replacements.
+- Caching helpers (`updateTrip`, `updateWeatherLog`, `updateFishCaught`) rely on IndexedDB `put()` to avoid duplicate entries.
+- Trip Log, weather, and fish consumers all use the same cloud-first reads so IndexedDB stays hydrated before filtering in-memory.
+- If the encryption service isn’t ready, Firestore reads skip caching; once the key becomes available the service runs `rehydrateCachedData()` to refresh the cache with decrypted payloads.
 
 ### Encryption Salt & Key Lifecycle
 - `ensureUserSalt(uid)` will now bail if Firestore cannot provide a salt instead of inventing a new one; this prevents inadvertent key rotation when offline.
 - `encryptionService.setDeterministicKey()` requires an existing salt (synced from Firestore or previously cached). If none is available it logs a warning and leaves the service in “not ready” mode.
 - Components must wait for `encryptionReady=true` before assuming decrypted data exists. When that flag flips, `firebaseDataService.rehydrateCachedData()` fetches trips/weather/fish to populate IndexedDB with plaintext.
+
+### Inactivity Auto-Logout Storage Contract
+- `AuthContext` writes `localStorage.lastUserActivityAt` for the latest interaction and pairs it with `localStorage.lastUserActivityUid` so timestamps are only honored for the currently signed-in user, preventing cross-account forced logouts.
+- Manual sign-in paths (email/password login, registration, Google auth) set a `sessionStorage.manualLoginPending` flag; once Firebase reports the user change the provider refreshes the activity timestamp one time and clears the flag so users are not immediately logged out after authenticating, while background session restores remain subject to stale timestamps.
+- Auto logout now triggers after 60 minutes of inactivity, aligning the timeout with production expectations while retaining the same storage contract.
+- When the inactivity watchdog fires, the provider clears `user` state, resets `userDataReady`, clears activity markers, and emits the standard `authStateChanged` logout event before delegating to the existing `logout()` routine. The UI flips to logged-out instantly while `secureLogoutWithCleanup()` drains sync queues, triggers Firebase sign-out, and performs storage teardown in parallel.
+
+### Operational Checklist
+- Login → Create trip → Verify appears immediately in Trip Log
+- Create trip online → Go offline → Trip still visible
+- Go offline → Create trip → Reconnect → Trip syncs to cloud
+- Logout → Verify IndexedDB empty (all data cleared)
+- Login as different user → Verify no previous user data visible
+- Guest mode → Create data → Login → Verify data merges to cloud
+- Queued operations → Logout → Confirm 30s sync attempt, warning on timeout
+- Reopen after prolonged inactivity → Confirm immediate logout when Firebase session already expired
 
 ## 4) UI Data ERD
 
@@ -376,10 +368,9 @@ erDiagram
 
 Notes:
 - Saved locations are managed exclusively through Settings modal (consolidated from previously duplicated UI in CurrentMoonInfo, LunarModal, and Settings).
-- Settings modal surfaces a single saved location card at a time: the dropdown (or search) selection becomes the active record for management actions (edit/delete). When nothing is selected, the manage panel shows guidance instead of listing every saved location.
-- When an authenticated session starts, saved-location reads pause until the login background sync marks user data ready; this avoids rendering an empty list while encrypted Firestore documents are still decrypting/merging. If Firestore fetches fail, the hook now keeps the last successful snapshot and retries automatically after emitting a `savedLocationsSyncPending` browser event.
 - CurrentMoonInfo and LunarModal provide read-only location displays with "Change Location" / "Set Location" buttons that open Settings.
 - LocationContext provides app-wide access to saved locations state and CRUD operations.
+- Location context defers clearing the last known location until a confirmed logout, preserving the user's selection during short-lived auth transitions such as full-page refreshes.
 - Saved locations can be selected to auto-fill water and location fields in trip forms.
 - Location search includes GPS location detection, Google Places autocomplete, and manual coordinate entry.
 

@@ -23,13 +23,13 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
-  setDoc,
   query,
   where,
   orderBy,
   serverTimestamp,
   writeBatch,
-  deleteField
+  deleteField,
+  setDoc
 } from "firebase/firestore";
 import type { DocumentReference } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL, getMetadata, listAll, deleteObject, getBlob } from "firebase/storage";
@@ -51,13 +51,6 @@ type SyncCollectionName = 'trips' | 'weatherLogs' | 'fishCaught';
  * Firebase Data Service - Cloud-first with offline fallback
  * Replaces IndexedDB with Firestore while maintaining offline functionality
  */
-export interface ReplaceSavedLocationsResult {
-  imported: number;
-  duplicatesSkipped: number;
-  invalidSkipped: number;
-  limitSkipped: number;
-}
-
 export class FirebaseDataService {
   private userId: string | null = null;
   private isGuest = true;
@@ -73,7 +66,6 @@ export class FirebaseDataService {
   private readonly savedLocationsStorageKey = STORAGE_KEYS.SAVED_LOCATIONS;
   private readonly savedLocationsLimit = MAX_SAVED_LOCATIONS;
   private hasRehydratedAfterEncryption = false;
-  private userDataReady = true;
   private lastKnownLocationCache: { userId: string; location: UserLocation | null } | null = null;
   private pendingLastKnownLocation: UserLocation | null = null;
 
@@ -129,6 +121,140 @@ export class FirebaseDataService {
   private ensureServiceReady(): void {
     if (!this.isReady()) {
       throw new Error('Service not initialized');
+    }
+  }
+
+  private sanitizeLocationForPersistence(location: UserLocation): UserLocation | null {
+    if (!location) {
+      return null;
+    }
+
+    const { lat, lon, name } = location;
+
+    if (typeof lat !== 'number' || Number.isNaN(lat) || typeof lon !== 'number' || Number.isNaN(lon)) {
+      return null;
+    }
+
+    const trimmedName = typeof name === 'string' ? name.trim().slice(0, 120) : '';
+
+    return {
+      lat,
+      lon,
+      name: trimmedName.length > 0 ? trimmedName : 'Current Location'
+    };
+  }
+
+  private async flushPendingLastKnownLocation(): Promise<void> {
+    if (!this.pendingLastKnownLocation || !this.userId || this.isGuest) {
+      return;
+    }
+
+    const toPersist = { ...this.pendingLastKnownLocation };
+    this.pendingLastKnownLocation = null;
+
+    try {
+      await this.updateLastKnownLocation(toPersist);
+    } catch (error) {
+      DEV_WARN('[SavedLocations] Failed to flush pending last known location:', error);
+      this.pendingLastKnownLocation = toPersist;
+    }
+  }
+
+  async updateLastKnownLocation(location: UserLocation | null): Promise<void> {
+    const sanitized = location ? this.sanitizeLocationForPersistence(location) : null;
+
+    if (location && !sanitized) {
+      DEV_WARN('[SavedLocations] Ignoring invalid last known location payload');
+      return;
+    }
+
+    if (!this.isReady()) {
+      this.pendingLastKnownLocation = sanitized ? { ...sanitized } : null;
+      return;
+    }
+
+    if (this.isGuest || !this.userId) {
+      DEV_LOG('[SavedLocations] Queueing last known location update for guest or unauthenticated session');
+      this.pendingLastKnownLocation = sanitized ? { ...sanitized } : null;
+      return;
+    }
+
+    this.lastKnownLocationCache = { userId: this.userId, location: sanitized ? { ...sanitized } : null };
+
+    if (!firestore) {
+      return;
+    }
+
+    const docRef = doc(firestore, 'userSettings', this.userId);
+    const payload = sanitized
+      ? {
+          lastKnownLocation: {
+            lat: sanitized.lat,
+            lon: sanitized.lon,
+            name: sanitized.name,
+            updatedAt: new Date().toISOString()
+          }
+        }
+      : {
+          lastKnownLocation: deleteField()
+        };
+
+    try {
+      await setDoc(docRef, payload, { merge: true });
+      DEV_LOG('[SavedLocations] Last known location persisted for user:', this.userId);
+    } catch (error) {
+      if (!navigator.onLine) {
+        DEV_WARN('[SavedLocations] Offline while persisting last known location; caching for retry');
+        this.pendingLastKnownLocation = sanitized ? { ...sanitized } : null;
+        return;
+      }
+
+      PROD_ERROR('[SavedLocations] Failed to persist last known location:', error);
+      throw error;
+    }
+  }
+
+  async getLastKnownLocation(): Promise<UserLocation | null> {
+    if (!this.isReady() || this.isGuest || !this.userId) {
+      return null;
+    }
+
+    if (this.lastKnownLocationCache && this.lastKnownLocationCache.userId === this.userId) {
+      return this.lastKnownLocationCache.location ? { ...this.lastKnownLocationCache.location } : null;
+    }
+
+    if (!firestore) {
+      return null;
+    }
+
+    try {
+      const docRef = doc(firestore, 'userSettings', this.userId);
+      const snapshot = await getDoc(docRef);
+
+      if (!snapshot.exists()) {
+        this.lastKnownLocationCache = { userId: this.userId, location: null };
+        return null;
+      }
+
+      const data = snapshot.data() as { lastKnownLocation?: { lat?: number; lon?: number; name?: string } };
+      const persisted = data?.lastKnownLocation;
+
+      if (!persisted) {
+        this.lastKnownLocationCache = { userId: this.userId, location: null };
+        return null;
+      }
+
+      const sanitized = this.sanitizeLocationForPersistence({
+        lat: persisted.lat as number,
+        lon: persisted.lon as number,
+        name: persisted.name ?? 'Current Location'
+      });
+
+      this.lastKnownLocationCache = { userId: this.userId, location: sanitized ? { ...sanitized } : null };
+      return sanitized ? { ...sanitized } : null;
+    } catch (error) {
+      PROD_ERROR('[SavedLocations] Failed to load last known location:', error);
+      return null;
     }
   }
 
@@ -444,18 +570,14 @@ export class FirebaseDataService {
       this.loadSyncQueue(); // Load user-specific queue
       void this.processSyncQueue();
       DEV_LOG('Firebase Data Service initialized for user:', userId);
-      this.userDataReady = true;
-      if (this.pendingLastKnownLocation) {
-        await this.flushPendingLastKnownLocation();
-      }
+      await this.flushPendingLastKnownLocation();
     } else {
       this.userId = null;
       this.isGuest = true;
       this.hasRehydratedAfterEncryption = false;
       this.lastKnownLocationCache = null;
-      DEV_LOG('Firebase Data Service initialized for guest');
-      this.userDataReady = true;
       this.pendingLastKnownLocation = null;
+      DEV_LOG('Firebase Data Service initialized for guest');
     }
     this.isInitialized = true;
   }
@@ -481,142 +603,6 @@ export class FirebaseDataService {
     return this.isInitialized && this.isGuest;
   }
 
-  setUserDataReady(ready: boolean): void {
-    this.userDataReady = ready;
-  }
-
-  getUserDataReady(): boolean {
-    return this.userDataReady;
-  }
-
-  private sanitizeLocationForPersistence(location: UserLocation): UserLocation | null {
-    if (!location) {
-      return null;
-    }
-
-    const { lat, lon, name } = location;
-
-    if (typeof lat !== 'number' || Number.isNaN(lat) || typeof lon !== 'number' || Number.isNaN(lon)) {
-      return null;
-    }
-
-    const trimmedName = typeof name === 'string' ? name.trim().slice(0, 120) : 'Current Location';
-
-    return {
-      lat,
-      lon,
-      name: trimmedName.length > 0 ? trimmedName : 'Current Location'
-    };
-  }
-
-  private async flushPendingLastKnownLocation(): Promise<void> {
-    if (!this.pendingLastKnownLocation || !this.userId || this.isGuest) {
-      return;
-    }
-
-    const toPersist = this.pendingLastKnownLocation;
-    this.pendingLastKnownLocation = null;
-    try {
-      await this.updateLastKnownLocation(toPersist);
-    } catch (error) {
-      DEV_WARN('[SavedLocations] Failed to flush pending last known location:', error);
-      this.pendingLastKnownLocation = toPersist;
-    }
-  }
-
-  async updateLastKnownLocation(location: UserLocation | null): Promise<void> {
-    this.ensureServiceReady();
-
-    const sanitized = location ? this.sanitizeLocationForPersistence(location) : null;
-
-    if (location && !sanitized) {
-      DEV_WARN('[SavedLocations] Ignoring invalid location payload for last known location update');
-      return;
-    }
-
-    if (this.isGuest || !this.userId) {
-      DEV_LOG('[SavedLocations] Queuing pending last known location for guest or unauthenticated user', sanitized);
-      this.pendingLastKnownLocation = sanitized ? { ...sanitized } : null;
-      return;
-    }
-
-    DEV_LOG('[SavedLocations] Persisting last known location for user', this.userId, sanitized);
-    this.lastKnownLocationCache = { userId: this.userId, location: sanitized ? { ...sanitized } : null };
-
-    if (!firestore) {
-      return;
-    }
-
-    const docRef = doc(firestore, 'userSettings', this.userId);
-
-    const payload = sanitized
-      ? {
-          lastKnownLocation: {
-            lat: sanitized.lat,
-            lon: sanitized.lon,
-            name: sanitized.name,
-            updatedAt: new Date().toISOString()
-          }
-        }
-      : {
-          lastKnownLocation: deleteField()
-        };
-
-    try {
-      await setDoc(docRef, payload, { merge: true });
-    } catch (error) {
-      if (!navigator.onLine) {
-        DEV_WARN('[SavedLocations] Unable to persist last known location while offline; will retry on next update');
-        this.pendingLastKnownLocation = sanitized ? { ...sanitized } : null;
-        throw error instanceof Error ? error : new Error('Offline while saving last known location');
-      }
-
-      PROD_ERROR('[SavedLocations] Failed to persist last known location:', error);
-      throw error;
-    }
-  }
-
-  async getLastKnownLocation(): Promise<UserLocation | null> {
-    this.ensureServiceReady();
-
-    if (this.isGuest || !this.userId) {
-      return null;
-    }
-
-    if (this.lastKnownLocationCache && this.lastKnownLocationCache.userId === this.userId) {
-      return this.lastKnownLocationCache.location ? { ...this.lastKnownLocationCache.location } : null;
-    }
-
-    if (!firestore) {
-      return null;
-    }
-
-    try {
-      const docRef = doc(firestore, 'userSettings', this.userId);
-      const snapshot = await getDoc(docRef);
-
-      if (!snapshot.exists()) {
-        this.lastKnownLocationCache = { userId: this.userId, location: null };
-        return null;
-      }
-
-      const data = snapshot.data();
-      const location = data?.lastKnownLocation;
-
-      if (!location) {
-        this.lastKnownLocationCache = { userId: this.userId, location: null };
-        return null;
-      }
-
-      const parsed = this.sanitizeLocationForPersistence(location as UserLocation);
-      this.lastKnownLocationCache = { userId: this.userId, location: parsed ? { ...parsed } : null };
-      return parsed ? { ...parsed } : null;
-    } catch (error) {
-      PROD_ERROR('[SavedLocations] Failed to retrieve last known location:', error);
-      return null;
-    }
-  }
-
   async switchToUser(userId: string): Promise<void> {
     if (this.isGuest) {
       this.userId = userId;
@@ -626,9 +612,7 @@ export class FirebaseDataService {
       this.loadSyncQueue();
       void this.processSyncQueue();
       DEV_LOG('Switched to user mode:', userId);
-      if (this.pendingLastKnownLocation) {
-        await this.flushPendingLastKnownLocation();
-      }
+      await this.flushPendingLastKnownLocation();
     }
   }
 
@@ -2242,11 +2226,6 @@ export class FirebaseDataService {
   async clearAllData(): Promise<void> {
     // Clear local data
     await databaseService.clearAllData();
-    try {
-      localStorage.removeItem(this.savedLocationsStorageKey);
-    } catch (error) {
-      DEV_WARN('Failed to clear saved locations from localStorage during clearAllData:', error);
-    }
 
     // Clear sync queue
     this.syncQueue = [];
@@ -2287,7 +2266,7 @@ export class FirebaseDataService {
       }
     }
 
-    const collectionsToWipe = ['trips', 'weatherLogs', 'fishCaught', 'tackleItems', 'gearTypes', 'userSettings', this.savedLocationsCollection];
+    const collectionsToWipe = ['trips', 'weatherLogs', 'fishCaught', 'tackleItems', 'gearTypes', 'userSettings'];
     const collectionPlans: Array<{ name: string; refs: DocumentReference[] }> = [];
 
     for (const coll of collectionsToWipe) {
@@ -2403,6 +2382,54 @@ export class FirebaseDataService {
         percent,
         message: error instanceof Error ? error.message : 'Failed to wipe Firestore data'
       });
+      throw error;
+    }
+  }
+
+  async getAllSavedLocationsForExport(): Promise<SavedLocation[]> {
+    DEV_LOG('[DataExport] getAllSavedLocationsForExport called');
+    this.ensureServiceReady();
+
+    if (this.isGuest) {
+      DEV_LOG('[DataExport] Guest mode - returning saved locations from localStorage');
+      return this.getGuestSavedLocations();
+    }
+
+    if (!firestore || !this.userId) {
+      DEV_LOG('[DataExport] No Firestore or userId available for saved locations export');
+      return [];
+    }
+
+    try {
+      DEV_LOG('[DataExport] Querying Firestore for saved locations for userId:', this.userId);
+      const q = query(
+        collection(firestore, this.savedLocationsCollection),
+        where('userId', '==', this.userId)
+      );
+      const snapshot = await getDocs(q);
+      DEV_LOG('[DataExport] Firestore returned', snapshot.size, 'saved locations for export');
+
+      const locations: SavedLocation[] = [];
+      for (const docSnap of snapshot.docs) {
+        const data = docSnap.data();
+        const converted = await this.convertFromFirestore(data, docSnap.id, docSnap.id, 'savedLocations');
+        const { firebaseDocId: _firebaseDocId, ...rest } = converted;
+        locations.push(rest as SavedLocation);
+      }
+
+      const sorted = locations.sort((a, b) => {
+        const aTime = a.createdAt || '';
+        const bTime = b.createdAt || '';
+        if (aTime && bTime && aTime !== bTime) {
+          return aTime.localeCompare(bTime);
+        }
+        return (a.name || '').localeCompare(b.name || '');
+      });
+
+      DEV_LOG('[DataExport] Returning', sorted.length, 'sorted locations for export');
+      return sorted;
+    } catch (error) {
+      PROD_ERROR('[DataExport] Error fetching saved locations for export:', error);
       throw error;
     }
   }
@@ -3193,237 +3220,6 @@ export class FirebaseDataService {
 
   // SAVED LOCATION METHODS
 
-  private async persistSavedLocation(params: {
-    sanitizedInput: Record<string, unknown>;
-    duplicateCheck: SavedLocation[];
-    duplicateTolerance: number;
-    skipDuplicateCheck: boolean;
-    overrideId?: string;
-    explicitTimestamps?: { createdAt?: string; updatedAt?: string };
-  }): Promise<SavedLocation> {
-    const { sanitizedInput, duplicateCheck, duplicateTolerance, skipDuplicateCheck, overrideId, explicitTimestamps } = params;
-
-    if (!firestore || !this.userId) {
-      throw new Error('Firestore not available for saved locations');
-    }
-
-    if (!skipDuplicateCheck && sanitizedInput.lat != null && sanitizedInput.lon != null) {
-      const lat = Number(sanitizedInput.lat);
-      const lon = Number(sanitizedInput.lon);
-      const clash = duplicateCheck.find((loc) => {
-        if (typeof loc.lat !== 'number' || typeof loc.lon !== 'number') return false;
-        return Math.abs(loc.lat - lat) < duplicateTolerance && Math.abs(loc.lon - lon) < duplicateTolerance;
-      });
-      if (clash) {
-        throw new Error(`A location at these coordinates already exists: "${clash.name}"`);
-      }
-    }
-
-    const ensureIso = (value?: string): string => {
-      if (typeof value === 'string') {
-        const parsed = new Date(value);
-        if (!Number.isNaN(parsed.getTime())) {
-          return parsed.toISOString();
-        }
-      }
-      return new Date().toISOString();
-    };
-
-    const nowIso = new Date().toISOString();
-    const createdAtIso = explicitTimestamps?.createdAt ? ensureIso(explicitTimestamps.createdAt) : nowIso;
-    const updatedAtIso = explicitTimestamps?.updatedAt ? ensureIso(explicitTimestamps.updatedAt) : nowIso;
-
-    const docId = overrideId ?? generateULID();
-    const payload: Record<string, unknown> = {
-      ...sanitizedInput,
-      userId: this.userId,
-      createdAt: explicitTimestamps?.createdAt ? new Date(createdAtIso) : serverTimestamp(),
-      updatedAt: explicitTimestamps?.updatedAt ? new Date(updatedAtIso) : serverTimestamp(),
-    };
-
-    let encryptedPayload = payload;
-    try {
-      encryptedPayload = await encryptionService.encryptFields('savedLocations', payload);
-    } catch (error) {
-      DEV_WARN('[SavedLocations] Encryption failed for persistSavedLocation:', error);
-    }
-
-    try {
-      DEV_LOG('[SavedLocations] Writing saved location document:', docId);
-      await setDoc(doc(firestore, this.savedLocationsCollection, docId), encryptedPayload);
-    } catch (error) {
-      PROD_ERROR('[SavedLocations] Error writing saved location:', error);
-      throw error;
-    }
-
-    const resolvedName = typeof sanitizedInput.name === 'string' && sanitizedInput.name.trim().length > 0
-      ? sanitizedInput.name
-      : 'Saved Location';
-
-    const savedLocation: SavedLocation = {
-      id: docId,
-      userId: this.userId ?? undefined,
-      name: resolvedName,
-      water: sanitizedInput.water as string | undefined,
-      location: sanitizedInput.location as string | undefined,
-      lat: sanitizedInput.lat as number | undefined,
-      lon: sanitizedInput.lon as number | undefined,
-      notes: sanitizedInput.notes as string | undefined,
-      createdAt: createdAtIso,
-      updatedAt: updatedAtIso,
-    };
-
-    this.emitSavedLocationsChanged(overrideId ? 'updated' : 'created', docId);
-    return savedLocation;
-  }
-
-  async replaceSavedLocations(locations: SavedLocation[]): Promise<ReplaceSavedLocationsResult> {
-    DEV_LOG('[SavedLocations] replaceSavedLocations called with count:', Array.isArray(locations) ? locations.length : 0);
-    this.ensureServiceReady();
-
-    const source = Array.isArray(locations) ? locations : [];
-    const normalized: SavedLocation[] = [];
-    const limit = this.savedLocationsLimit;
-    let duplicatesSkipped = 0;
-    let invalidSkipped = 0;
-    let limitSkipped = 0;
-
-    const resolveIso = (value?: string, fallback?: string): string => {
-      if (typeof value === 'string' && value.trim().length > 0) {
-        const parsed = new Date(value);
-        if (!Number.isNaN(parsed.getTime())) {
-          return parsed.toISOString();
-        }
-      }
-      if (typeof fallback === 'string' && fallback.length > 0) {
-        return fallback;
-      }
-      return new Date().toISOString();
-    };
-
-    const isDuplicateId = (candidateId: string, existing: SavedLocation[]): boolean => {
-      return existing.some((loc) => loc.id === candidateId);
-    };
-
-    for (const raw of source) {
-      if (!raw) {
-        invalidSkipped++;
-        continue;
-      }
-
-      if (normalized.length >= limit) {
-        limitSkipped++;
-        continue;
-      }
-
-      const baseName = typeof raw.name === 'string' && raw.name.trim().length > 0
-        ? raw.name.trim()
-        : (typeof raw.location === 'string' && raw.location.trim().length > 0
-          ? raw.location.trim()
-          : 'Imported Location');
-
-      const payloadInput: SavedLocationCreateInput = {
-        name: baseName,
-        water: raw.water,
-        location: raw.location,
-        lat: raw.lat,
-        lon: raw.lon,
-        notes: raw.notes,
-      };
-
-      try {
-        this.validateSavedLocationInput(payloadInput, false);
-      } catch (error) {
-        DEV_WARN('[SavedLocations] Skipping invalid saved location during replace:', error);
-        invalidSkipped++;
-        continue;
-      }
-
-      const sanitized = this.stripUndefined(this.sanitizeSavedLocationInput(payloadInput));
-      const id = typeof raw.id === 'string' && raw.id.trim().length > 0 ? raw.id : generateULID();
-      const createdAtIso = resolveIso(raw.createdAt);
-      const updatedAtIso = resolveIso(raw.updatedAt, createdAtIso);
-
-      const candidate: SavedLocation = {
-        id,
-        name: (sanitized.name as string) ?? baseName,
-        water: sanitized.water as string | undefined,
-        location: sanitized.location as string | undefined,
-        lat: sanitized.lat as number | undefined,
-        lon: sanitized.lon as number | undefined,
-        notes: sanitized.notes as string | undefined,
-        createdAt: createdAtIso,
-        updatedAt: updatedAtIso,
-      };
-
-      if (isDuplicateId(candidate.id, normalized)) {
-        DEV_LOG('[SavedLocations] Skipping saved location with duplicate id during bulk replace:', candidate.id);
-        duplicatesSkipped++;
-        continue;
-      }
-
-      normalized.push(candidate);
-    }
-
-    if (this.isGuest) {
-      this.persistGuestSavedLocations(normalized);
-      this.emitSavedLocationsChanged('updated', 'bulk-import');
-      DEV_LOG('[SavedLocations] Guest saved locations replaced count:', normalized.length);
-      return {
-        imported: normalized.length,
-        duplicatesSkipped,
-        invalidSkipped,
-        limitSkipped,
-      };
-    }
-
-    if (!firestore || !this.userId) {
-      throw new Error('Firestore not available for saved locations');
-    }
-
-    try {
-      const existingSnapshot = await getDocs(query(collection(firestore, this.savedLocationsCollection), where('userId', '==', this.userId)));
-      if (!existingSnapshot.empty) {
-        const deleteBatch = writeBatch(firestore);
-        existingSnapshot.docs.forEach((docSnap) => deleteBatch.delete(docSnap.ref));
-        await deleteBatch.commit();
-      }
-
-      for (const entry of normalized) {
-        await this.persistSavedLocation({
-          sanitizedInput: this.stripUndefined(this.sanitizeSavedLocationInput({
-            name: entry.name,
-            water: entry.water,
-            location: entry.location,
-            lat: entry.lat,
-            lon: entry.lon,
-            notes: entry.notes,
-          })),
-          duplicateCheck: [],
-          duplicateTolerance: 0,
-          skipDuplicateCheck: true,
-          overrideId: entry.id,
-          explicitTimestamps: {
-            createdAt: entry.createdAt,
-            updatedAt: entry.updatedAt,
-          },
-        });
-      }
-
-      this.emitSavedLocationsChanged('updated', 'bulk-import');
-      DEV_LOG('[SavedLocations] Firestore saved locations replaced count:', normalized.length);
-      return {
-        imported: normalized.length,
-        duplicatesSkipped,
-        invalidSkipped,
-        limitSkipped,
-      };
-    } catch (error) {
-      PROD_ERROR('[SavedLocations] Failed to replace saved locations:', error);
-      throw error;
-    }
-  }
-
   async getSavedLocations(): Promise<SavedLocation[]> {
     DEV_LOG('[SavedLocations] getSavedLocations called');
     this.ensureServiceReady();
@@ -3546,13 +3342,58 @@ export class FirebaseDataService {
       }
     }
 
-    return await this.persistSavedLocation({
-      sanitizedInput: sanitized,
-      duplicateCheck: current,
-      duplicateTolerance: 0.0001,
-      skipDuplicateCheck: false,
-    });
+    const nowIso = new Date().toISOString();
+    const payload: Record<string, unknown> = {
+      ...sanitized,
+      userId: this.userId,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    };
+    DEV_LOG('[SavedLocations] Payload before encryption:', payload);
 
+    let encrypted = payload;
+    try {
+      encrypted = await encryptionService.encryptFields('savedLocations', payload);
+      DEV_LOG('[SavedLocations] Payload after encryption:', encrypted);
+    } catch (error) {
+      DEV_WARN('[SavedLocations] Encryption failed:', error);
+    }
+
+    try {
+      DEV_LOG('[SavedLocations] Writing to Firestore collection:', this.savedLocationsCollection);
+      const docRef = await addDoc(collection(firestore, this.savedLocationsCollection), encrypted);
+      DEV_LOG('[SavedLocations] Firestore document created with ID:', docRef.id);
+      
+      const {
+        name,
+        water,
+        location: locationName,
+        lat,
+        lon,
+        notes
+      } = sanitized as SavedLocationCreateInput;
+
+      const savedLocation: SavedLocation = {
+        id: docRef.id,
+        userId: this.userId ?? undefined,
+        name,
+        water,
+        location: locationName,
+        lat,
+        lon,
+        notes,
+        createdAt: nowIso,
+        updatedAt: nowIso
+      };
+      
+      DEV_LOG('[SavedLocations] Emitting savedLocationsChanged event');
+      this.emitSavedLocationsChanged('created', docRef.id);
+      DEV_LOG('[SavedLocations] Successfully created saved location:', savedLocation);
+      return savedLocation;
+    } catch (error) {
+      PROD_ERROR('[SavedLocations] Error creating saved location:', error);
+      throw error;
+    }
   }
 
   async updateSavedLocation(id: string, updates: SavedLocationUpdateInput): Promise<void> {

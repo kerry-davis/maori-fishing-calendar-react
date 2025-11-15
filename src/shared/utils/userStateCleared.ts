@@ -1,8 +1,6 @@
-import { encryptionService } from '@shared/services/encryptionService';
-import { clearUserContext as enhancedClearUserContext } from './clearUserContext';
+import { clearUserContext as enhancedClearUserContext, isUserContextCleared } from './clearUserContext';
 import { auth } from '@shared/services/firebase';
-import { firebaseDataService } from '@shared/services/firebaseDataService';
-import { databaseService } from '@shared/services/databaseService';
+import { fallbackBasicCleanup } from './fallbackBasicCleanup';
 
 /**
  * Enhanced user state clearing with comprehensive cleanup.
@@ -12,6 +10,11 @@ export async function clearUserState(): Promise<void> {
   console.log('🧹 Starting enhanced user state cleanup...');
   
   try {
+    if (isUserContextCleared()) {
+      console.log('✅ User context already cleared; skipping enhanced cleanup run');
+      return;
+    }
+
     // Use the comprehensive clearUserContext utility
     const result = await enhancedClearUserContext();
     
@@ -33,56 +36,6 @@ export async function clearUserState(): Promise<void> {
       console.error('❌ Even basic cleanup failed:', fallbackError);
       throw fallbackError;
     }
-  }
-}
-
-/**
- * Basic fallback cleanup for severe error scenarios
- */
-async function fallbackBasicCleanup(): Promise<void> {
-  console.log('🔧 Running basic fallback cleanup...');
-  
-  // Browser context safety check
-  if (typeof window === 'undefined') {
-    console.log('🔧 Running in non-browser context, skipping localStorage/sessionStorage clearing');
-    return;
-  }
-  
-  // Most critical items to clear
-  const criticalKeys = ['userLocation', 'tacklebox', 'gearTypes', 'theme'];
-  
-  criticalKeys.forEach(key => {
-    try {
-      if (typeof localStorage !== 'undefined' && localStorage.getItem(key)) {
-        localStorage.removeItem(key);
-      }
-    } catch (error) {
-      console.warn(`Failed to remove ${key}:`, error);
-    }
-  });
-  
-  // Clear sessionStorage
-  try {
-    if (typeof sessionStorage !== 'undefined') {
-      sessionStorage.clear();
-    }
-  } catch (error) {
-    console.warn('Failed to clear sessionStorage:', error);
-  }
-  
-  // Clear basic services
-  try {
-    encryptionService.clear();
-  } catch (error) {
-    console.warn('Failed to clear encryption:', error);
-  }
-  
-  // Clear Firebase services if available (optional for fallback)
-  try {
-    firebaseDataService.clearSyncQueue();
-    databaseService.clearAllData();
-  } catch (error) {
-    console.warn('Firebase services cleanup not available:', error);
   }
 }
 
