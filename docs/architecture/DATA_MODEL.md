@@ -13,7 +13,8 @@ erDiagram
   USER ||--o{ USER_SAVED_LOCATIONS : "owns"
   TRIPS ||--o{ WEATHER_LOGS : "has"
   TRIPS ||--o{ FISH_CAUGHT : "has"
-  FISH_CAUGHT o|--|| STORAGE_ENC_PHOTO : "photo (photoPath)"
+  FISH_CAUGHT ||--o{ FISH_CAUGHT_PHOTOS : "has"
+  FISH_CAUGHT_PHOTOS o|--|| STORAGE_ENC_PHOTO : "photo (photoPath)"
 
   USER {
     string uid PK
@@ -83,12 +84,28 @@ erDiagram
     string[] gear
     string[] gearIds  "optional: tackleItems doc ids"
     string details
+    string primaryPhotoId "points at photos[].id"
+    json photos[]    "array of FishPhoto entries (see below)"
+    string photoHash "legacy single-photo fields (populated for primary photo)"
+    string photoPath "legacy single-photo fields (populated for primary photo)"
+    string photoMime "legacy single-photo fields (populated for primary photo)"
+    string photoUrl  "legacy single-photo fields (populated for primary photo)"
+    string encryptedMetadata "legacy encrypted metadata for primary photo"
+    string contentHash
+    timestamp createdAt
+    timestamp updatedAt
+  }
+
+  FISH_CAUGHT_PHOTOS {
+    string id         "ulid, stable per catch"
+    string fishId FK  "references FISH_CAUGHT.id"
+    number order      "0-based ordering for galleries"
     string photoHash
     string photoPath  "users/<uid>/enc_photos/... or users/<uid>/images/..."
     string photoMime
     string photoUrl   "optional cached (avoid persisting for encrypted photos)"
     string encryptedMetadata "for encrypted photos"
-    string contentHash
+    bool isPrimary
     timestamp createdAt
     timestamp updatedAt
   }
@@ -131,11 +148,12 @@ Notes:
 - Saved locations encrypt name, water, location, and notes fields client-side.
  
 ### Update semantics and guardrails (to prevent data loss and display drift)
-- FISH_CAUGHT photo fields are preserved on updates unless an explicit removal signal is provided. Clients MUST NOT clear photo-related fields by omission.
-  - To remove a photo, send one of: `photo: ''` or `photoPath: ''` or `photoUrl: ''` or `removePhoto: true`.
-  - To keep an existing photo unchanged, do not include any photo fields in the update payload.
-  - To replace a photo, set `photo` to a data URL; the service will move it to Storage and populate `photoPath` (+ `encryptedMetadata` when encrypted). For encrypted photos, `photoUrl` may remain empty by design.
-  - When editing locally cached records (IndexedDB/guest mode), merge the existing photo metadata (`photoPath`, `photoUrl`, `photoHash`, `photoMime`, `encryptedMetadata`) into the update payload so the client-side store does not drop references while Firestore keeps them.
+- Fish Catch photos now live in a `photos[]` array on each record (and sync to Firestore/IndexedDB as structured subdocuments). Clients must treat `photos` as the source of truth and keep the denormalized legacy fields (`photoPath`, `photoUrl`, etc.) in sync by letting the data service recompute them.
+  - Each entry mirrors the `FISH_CAUGHT_PHOTOS` schema (`id`, `order`, storage metadata, `isPrimary`). The service automatically uploads inline data URLs, stamps `order`, and re-derives the legacy fields for backwards compatibility.
+  - `primaryPhotoId` points at the canonical cover image. If missing, the first `photos[]` entry is treated as primary.
+  - To remove a specific photo, drop it from `photos[]`; to clear all photos, send an empty array **and** explicit legacy removal markers (`photo: ''` etc.) to satisfy older clients.
+  - When editing locally cached records (IndexedDB/guest mode), persist the entire `photos[]` array plus the legacy metadata so offline edits never lose references while Firestore keeps them.
+  - Encrypted and guest flows still rely on `photoPath` + `encryptedMetadata`; the viewer hydrates each entry individually and exposes carousel controls.
 - Gear rename propagation runs asynchronously. UI should enqueue rename tasks (via the gear maintenance service) and surface progress feedback rather than blocking the modal while catch records are updated. The maintenance service now emits canonical rename events (`gear-rename-applied`, `gear-type-rename-applied`) immediately after writing both Firestore and IndexedDB; consumers (e.g., Trip Log) must subscribe and update in-memory state to keep denormalized gear labels in sync without requiring a full refresh. When normalizing catch gear locally, prefer existing composite entries (`type|brand|name|colour`) over tackle-box fallbacks so freshly renamed records are not overwritten by stale name-only values.
 - Encrypted photos: prefer `photoPath` + `encryptedMetadata`; `photoUrl` is optional and often blank for encrypted objects (download URLs are fetched on demand).
 - UI photo handling: gallery listings and modal viewers seed placeholder entries for storage-backed photos so every `fishCaught` record with a `photoPath` appears immediately, then hydrate with decrypted/pre-signed URLs when available. Trip Log, Fish Catch, and Gallery modals all invoke the shared `PhotoViewerModal`, ensuring identical sizing, metadata layout, and sign-in prompts when full-screening images; the viewer automatically closes when its parent modal unmounts, avoiding orphaned overlays.
@@ -191,7 +209,9 @@ erDiagram
     string time
     string[] gear
     string details
-    string photo       "inline data URL in guest/offline"
+    json photos[]      "array of FishPhoto entries (inline data URLs for guest/offline)"
+    string primaryPhotoId
+    string photo       "legacy inline data URL for the primary photo (kept for compatibility)"
     string guestSessionId
   }
 

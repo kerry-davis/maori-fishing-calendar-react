@@ -230,6 +230,20 @@ export interface WeatherLog {
   guestSessionId?: string; // Guest session ID for guest user data
 }
 
+export interface FishPhoto {
+  id: string;
+  order: number;
+  photo?: string;
+  photoHash?: string;
+  photoPath?: string;
+  photoMime?: string;
+  photoUrl?: string;
+  encryptedMetadata?: string;
+  isPrimary?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface FishCaught {
   id: string;
   tripId: number;
@@ -241,6 +255,8 @@ export interface FishCaught {
   // New stable references to gear items (Firestore doc IDs or generated IDs)
   gearIds?: string[];
   details: string;
+  photos?: FishPhoto[];
+  primaryPhotoId?: string;
   // Legacy inline/base64 photo or URL (kept for backward compatibility)
   photo?: string;
   // New Storage-backed photo reference fields

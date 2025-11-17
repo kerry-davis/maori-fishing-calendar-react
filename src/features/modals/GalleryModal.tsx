@@ -4,16 +4,21 @@ import PhotoViewerModal from "./PhotoViewerModal";
 import type {
    ModalProps,
    GallerySortOrder,
+   FishCaught,
+   FishPhoto,
+   Trip,
 } from "@shared/types";
 import { useDatabaseService } from '../../app/providers/DatabaseContext';
 import { photoMigrationService } from "@shared/services/photoMigrationService";
 import { useAuth } from '../../app/providers/AuthContext';
 import { getFishPhotoPreview, createPlaceholderSVG, createSignInEncryptedPlaceholder } from "@shared/utils/photoPreviewUtils";
+import { normalizeFishPhotos } from "@shared/utils/fishPhotoUtils";
 
 
 interface PhotoItem {
   id: string;
   fishId: string;
+  photoId: string;
   tripId: number;
   photo: string;
   requiresAuth?: boolean;
@@ -125,42 +130,47 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
     const tripsById = new Map(trips.map((t: any) => [t.id, t]));
 
     // Initial skeleton items (fast render)
+    const photoEntries: { fish: FishCaught; trip: Trip; photo: FishPhoto }[] = [];
     const initialItems: PhotoItem[] = [];
+    const isGuest = !user;
+
     for (const fish of fishCaught) {
       const trip = tripsById.get(fish.tripId);
       if (!trip) continue;
-      const rawPhoto: string | undefined = fixPhotoData((fish.photoUrl || fish.photo) ?? '');
-      const isEncrypted = Boolean(fish.encryptedMetadata && typeof fish.photoPath === 'string' && fish.photoPath.includes('enc_photos'));
-      const isGuest = !user;
-      const hasStoragePath = Boolean(fish.photoPath);
+      const normalizedPhotos = normalizeFishPhotos(fish.photos, fish);
+      if (normalizedPhotos.length === 0) continue;
 
-      let initialPhoto: string | undefined;
-      if (isGuest && (isEncrypted || hasStoragePath)) {
-        initialPhoto = createSignInEncryptedPlaceholder();
-      } else if (rawPhoto) {
-        initialPhoto = rawPhoto;
-      } else if (hasStoragePath) {
-        initialPhoto = createPlaceholderSVG('Loading…');
+      for (const photo of normalizedPhotos) {
+        const entryId = `${fish.id}-${photo.id}`;
+        photoEntries.push({ fish, trip, photo });
+
+        const isEncrypted = Boolean(photo.encryptedMetadata && typeof photo.photoPath === 'string' && photo.photoPath.includes('enc_photos'));
+        const hasStoragePath = Boolean(photo.photoPath);
+        let initialPhoto: string | undefined;
+        if (isGuest && (isEncrypted || hasStoragePath)) {
+          initialPhoto = createSignInEncryptedPlaceholder();
+        } else if (photo.photo || photo.photoUrl) {
+          initialPhoto = fixPhotoData(photo.photo || photo.photoUrl || '');
+        } else if (hasStoragePath) {
+          initialPhoto = createPlaceholderSVG('Loading…');
+        }
+
+        initialItems.push({
+          id: entryId,
+          fishId: fish.id,
+          photoId: photo.id,
+          tripId: fish.tripId,
+          photo: initialPhoto || createPlaceholderSVG('Loading…'),
+          requiresAuth: isGuest && (isEncrypted || hasStoragePath),
+          species: fish.species,
+          length: fish.length,
+          weight: fish.weight,
+          date: trip.date,
+          location: trip.location,
+          water: trip.water,
+          time: fish.time,
+        });
       }
-
-      if (!initialPhoto) {
-        continue;
-      }
-
-      initialItems.push({
-        id: `${fish.id}-${fish.tripId}`,
-        fishId: fish.id,
-        tripId: fish.tripId,
-        photo: initialPhoto || createPlaceholderSVG('Loading…'),
-        requiresAuth: isGuest && (isEncrypted || hasStoragePath),
-        species: fish.species,
-        length: fish.length,
-        weight: fish.weight,
-        date: trip.date,
-        location: trip.location,
-        water: trip.water,
-        time: fish.time,
-      });
     }
     setPhotos(initialItems);
 
@@ -170,22 +180,20 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
     const workers: Promise<void>[] = [];
     for (let w = 0; w < CONCURRENCY; w++) {
       workers.push((async () => {
-        while (index < fishCaught.length) {
-          const i = index++;
-          const fish = fishCaught[i];
-          const trip = tripsById.get(fish.tripId);
-          if (!trip) continue;
+        while (index < photoEntries.length) {
+          const entry = photoEntries[index++];
+          const { fish, photo } = entry;
           try {
-            const isEncrypted = Boolean(fish.encryptedMetadata && typeof fish.photoPath === 'string' && fish.photoPath.includes('enc_photos'));
-            const hasStoragePath = Boolean(fish.photoPath);
+            const isEncrypted = Boolean(photo.encryptedMetadata && typeof photo.photoPath === 'string' && photo.photoPath.includes('enc_photos'));
+            const hasStoragePath = Boolean(photo.photoPath);
             if (!user && (isEncrypted || hasStoragePath)) {
-              // Keep sign-in placeholder for guests; skip fetch/decrypt
               continue;
             }
-            const url = await getFishPhotoPreview(fish as any);
+            const url = await getFishPhotoPreview(fish as any, photo);
             if (url) {
               if (url.startsWith('blob:')) objectUrlsRef.current.push(url);
-              setPhotos(prev => prev.map(p => p.fishId === fish.id && p.tripId === fish.tripId ? { ...p, photo: url } : p));
+              const targetId = `${fish.id}-${photo.id}`;
+              setPhotos(prev => prev.map(p => p.id === targetId ? { ...p, photo: url } : p));
             }
           } catch (e) {
             // ignore per-item errors

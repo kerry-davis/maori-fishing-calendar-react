@@ -6,7 +6,7 @@ import { useDatabaseService } from '../../app/providers/DatabaseContext';
 import { WeatherLogModal } from "./WeatherLogModal";
 import { FishCatchModal } from "./FishCatchModal";
 import ConfirmationDialog from "@shared/components/ConfirmationDialog";
-import type { Trip, WeatherLog, FishCaught, DateModalProps } from "@shared/types";
+import type { Trip, WeatherLog, FishCaught, FishPhoto, DateModalProps } from "@shared/types";
 import { DEV_LOG, PROD_ERROR } from '../../shared/utils/loggingHelpers';
 import { useAuth } from '../../app/providers/AuthContext';
 import { createSignInEncryptedPlaceholder } from '@shared/utils/photoPreviewUtils';
@@ -14,6 +14,9 @@ import { getOrCreateGuestSessionId } from '@shared/services/guestSessionService'
 import { useFirebaseTackleBox } from '@shared/hooks/useFirebaseTackleBox';
 import { subscribeGearMaintenance } from '@shared/services/gearLabelMaintenanceService';
 import PhotoViewerModal from './PhotoViewerModal';
+import { normalizeFishPhotos, getPrimaryPhoto } from "@shared/utils/fishPhotoUtils";
+
+const buildPhotoPreviewKey = (fishId: string, photoId?: string) => `${fishId}:${photoId ?? 'legacy'}`;
 
 export interface TripLogModalProps extends DateModalProps {
   onEditTrip?: (tripId: number) => void;
@@ -58,8 +61,9 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
   const { user } = useAuth();
   const [tackleBox] = useFirebaseTackleBox();
   const [photoViewer, setPhotoViewer] = useState<{
-    photoSrc?: string;
-    requiresAuth: boolean;
+    fish: FishCaught;
+    photos: FishPhoto[];
+    index: number;
     metadata: {
       species?: string;
       length?: string;
@@ -70,6 +74,39 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
       water?: string;
     };
   } | null>(null);
+
+  useEffect(() => {
+    if (!photoViewer) {
+      return;
+    }
+    const currentPhoto = photoViewer.photos[photoViewer.index];
+    if (!currentPhoto) {
+      return;
+    }
+    const key = buildPhotoPreviewKey(photoViewer.fish.id, currentPhoto.id);
+    const requiresAuth = !user && Boolean(currentPhoto.photoPath || currentPhoto.encryptedMetadata);
+    if (photoPreviews[key] || requiresAuth) {
+      return;
+    }
+    let cancelled = false;
+    const hydratePreview = async () => {
+      try {
+        const preview = await getFishPhotoPreview(photoViewer.fish, currentPhoto);
+        if (preview && !cancelled) {
+          setPhotoPreviews(prev => ({ ...prev, [key]: preview }));
+          if (preview.startsWith('blob:')) {
+            objectUrlsRef.current.push(preview);
+          }
+        }
+      } catch {
+        // Ignore download failures; placeholder will remain
+      }
+    };
+    void hydratePreview();
+    return () => {
+      cancelled = true;
+    };
+  }, [photoViewer, photoPreviews, user]);
 
   // Format date for display and database queries
   const formatDateForDisplay = (date: Date): string => {
@@ -221,7 +258,8 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
 
       const normalizedCatches = sanitized.map((fish) => ({
         ...fish,
-        gear: canonicalizeGearEntries(fish.gear)
+        gear: canonicalizeGearEntries(fish.gear),
+        photos: normalizeFishPhotos(fish.photos, fish),
       }));
 
       setFishCatches(normalizedCatches);
@@ -229,22 +267,26 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
       // Generate photo previews (including decryption)
       const previews: Record<string, string> = {};
       for (const fish of normalizedCatches) {
-        // Only render preview if photo, photoUrl, or photoPath exists
-        if (!fish.photo && !fish.photoUrl && !fish.photoPath) {
+        if (!Array.isArray(fish.photos) || fish.photos.length === 0) {
           continue;
         }
-        // Guest users cannot fetch private Storage; show sign-in placeholder for any storage-backed path
-        const isEncrypted = Boolean(fish.encryptedMetadata && typeof fish.photoPath === 'string' && fish.photoPath.includes('enc_photos'));
-        const hasStoragePath = Boolean(fish.photoPath);
-        const preview = (!user && (isEncrypted || hasStoragePath))
-          ? createSignInEncryptedPlaceholder()
-          : await getFishPhotoPreview(fish);
-        const fallback = fish.photoUrl || fish.photo || undefined;
-        const resolvedPreview = preview || fallback;
-        if (resolvedPreview) {
-          previews[fish.id] = resolvedPreview;
-          if (preview?.startsWith('blob:')) {
-            objectUrlsRef.current.push(preview);
+        for (const photo of fish.photos) {
+          if (!photo.photo && !photo.photoUrl && !photo.photoPath) {
+            continue;
+          }
+          const isEncrypted = Boolean(photo.encryptedMetadata && typeof photo.photoPath === 'string' && photo.photoPath.includes('enc_photos'));
+          const hasStoragePath = Boolean(photo.photoPath);
+          const preview = (!user && (isEncrypted || hasStoragePath))
+            ? createSignInEncryptedPlaceholder()
+            : await getFishPhotoPreview(fish, photo);
+          const fallback = photo.photoUrl || photo.photo || fish.photoUrl || fish.photo || undefined;
+          const resolvedPreview = preview || fallback;
+          if (resolvedPreview) {
+            const key = buildPhotoPreviewKey(fish.id, photo.id);
+            previews[key] = resolvedPreview;
+            if (preview?.startsWith('blob:')) {
+              objectUrlsRef.current.push(preview);
+            }
           }
         }
       }
@@ -753,15 +795,26 @@ export const TripLogModal: React.FC<TripLogModalProps> = ({
       />
     </Modal>
 
-    {photoViewer && (
-      <PhotoViewerModal
-        isOpen={true}
-        photoSrc={photoViewer.photoSrc}
-        requiresAuth={photoViewer.requiresAuth}
-        metadata={photoViewer.metadata}
-        onClose={() => setPhotoViewer(null)}
-      />
-    )}
+    {photoViewer && (() => {
+      const currentPhoto = photoViewer.photos[photoViewer.index];
+      if (!currentPhoto) return null;
+      const key = buildPhotoPreviewKey(photoViewer.fish.id, currentPhoto.id);
+      const photoSrc = photoPreviews[key] || currentPhoto.photoUrl || currentPhoto.photo;
+      const requiresAuth = !user && Boolean(currentPhoto.photoPath || currentPhoto.encryptedMetadata);
+      const handleNext = () => setPhotoViewer(prev => prev ? { ...prev, index: (prev.index + 1) % prev.photos.length } : prev);
+      const handlePrev = () => setPhotoViewer(prev => prev ? { ...prev, index: (prev.index - 1 + prev.photos.length) % prev.photos.length } : prev);
+      return (
+        <PhotoViewerModal
+          isOpen={true}
+          photoSrc={photoSrc}
+          requiresAuth={requiresAuth}
+          metadata={photoViewer.metadata}
+          onClose={() => setPhotoViewer(null)}
+          onNext={photoViewer.photos.length > 1 ? handleNext : undefined}
+          onPrevious={photoViewer.photos.length > 1 ? handlePrev : undefined}
+        />
+      );
+    })()}
   </>
   );
 };
@@ -781,8 +834,9 @@ interface TripCardProps {
   fishCatches: FishCaught[];
   photoPreviews: Record<string, string>;
   onPhotoClick: (payload: {
-    photoSrc?: string;
-    requiresAuth: boolean;
+    fish: FishCaught;
+    photos: FishPhoto[];
+    index: number;
     metadata: {
       species?: string;
       length?: string;
@@ -1022,12 +1076,13 @@ const TripCard: React.FC<TripCardProps> = ({
                     <div className="flex items-start justify-between">
                       <div className="flex items-start gap-3 flex-1">
                         {(() => {
-                            const previewSrc = photoPreviews[fish.id] || fish.photoUrl || fish.photo;
-                            const isEncrypted = Boolean(fish.encryptedMetadata && typeof fish.photoPath === 'string' && fish.photoPath.includes('enc_photos'));
-                            const hasStoragePath = Boolean(fish.photoPath);
-                            const requiresAuth = !user && (isEncrypted || hasStoragePath);
+                            const normalizedPhotos = normalizeFishPhotos(fish.photos, fish);
+                            if (normalizedPhotos.length === 0) return null;
+                            const primaryPhoto = getPrimaryPhoto(normalizedPhotos, fish.primaryPhotoId) ?? normalizedPhotos[0];
+                            const previewKey = buildPhotoPreviewKey(fish.id, primaryPhoto.id);
+                            const previewSrc = (previewKey && photoPreviews[previewKey]) || primaryPhoto.photoUrl || primaryPhoto.photo || fish.photoUrl || fish.photo;
+                            const requiresAuth = !user && Boolean(primaryPhoto.photoPath || primaryPhoto.encryptedMetadata);
                             if (!previewSrc && !requiresAuth) return null;
-
                             const metadata = {
                               species: fish.species,
                               length: fish.length,
@@ -1037,26 +1092,35 @@ const TripCard: React.FC<TripCardProps> = ({
                               location: trip.location,
                               water: trip.water,
                             };
-
+                            const photoIndex = Math.max(0, normalizedPhotos.findIndex((p) => p.id === primaryPhoto.id));
                             return (
                               <button
                                 type="button"
-                                onClick={() => onPhotoClick({ photoSrc: previewSrc, requiresAuth, metadata })}
+                                onClick={() => onPhotoClick({ fish, photos: normalizedPhotos, index: photoIndex, metadata })}
                                 className="relative w-10 h-10 flex-shrink-0 rounded border overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--secondary-background)' }}
                                 title="View photo"
                               >
-                                {previewSrc && (
+                                {previewSrc ? (
                                   <img
                                     src={previewSrc}
                                     alt={`${fish.species} photo`}
                                     className="absolute inset-0 w-full h-full object-cover"
                                   />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-[10px]" style={{ color: 'var(--secondary-text)' }}>
+                                    {requiresAuth ? '🔒 Sign in' : 'No photo'}
+                                  </div>
                                 )}
                                 {requiresAuth && (
                                   <div className="absolute inset-0 flex items-center justify-center rounded border"
                                        style={{ backgroundColor: 'rgba(17,24,39,0.65)', borderColor: 'var(--border-color)' }}>
                                     <span className="text-[10px] text-white">🔒 Sign in</span>
+                                  </div>
+                                )}
+                                {normalizedPhotos.length > 1 && (
+                                  <div className="absolute top-0 right-0 bg-black/70 text-white text-[9px] px-1 py-[1px] rounded-bl">
+                                    +{normalizedPhotos.length - 1}
                                   </div>
                                 )}
                               </button>

@@ -5,6 +5,8 @@ export type PhotoRemovalFields = {
   photoHash: undefined;
   photoMime: undefined;
   encryptedMetadata: undefined;
+  photos: [];
+  primaryPhotoId: undefined;
 };
 
 /**
@@ -22,5 +24,7 @@ export function buildPhotoRemovalFields(): PhotoRemovalFields {
     photoHash: undefined,
     photoMime: undefined,
     encryptedMetadata: undefined,
+    photos: [],
+    primaryPhotoId: undefined,
   } as const;
 }

@@ -2,6 +2,7 @@ import type {
   Trip,
   WeatherLog,
   FishCaught,
+  FishPhoto,
   ImportProgress,
   SavedLocation,
   SavedLocationCreateInput,
@@ -36,6 +37,7 @@ import { ref as storageRef, uploadBytes, getDownloadURL, getMetadata, listAll, d
 import type { StorageReference } from "firebase/storage";
 import { DEV_LOG, DEV_WARN, PROD_ERROR } from "../utils/loggingHelpers";
 import { compressImage } from "../utils/imageCompression";
+import { normalizeFishPhotos, deriveLegacyPhotoFields } from "../utils/fishPhotoUtils";
 
 type QueuedSyncOperation = {
   id?: number;
@@ -91,6 +93,87 @@ export class FirebaseDataService {
       if (copy[k] === undefined) delete copy[k];
     });
     return copy as T;
+  }
+
+  private normalizePhotosForRecord(fish: Partial<FishCaught>): FishPhoto[] {
+    return normalizeFishPhotos(fish.photos, {
+      id: typeof fish.id === 'string' ? fish.id : undefined,
+      photo: fish.photo,
+      photoHash: fish.photoHash,
+      photoPath: fish.photoPath,
+      photoMime: fish.photoMime,
+      photoUrl: fish.photoUrl,
+      encryptedMetadata: fish.encryptedMetadata,
+    });
+  }
+
+  private async preparePhotosForPersistence(photos: FishPhoto[]): Promise<FishPhoto[]> {
+    if (!Array.isArray(photos) || photos.length === 0) {
+      return [];
+    }
+
+    const processed: FishPhoto[] = [];
+    const canUpload = this.isOnline && Boolean(this.userId);
+
+    for (let index = 0; index < photos.length; index++) {
+      const current = { ...photos[index], order: index };
+
+      if (typeof current.photo === 'string' && current.photo.startsWith('data:') && canUpload) {
+        const data = this.dataUrlToBytes(current.photo);
+        if (data && this.userId) {
+          try {
+            const refInfo = await this.ensurePhotoInStorage(this.userId, data.bytes, data.mime);
+            if ('inlinePhoto' in refInfo) {
+              current.photo = refInfo.inlinePhoto;
+              current.photoHash = refInfo.photoHash;
+            } else {
+              current.photoHash = refInfo.photoHash;
+              current.photoPath = refInfo.photoPath;
+              current.photoMime = refInfo.photoMime;
+              if (refInfo.photoUrl) current.photoUrl = refInfo.photoUrl;
+              if ('encryptedMetadata' in refInfo && refInfo.encryptedMetadata) {
+                current.encryptedMetadata = refInfo.encryptedMetadata;
+              }
+              delete current.photo;
+            }
+          } catch (error) {
+            DEV_WARN('Failed to move photo to Storage, keeping inline for now:', error);
+          }
+        }
+      }
+      processed.push(this.stripUndefined({ ...current, order: index }));
+    }
+
+    return processed.map((photo, order) => ({ ...photo, order }));
+  }
+
+  private mirrorLegacyPhotoFields(target: Record<string, any>, photos: FishPhoto[]): void {
+    target.photos = photos.map((photo, index) => this.stripUndefined({ ...photo, order: index }));
+    if (!photos.length) {
+      return;
+    }
+
+    const legacy = deriveLegacyPhotoFields(target.photos as FishPhoto[], target.primaryPhotoId);
+    if (legacy.primaryPhotoId) {
+      target.primaryPhotoId = legacy.primaryPhotoId;
+    }
+    if (legacy.photo !== undefined) target.photo = legacy.photo;
+    if (legacy.photoHash !== undefined) target.photoHash = legacy.photoHash;
+    if (legacy.photoPath !== undefined) target.photoPath = legacy.photoPath;
+    if (legacy.photoMime !== undefined) target.photoMime = legacy.photoMime;
+    if (legacy.photoUrl !== undefined) target.photoUrl = legacy.photoUrl;
+    if (legacy.encryptedMetadata !== undefined) target.encryptedMetadata = legacy.encryptedMetadata;
+  }
+
+  private async applyPhotoPipeline(source: Partial<FishCaught>, target: Record<string, any>): Promise<FishPhoto[]> {
+    const normalized = this.normalizePhotosForRecord(source);
+    if (!normalized.length) {
+      target.photos = [];
+      return [];
+    }
+    const prepared = await this.preparePhotosForPersistence(normalized);
+    this.mirrorLegacyPhotoFields(target, prepared);
+    return prepared;
   }
 
   private sanitizeFishUpdatePayload(base: Record<string, any>): Record<string, any> {
@@ -527,6 +610,15 @@ export class FirebaseDataService {
       gear: Array.isArray(fish.gear) ? [...fish.gear].sort() : fish.gear,
       details: fish.details,
       photoHash: fish.photoHash || null,
+      photos: Array.isArray(fish.photos)
+        ? fish.photos.map((photo) => ({
+            id: photo.id,
+            order: photo.order,
+            photoHash: photo.photoHash || null,
+            photoPath: photo.photoPath || null,
+            photoUrl: photo.photoUrl || null,
+          }))
+        : undefined,
     };
     return this.hashStringFNV1a(this.stableStringify(payload));
   }
@@ -1600,32 +1692,14 @@ export class FirebaseDataService {
         };
 
         const localId = `${fishData.tripId}-${generateULID()}`;
-        let fishWithIds: any = { ...sanitizedFishData, id: localId, userId: this.userId };
-        try { fishWithIds = await encryptionService.encryptFields('fishCaught', fishWithIds); } catch (e) { DEV_WARN('[encryption] fish encrypt failed', e); }
-
-        if (this.isOnline && sanitizedFishData.photo && typeof sanitizedFishData.photo === 'string') {
-          const data = this.dataUrlToBytes(sanitizedFishData.photo);
-          if (data && this.userId) {
-            try {
-              const refInfo = await this.ensurePhotoInStorage(this.userId, data.bytes, data.mime);
-              if ('inlinePhoto' in refInfo) {
-                fishWithIds.photo = refInfo.inlinePhoto;
-                fishWithIds.photoHash = refInfo.photoHash;
-              } else {
-                fishWithIds.photoHash = refInfo.photoHash;
-                fishWithIds.photoPath = refInfo.photoPath;
-                fishWithIds.photoMime = refInfo.photoMime;
-                if (refInfo.photoUrl) fishWithIds.photoUrl = refInfo.photoUrl;
-                if ('encryptedMetadata' in refInfo && refInfo.encryptedMetadata) {
-                  fishWithIds.encryptedMetadata = refInfo.encryptedMetadata;
-                }
-                delete fishWithIds.photo;
-              }
-            } catch (e) {
-              DEV_WARN('Failed to move photo to Storage, keeping inline for now:', e);
-            }
-          }
+        const cacheCandidate: Partial<FishCaught> = { ...sanitizedFishData };
+        let fishWithIds: any = { ...cacheCandidate, id: localId, userId: this.userId };
+        const processedPhotos = await this.applyPhotoPipeline(cacheCandidate, fishWithIds);
+        cacheCandidate.photos = processedPhotos;
+        if (fishWithIds.primaryPhotoId) {
+          cacheCandidate.primaryPhotoId = fishWithIds.primaryPhotoId;
         }
+        try { fishWithIds = await encryptionService.encryptFields('fishCaught', fishWithIds); } catch (e) { DEV_WARN('[encryption] fish encrypt failed', e); }
 
         DEV_LOG('[Fish Create] Creating fish catch with data:', fishWithIds);
 
@@ -1642,7 +1716,21 @@ export class FirebaseDataService {
             // Cache to IndexedDB for offline support (use updateFishCaught for upsert)
             if (encryptionService.isReady()) {
               try {
-                const fishToCache = { ...sanitizedFishData, id: localId };
+                const fishToCache: FishCaught = {
+                  ...(cacheCandidate as FishCaught),
+                  id: localId,
+                  photos: processedPhotos,
+                } as FishCaught;
+                if (processedPhotos.length) {
+                  const legacy = deriveLegacyPhotoFields(processedPhotos, cacheCandidate.primaryPhotoId);
+                  Object.entries(legacy).forEach(([key, value]) => {
+                    if (value !== undefined) {
+                      (fishToCache as any)[key] = value;
+                    } else {
+                      delete (fishToCache as any)[key];
+                    }
+                  });
+                }
                 await databaseService.updateFishCaught(fishToCache);
                 DEV_LOG('Fish catch cached to IndexedDB for offline support');
               } catch (cacheError) {
@@ -1695,33 +1783,8 @@ export class FirebaseDataService {
   const cleanFish: any = {};
     Object.entries(fish).forEach(([k, v]) => { if (v !== undefined) (cleanFish as any)[k] = v; });
   let fishWithUser: any = { ...cleanFish, userId: this.userId };
+  await this.applyPhotoPipeline(fishWithUser, fishWithUser);
   try { fishWithUser = await encryptionService.encryptFields('fishCaught', fishWithUser); } catch (e) { DEV_WARN('[encryption] fish encrypt failed', e); }
-
-  // If we have an inline photo and we're online, move it to Storage
-  if (this.isOnline && typeof fishWithUser.photo === 'string' && this.userId) {
-    const data = this.dataUrlToBytes(fishWithUser.photo);
-    if (data) {
-      try {
-        const refInfo = await this.ensurePhotoInStorage(this.userId, data.bytes, data.mime);
-        if ('inlinePhoto' in refInfo) {
-          fishWithUser.photo = refInfo.inlinePhoto;
-          fishWithUser.photoHash = refInfo.photoHash;
-        } else {
-          fishWithUser.photoHash = refInfo.photoHash;
-          fishWithUser.photoPath = refInfo.photoPath;
-          fishWithUser.photoMime = refInfo.photoMime;
-          if (refInfo.photoUrl) fishWithUser.photoUrl = refInfo.photoUrl;
-          // Persist encrypted metadata if available (for encrypted photos)
-          if ('encryptedMetadata' in refInfo && refInfo.encryptedMetadata) {
-            fishWithUser.encryptedMetadata = refInfo.encryptedMetadata;
-          }
-          delete fishWithUser.photo;
-        }
-      } catch (e) {
-        DEV_WARN('Failed to move import photo to Storage, keeping inline for now:', e);
-      }
-    }
-  }
 
   const contentHash = this.computeFishContentHash(fishWithUser as FishCaught);
   fishWithUser.contentHash = contentHash;
@@ -1931,31 +1994,8 @@ export class FirebaseDataService {
       () => databaseService.updateFishCaught(fishCaught),
       async () => {
         let fishWithUser: any = { ...fishCaught, userId: this.userId };
+        await this.applyPhotoPipeline(fishWithUser, fishWithUser);
         try { fishWithUser = await encryptionService.encryptFields('fishCaught', fishWithUser); } catch (e) { DEV_WARN('[encryption] fish encrypt failed', e); }
-
-        if (this.isOnline && typeof fishWithUser.photo === 'string' && this.userId) {
-          const data = this.dataUrlToBytes(fishWithUser.photo);
-          if (data) {
-            try {
-              const refInfo = await this.ensurePhotoInStorage(this.userId, data.bytes, data.mime);
-              if ('inlinePhoto' in refInfo) {
-                fishWithUser.photo = refInfo.inlinePhoto;
-                fishWithUser.photoHash = refInfo.photoHash;
-              } else {
-                fishWithUser.photoHash = refInfo.photoHash;
-                fishWithUser.photoPath = refInfo.photoPath;
-                fishWithUser.photoMime = refInfo.photoMime;
-                if (refInfo.photoUrl) fishWithUser.photoUrl = refInfo.photoUrl;
-                if ('encryptedMetadata' in refInfo && refInfo.encryptedMetadata) {
-                  fishWithUser.encryptedMetadata = refInfo.encryptedMetadata;
-                }
-                delete fishWithUser.photo;
-              }
-            } catch (e) {
-              DEV_WARN('Failed to move updated photo to Storage, keeping inline for now:', e);
-            }
-          }
-        }
 
         // Sanitize payload for Firestore (remove undefined; clear photo-related fields when requested)
         const cleanUpdatePayload = this.sanitizeFishUpdatePayload(fishWithUser);
@@ -3048,37 +3088,22 @@ export class FirebaseDataService {
   }
 
   private async prepareFishQueuedPayload(payload: Record<string, any>): Promise<Record<string, any>> {
-    if (!payload.photo || typeof payload.photo !== 'string' || !this.userId) {
-      return payload;
-    }
+    const hasPhotoData =
+      Array.isArray(payload.photos) ||
+      typeof payload.photo === 'string' ||
+      typeof payload.photoPath === 'string' ||
+      typeof payload.photoUrl === 'string';
 
-    const data = this.dataUrlToBytes(payload.photo);
-    if (!data) {
+    if (!hasPhotoData) {
       return payload;
     }
 
     try {
-      const refInfo = await this.ensurePhotoInStorage(this.userId, data.bytes, data.mime);
-      if ('inlinePhoto' in refInfo) {
-        return { ...payload, photo: refInfo.inlinePhoto, photoHash: refInfo.photoHash };
-      }
-
-      const updated: Record<string, any> = { ...payload };
-      updated.photoHash = refInfo.photoHash;
-      updated.photoPath = refInfo.photoPath;
-      updated.photoMime = refInfo.photoMime;
-      if (refInfo.photoUrl) {
-        updated.photoUrl = refInfo.photoUrl;
-      }
-      if ('encryptedMetadata' in refInfo && refInfo.encryptedMetadata) {
-        updated.encryptedMetadata = refInfo.encryptedMetadata;
-      }
-      delete updated.photo;
-      return updated;
+      await this.applyPhotoPipeline(payload as Partial<FishCaught>, payload);
     } catch (error) {
-      DEV_WARN('Failed to upload queued fish photo to storage', error);
-      return payload;
+      DEV_WARN('Failed to prepare queued fish photos for persistence', error);
     }
+    return payload;
   }
 
   // ID MAPPING UTILITIES
