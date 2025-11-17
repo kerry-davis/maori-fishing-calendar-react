@@ -5,13 +5,13 @@ import { Modal, ModalHeader, ModalBody, ModalFooter } from "./Modal";
 import { useDatabaseService } from '../../app/providers/DatabaseContext';
 import { useAuth } from '../../app/providers/AuthContext';
 import { useFirebaseTackleBox } from "@shared/hooks/useFirebaseTackleBox";
-import { storage } from "@shared/services/firebase";
-import { ref, deleteObject } from "firebase/storage";
-import type { FishCaught } from "@shared/types";
+import type { FishCaught, FishPhoto } from "@shared/types";
 import { getFishPhotoPreview } from "@shared/utils/photoPreviewUtils";
 import { getOrCreateGuestSessionId } from "@shared/services/guestSessionService";
 import { buildPhotoRemovalFields } from "@shared/utils/photoUpdateHelpers";
 import PhotoViewerModal from './PhotoViewerModal';
+import { normalizeFishPhotos, getPrimaryPhoto } from "@shared/utils/fishPhotoUtils";
+import { generateULID } from "@shared/utils/ulid";
 
 export interface FishCatchModalProps {
   isOpen: boolean;
@@ -20,6 +20,10 @@ export interface FishCatchModalProps {
   fishId?: string;
   onFishCaught?: (fish: FishCaught) => void;
 }
+
+type PhotoFormEntry = FishPhoto & {
+  local?: boolean;
+};
 
 export const FishCatchModal: React.FC<FishCatchModalProps> = ({
   isOpen,
@@ -31,6 +35,12 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
   const db = useDatabaseService();
   const { user } = useAuth();
   const [tackleBox] = useFirebaseTackleBox();
+  const normalizeField = (value: unknown): string => {
+    if (typeof value === "string") return value;
+    if (value === null || value === undefined) return "";
+    return String(value);
+  };
+
   const [formData, setFormData] = useState({
     species: "",
     length: "",
@@ -38,12 +48,6 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
     time: "",
     gear: [] as string[],
     details: "",
-    photo: "",
-    photoPath: "",
-    photoUrl: "",
-    photoHash: "",
-    photoMime: "",
-    encryptedMetadata: undefined as string | undefined,
   });
   const [validation, setValidation] = useState({
     isValid: true,
@@ -51,30 +55,24 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [photos, setPhotos] = useState<PhotoFormEntry[]>([]);
+  const [photoPreviews, setPhotoPreviews] = useState<Record<string, string>>({});
+  const [photoAuthLocks, setPhotoAuthLocks] = useState<Record<string, boolean>>({});
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  const [isPhotoLoading, setIsPhotoLoading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set());
   const [fileInputKey, setFileInputKey] = useState(0);
-  const [photoViewer, setPhotoViewer] = useState<{
-    photoSrc?: string;
-    requiresAuth: boolean;
-    metadata: {
-      species?: string;
-      length?: string;
-      weight?: string;
-      time?: string;
-      date?: string;
-      location?: string;
-      water?: string;
-    };
-  } | null>(null);
+  const [photoViewerIndex, setPhotoViewerIndex] = useState<number | null>(null);
+  const [shouldClearLegacyPhoto, setShouldClearLegacyPhoto] = useState(false);
   const [tripDetails, setTripDetails] = useState<{ date?: string; location?: string; water?: string } | null>(null);
   const isEditing = fishId !== undefined;
-  const photoStatusRef = useRef<'unchanged' | 'uploaded' | 'deleted'>('unchanged');
-  const requiresAuthForExistingPhoto = !user && Boolean(formData.photoPath || formData.encryptedMetadata);
+  const primaryPhoto = React.useMemo(
+    () => getPrimaryPhoto(photos, photos.find((p) => p.isPrimary)?.id),
+    [photos]
+  );
+  const primaryPhotoId = primaryPhoto?.id;
+  const initialPhotoCountRef = useRef(0);
   // Gear rename handling: ask for confirmation before removing stale gear
   const [showStaleGearConfirm, setShowStaleGearConfirm] = useState(false);
   const [staleGear, setStaleGear] = useState<string[]>([]);
@@ -243,21 +241,35 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
     try {
       const fish = await db.getFishCaughtById(id);
       if (fish) {
-        setFormData({
-          species: fish.species,
-          length: fish.length,
-          weight: fish.weight,
-          time: fish.time,
-          gear: fish.gear,
-          details: fish.details,
-          photo: fish.photo || "",
-          photoPath: fish.photoPath || "",
-          photoUrl: fish.photoUrl || "",
-          photoHash: fish.photoHash || "",
-          photoMime: fish.photoMime || "",
-          encryptedMetadata: fish.encryptedMetadata ?? undefined,
+        const normalizedPhotos = normalizeFishPhotos(fish.photos, {
+          id: fish.id,
+          photo: fish.photo,
+          photoHash: fish.photoHash,
+          photoPath: fish.photoPath,
+          photoMime: fish.photoMime,
+          photoUrl: fish.photoUrl,
+          encryptedMetadata: fish.encryptedMetadata,
         });
-        photoStatusRef.current = 'unchanged';
+        const previews: Record<string, string> = {};
+        normalizedPhotos.forEach((photo) => {
+          const inline = photo.photo || photo.photoUrl;
+          if (inline) {
+            previews[photo.id] = inline;
+          }
+        });
+        setFormData({
+          species: normalizeField(fish.species),
+          length: normalizeField(fish.length),
+          weight: normalizeField(fish.weight),
+          time: normalizeField(fish.time),
+          gear: Array.isArray(fish.gear) ? fish.gear.map((entry) => normalizeField(entry)) : [],
+          details: normalizeField(fish.details),
+        });
+        setPhotos(normalizedPhotos);
+        setPhotoPreviews(previews);
+        setPhotoAuthLocks({});
+        setShouldClearLegacyPhoto(false);
+        initialPhotoCountRef.current = normalizedPhotos.length;
       } else {
         setError('Fish catch not found');
       }
@@ -279,18 +291,15 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
           time: "",
           gear: [],
           details: "",
-          photo: "",
-          photoPath: "",
-          photoUrl: "",
-          photoHash: "",
-          photoMime: "",
-          encryptedMetadata: undefined,
         });
+        setPhotos([]);
+        setPhotoPreviews({});
+        setPhotoAuthLocks({});
+        setShouldClearLegacyPhoto(false);
+        initialPhotoCountRef.current = 0;
       }
-      photoStatusRef.current = 'unchanged';
       setError(null);
       setValidation({ isValid: true, errors: {} });
-      setPhotoPreview(null);
       setUploadError(null);
     }
   }, [isOpen, isEditing, fishId, loadFishData]);
@@ -321,101 +330,89 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
 
   useEffect(() => {
     if (!isOpen) {
-      setPhotoViewer(null);
+      setPhotoViewerIndex(null);
       setTripDetails(null);
     }
   }, [isOpen]);
 
-  // Cleanup photo preview URL when preview changes or component unmounts
   useEffect(() => {
-    return () => {
-      if (photoPreview && photoPreview.startsWith('blob:')) {
-        URL.revokeObjectURL(photoPreview);
-      }
-    };
-  }, [photoPreview]);
+    if (photos.length > 0) {
+      setShouldClearLegacyPhoto(false);
+      return;
+    }
+    if (isEditing && initialPhotoCountRef.current > 0) {
+      setShouldClearLegacyPhoto(true);
+    }
+  }, [photos.length, isEditing]);
+
+  const fishPhotoContext = React.useMemo(() => {
+    return {
+      id: fishId ?? `${tripId}-draft`,
+      tripId,
+      species: formData.species,
+      length: formData.length,
+      weight: formData.weight,
+      time: formData.time,
+      gear: formData.gear,
+      details: formData.details,
+      photos,
+      primaryPhotoId,
+    } as FishCaught;
+  }, [fishId, tripId, formData, photos, primaryPhotoId]);
+
+  const pendingPhotoIds = React.useMemo(() => {
+    return photos
+      .filter((photo) => {
+        const hasSource = Boolean(photo.photo || photo.photoUrl || photo.photoPath);
+        return hasSource && !photoPreviews[photo.id];
+      })
+      .map((photo) => photo.id);
+  }, [photos, photoPreviews]);
 
   useEffect(() => {
-    if (!isOpen) {
+    if (!isOpen || pendingPhotoIds.length === 0) {
       return;
     }
 
-    if (photoStatusRef.current === 'uploaded') {
-      setIsPhotoLoading(false);
-      return;
-    }
+    let cancelled = false;
 
-    if (photoStatusRef.current === 'deleted') {
-      setPhotoPreview(null);
-      setIsPhotoLoading(false);
-      return;
-    }
-
-    const hasPhotoSource = Boolean(formData.photoPath || formData.photoUrl || formData.photo);
-    if (!hasPhotoSource) {
-      setPhotoPreview(null);
-      setIsPhotoLoading(false);
-      return;
-    }
-
-    let isActive = true;
-    const fallbackSrc = formData.photoUrl || formData.photo || null;
-
-    const fetchPreview = async () => {
-      setIsPhotoLoading(true);
-
-      const fishForPreview: FishCaught = {
-        id: fishId ?? `${tripId}-preview`,
-        tripId,
-        species: '',
-        length: '',
-        weight: '',
-        time: '',
-        gear: [],
-        details: '',
-        photo: formData.photo || undefined,
-        photoUrl: formData.photoUrl || undefined,
-        photoPath: formData.photoPath || undefined,
-        photoHash: formData.photoHash || undefined,
-        photoMime: formData.photoMime || undefined,
-        encryptedMetadata: formData.encryptedMetadata || undefined,
-      };
-
-      try {
-        const preview = await getFishPhotoPreview(fishForPreview);
-        if (!isActive) return;
-        setPhotoPreview(preview ?? fallbackSrc);
-      } catch {
-        if (!isActive) return;
-        setPhotoPreview(fallbackSrc);
-      } finally {
-        if (isActive) {
-          setIsPhotoLoading(false);
+    const hydratePreviews = async () => {
+      for (const photoId of pendingPhotoIds) {
+        const photo = photos.find((entry) => entry.id === photoId);
+        if (!photo) continue;
+        if (!user && (photo.photoPath || photo.encryptedMetadata)) {
+          if (!cancelled) {
+            setPhotoAuthLocks((prev) => ({ ...prev, [photo.id]: true }));
+          }
+          continue;
+        }
+        try {
+          const preview = await getFishPhotoPreview(fishPhotoContext, photo);
+          if (preview && !cancelled) {
+            setPhotoPreviews((prev) => ({ ...prev, [photo.id]: preview }));
+          }
+        } catch {
+          if (!cancelled && !user) {
+            setPhotoAuthLocks((prev) => ({ ...prev, [photo.id]: true }));
+          }
         }
       }
     };
 
-    void fetchPreview();
+    void hydratePreviews();
 
     return () => {
-      isActive = false;
+      cancelled = true;
     };
-  }, [
-    isOpen,
-    isEditing,
-    fishId,
-    tripId,
-    formData.photoPath,
-    formData.photoUrl,
-    formData.photo,
-    formData.photoHash,
-    formData.photoMime,
-    formData.encryptedMetadata,
-    user
-  ]);
+  }, [pendingPhotoIds, photos, isOpen, user, fishPhotoContext]);
 
   const handleInputChange = useCallback((field: string, value: string | string[] | undefined) => {
-    setFormData(prev => ({ ...prev, [field]: value as any }));
+    setFormData(prev => {
+      if (Array.isArray(value)) {
+        return { ...prev, [field]: value.map((entry) => normalizeField(entry)) as any };
+      }
+      return { ...prev, [field]: normalizeField(value) as any };
+    });
 
     // Clear validation error for this field
     if (validation.errors[field]) {
@@ -432,38 +429,90 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
     if (error) setError(null);
   }, [error, validation.errors]);
 
-  const openPhotoViewer = useCallback((src?: string | null, requiresAuthFlag?: boolean) => {
-    if (!src && !requiresAuthFlag) {
+  const removePhoto = useCallback((photoId: string) => {
+    setPhotos(prev => {
+      const filtered = prev.filter(photo => photo.id !== photoId);
+      if (filtered.length === 0) {
+        return [];
+      }
+      const hasPrimary = filtered.some(photo => photo.isPrimary);
+      if (!hasPrimary) {
+        filtered[0].isPrimary = true;
+      }
+      return filtered.map((photo, index) => ({ ...photo, order: index }));
+    });
+    setPhotoPreviews(prev => {
+      const next = { ...prev };
+      delete next[photoId];
+      return next;
+    });
+    setPhotoAuthLocks(prev => {
+      const next = { ...prev };
+      delete next[photoId];
+      return next;
+    });
+  }, []);
+
+  const setPhotoAsPrimary = useCallback((photoId: string) => {
+    setPhotos(prev => prev.map(photo => ({
+      ...photo,
+      isPrimary: photo.id === photoId,
+    })));
+  }, []);
+
+  const openPhotoViewer = useCallback((photoId: string) => {
+    const index = photos.findIndex(photo => photo.id === photoId);
+    if (index === -1) {
       return;
     }
-    const formattedDate = (() => {
-      const raw = tripDetails?.date;
-      if (!raw) return undefined;
-      try {
-        return new Date(raw).toLocaleDateString('en-NZ', {
-          year: 'numeric',
-          month: 'short',
-          day: 'numeric',
-        });
-      } catch {
-        return raw;
-      }
-    })();
+    setPhotoViewerIndex(index);
+  }, [photos]);
 
-    setPhotoViewer({
-      photoSrc: src ?? undefined,
-      requiresAuth: Boolean(requiresAuthFlag),
-      metadata: {
+  const handleViewerClose = useCallback(() => {
+    setPhotoViewerIndex(null);
+  }, []);
+
+  const handleViewerNext = useCallback(() => {
+    setPhotoViewerIndex(prev => {
+      if (prev === null || photos.length <= 1) return prev;
+      return (prev + 1) % photos.length;
+    });
+  }, [photos.length]);
+
+  const handleViewerPrevious = useCallback(() => {
+    setPhotoViewerIndex(prev => {
+      if (prev === null || photos.length <= 1) return prev;
+      return (prev - 1 + photos.length) % photos.length;
+    });
+  }, [photos.length]);
+
+  const viewerPhoto = photoViewerIndex !== null ? photos[photoViewerIndex] : null;
+  const viewerSrc = viewerPhoto ? photoPreviews[viewerPhoto.id] : undefined;
+  const viewerRequiresAuth = viewerPhoto
+    ? Boolean(photoAuthLocks[viewerPhoto.id] || (!user && (viewerPhoto.photoPath || viewerPhoto.encryptedMetadata)))
+    : false;
+  const viewerMetadata = viewerPhoto
+    ? {
         species: formData.species,
         length: formData.length,
         weight: formData.weight,
         time: formData.time,
-        date: formattedDate,
+        date: (() => {
+          if (!tripDetails?.date) return undefined;
+          try {
+            return new Date(tripDetails.date).toLocaleDateString('en-NZ', {
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric',
+            });
+          } catch {
+            return tripDetails.date;
+          }
+        })(),
         location: tripDetails?.location,
         water: tripDetails?.water,
-      },
-    });
-  }, [formData.length, formData.species, formData.time, formData.weight, tripDetails]);
+      }
+    : undefined;
 
   const validateForm = useCallback(() => {
     const errors: Record<string, string> = {};
@@ -553,6 +602,19 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
           seenGearIds.add(gid);
         }
       }
+      const nextPhotos: PhotoFormEntry[] = photos.map((photo, index) => ({
+        ...photo,
+        order: index,
+        isPrimary: photo.id === primaryPhotoId ? true : photo.isPrimary,
+      }));
+
+      const hasPrimary = nextPhotos.some((photo) => photo.isPrimary);
+      if (!hasPrimary && nextPhotos.length > 0) {
+        nextPhotos[0].isPrimary = true;
+      }
+
+      const persistablePhotos: FishPhoto[] = nextPhotos.map(({ local, ...rest }) => rest);
+
       const fishDataBase: any = {
         tripId,
         species: formData.species.trim(),
@@ -564,35 +626,11 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
         details: formData.details.trim(),
       };
 
-      // Only change photo if explicitly uploaded or deleted in this session
-      if (photoStatusRef.current === 'uploaded' && typeof formData.photo === 'string' && formData.photo.startsWith('data:')) {
-        fishDataBase.photo = formData.photo; // let service move to Storage
-      } else if (photoStatusRef.current === 'deleted') {
-        fishDataBase.photo = '';
-        fishDataBase.photoPath = '';
-        fishDataBase.photoUrl = '';
-        fishDataBase.photoHash = undefined;
-        fishDataBase.photoMime = undefined;
-        fishDataBase.encryptedMetadata = undefined;
-      } else {
-        if (typeof formData.photo === 'string' && formData.photo.trim() !== '') {
-          fishDataBase.photo = formData.photo;
-        }
-        if (typeof formData.photoPath === 'string' && formData.photoPath.trim() !== '') {
-          fishDataBase.photoPath = formData.photoPath;
-        }
-        if (typeof formData.photoUrl === 'string' && formData.photoUrl.trim() !== '') {
-          fishDataBase.photoUrl = formData.photoUrl;
-        }
-        if (typeof formData.photoHash === 'string' && formData.photoHash.trim() !== '') {
-          fishDataBase.photoHash = formData.photoHash;
-        }
-        if (typeof formData.photoMime === 'string' && formData.photoMime.trim() !== '') {
-          fishDataBase.photoMime = formData.photoMime;
-        }
-        if (typeof formData.encryptedMetadata === 'string' && formData.encryptedMetadata.trim() !== '') {
-          fishDataBase.encryptedMetadata = formData.encryptedMetadata;
-        }
+      if (persistablePhotos.length > 0) {
+        fishDataBase.photos = persistablePhotos;
+        fishDataBase.primaryPhotoId = persistablePhotos.find((photo) => photo.isPrimary)?.id ?? persistablePhotos[0].id;
+      } else if (shouldClearLegacyPhoto) {
+        Object.assign(fishDataBase, buildPhotoRemovalFields());
       }
 
       let savedData: FishCaught;
@@ -630,117 +668,92 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
     } finally {
       setIsSubmitting(false);
     }
-  }, [db, formData, isEditing, onClose, onFishCaught, tripId, validateForm, fishId]);
+  }, [
+    db,
+    formData,
+    photos,
+    primaryPhotoId,
+    shouldClearLegacyPhoto,
+    isEditing,
+    onClose,
+    onFishCaught,
+    tripId,
+    validateForm,
+    fishId,
+    tackleBox,
+    entryLower,
+    entryNameLower,
+    gearKey,
+    gearKeyLower,
+    norm,
+    normLower,
+    user,
+  ]);
 
   const handlePhotoUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    if (files.length === 0) return;
 
-    // Clean up previous preview URL to prevent memory leaks
-    if (photoPreview && photoPreview.startsWith('blob:')) {
-      URL.revokeObjectURL(photoPreview);
-    }
+    const validFiles = files.filter((file) => {
+      if (!file.type.startsWith('image/')) {
+        setError('Please select a valid image file.');
+        return false;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        setError('File size must be less than 10MB.');
+        return false;
+      }
+      return true;
+    });
 
-    if (!file.type.startsWith('image/')) {
-      setError('Please select a valid image file.');
+    if (validFiles.length === 0) {
+      setUploadError('No valid photos selected.');
       return;
     }
-    if (file.size > 10 * 1024 * 1024) {
-      setError('File size must be less than 10MB.');
-      return;
-    }
 
-    // Create preview URL for selected file immediately
-    const previewUrl = URL.createObjectURL(file);
-    setPhotoPreview(previewUrl);
+    setIsUploadingPhoto(true);
     setUploadError(null);
     setError(null);
 
-    // If not authenticated: persist as data URL (local-only) and keep preview
-    if (!user) {
-      try {
+    const readFile = (file: File) =>
+      new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = () => {
-          const dataUrl = reader.result as string;
-          handleInputChange("photo", dataUrl);
-          handleInputChange("photoPath", "");
-          handleInputChange("photoUrl", "");
-          handleInputChange("photoHash", "");
-          handleInputChange("photoMime", "");
-          handleInputChange("encryptedMetadata", undefined);
-          setPhotoPreview(dataUrl);
-          if (previewUrl.startsWith('blob:')) {
-            URL.revokeObjectURL(previewUrl);
-          }
-          photoStatusRef.current = 'uploaded';
-        };
-        reader.onerror = () => {
-          // Clean up the preview URL on error
-          if (previewUrl.startsWith('blob:')) {
-            URL.revokeObjectURL(previewUrl);
-          }
-          setUploadError('Failed to process photo. Please try again.');
-        };
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error('Failed to process photo'));
         reader.readAsDataURL(file);
-      } catch (e) {
-        // Clean up the preview URL on error
-        if (previewUrl.startsWith('blob:')) {
-          URL.revokeObjectURL(previewUrl);
-        }
-        setUploadError('Failed to process photo. Please try again.');
-      }
-      return;
-    }
+      });
 
-    // For authenticated users: read the file as a data URL and let the data service
-    // handle encryption and moving the inline data to storage. This centralizes
-    // encryption behavior under firebaseDataService.ensurePhotoInStorage and keeps
-    // handling consistent across create/update flows.
-    setIsUploadingPhoto(true);
     try {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-
-        // Pass the data URL to the form state; firebaseDataService will handle
-        // moving this inline photo to storage and setting photoPath/photoUrl and
-        // encryptedMetadata accordingly when the record is saved.
-        handleInputChange("photo", dataUrl);
-
-        // Clear any existing storage-backed fields when replacing a photo
-        handleInputChange("photoPath", "");
-        handleInputChange("photoUrl", "");
-        handleInputChange("photoHash", "");
-        handleInputChange("photoMime", "");
-        handleInputChange("encryptedMetadata", undefined);
-        // Keep UI preview as the local data URL for instant feedback
-        setPhotoPreview(dataUrl);
-        photoStatusRef.current = 'uploaded';
-
-        // Revoke the temporary blob preview URL if created
-        if (previewUrl.startsWith('blob:')) {
-          URL.revokeObjectURL(previewUrl);
+      const dataUrls = await Promise.all(validFiles.map(readFile));
+      setPhotos((prev) => {
+        const baseOrder = prev.length;
+        const newEntries: PhotoFormEntry[] = dataUrls.map((dataUrl, idx) => ({
+          id: `${tripId}-${generateULID()}`,
+          order: baseOrder + idx,
+          photo: dataUrl,
+          isPrimary: prev.length === 0 && idx === 0,
+        }));
+        const next = [...prev, ...newEntries];
+        if (!next.some((photo) => photo.isPrimary) && next.length > 0) {
+          next[0].isPrimary = true;
         }
-      };
-      reader.onerror = () => {
-        // Clean up the preview URL on error
-        if (previewUrl.startsWith('blob:')) {
-          URL.revokeObjectURL(previewUrl);
-        }
-        setUploadError('Failed to process photo. Please try again.');
-      };
-      reader.readAsDataURL(file);
+        setPhotoPreviews((existing) => {
+          const updated = { ...existing };
+          newEntries.forEach((entry, index) => {
+            updated[entry.id] = dataUrls[index];
+          });
+          return updated;
+        });
+        return next;
+      });
+      setFileInputKey((k) => k + 1);
     } catch (err) {
       console.error('Photo processing failed:', err);
-      // Clean up the preview URL on error
-      if (previewUrl.startsWith('blob:')) {
-        URL.revokeObjectURL(previewUrl);
-      }
       setUploadError('Failed to process photo. Please try again.');
     } finally {
       setIsUploadingPhoto(false);
     }
-  }, [user, fishId, handleInputChange, photoPreview]);
+  }, [tripId]);
 
   // Filter and group gear items
   const filteredAndGroupedGear = React.useMemo(() => {
@@ -1133,125 +1146,67 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
             {/* Photo Section */}
             <div>
               <label className="form-label">
-                Photo (Optional)
+                Photos
               </label>
-              {isEditing && formData.photo && !photoPreview && (
-                <div className="mt-2">
-                  <div className="text-sm font-medium mb-2" style={{ color: 'var(--secondary-text)' }}>Current Photo</div>
-                  <div className="relative inline-block">
-                    <button
-                      type="button"
-                      onClick={() => openPhotoViewer(formData.photo || formData.photoUrl, requiresAuthForExistingPhoto)}
-                      className="relative block w-32 h-32 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      style={{ border: '1px solid var(--border-color)', overflow: 'hidden' }}
-                      title="View photo"
-                    >
-                      <img
-                        src={formData.photo}
-                        alt="Current catch"
-                        className="w-full h-full object-cover"
-                      />
-                      {requiresAuthForExistingPhoto && (
-                        <div className="absolute inset-0 flex items-center justify-center"
-                             style={{ backgroundColor: 'rgba(17,24,39,0.6)', color: 'white', border: '1px solid var(--border-color)' }}>
-                          <span className="text-[10px] font-medium">🔒 Sign in</span>
+              {photos.length === 0 ? (
+                <div className="mt-2 p-4 rounded border border-dashed text-sm text-center" style={{ borderColor: 'var(--border-color)', color: 'var(--secondary-text)' }}>
+                  No photos added yet. Upload one or more images to document this catch.
+                </div>
+              ) : (
+                <div className="mt-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {photos.map((photo, index) => {
+                    const preview = photoPreviews[photo.id];
+                    const locked = photoAuthLocks[photo.id] || (!user && (photo.photoPath || photo.encryptedMetadata));
+                    return (
+                      <div key={photo.id} className="relative rounded-lg border p-2" style={{ borderColor: photo.isPrimary ? '#3b82f6' : 'var(--border-color)' }}>
+                        <button
+                          type="button"
+                          onClick={() => openPhotoViewer(photo.id)}
+                          className="relative block w-full h-32 rounded overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          {preview ? (
+                            <img src={preview} alt={`Catch photo ${index + 1}`} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-700 text-xs text-gray-500">
+                              Loading preview…
+                            </div>
+                          )}
+                          {locked && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-white text-xs">
+                              🔒 Sign in
+                            </div>
+                          )}
+                          {photo.isPrimary && (
+                            <div className="absolute bottom-2 left-2 bg-blue-600 text-white text-[10px] px-2 py-1 rounded-full">
+                              Cover photo
+                            </div>
+                          )}
+                        </button>
+                        <div className="flex items-center justify-between mt-2 text-xs">
+                          <button
+                            type="button"
+                            onClick={() => setPhotoAsPrimary(photo.id)}
+                            className={`px-2 py-1 rounded ${photo.isPrimary ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}`}
+                            disabled={photo.isPrimary}
+                          >
+                            {photo.isPrimary ? 'Primary' : 'Set as cover'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removePhoto(photo.id)}
+                            className="text-red-500 hover:text-red-600"
+                          >
+                            Remove
+                          </button>
                         </div>
-                      )}
-                    </button>
-                    {(user || !formData.photoPath) && (
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        if (user && formData.photoPath) {
-                          try {
-                            const storageRef = ref(storage, formData.photoPath);
-                            await deleteObject(storageRef);
-                          } catch (err) {
-                            console.warn('Failed to delete photo from storage:', err);
-                          }
-                        }
-                        const removal = buildPhotoRemovalFields();
-                        handleInputChange("photo", removal.photo);
-                        handleInputChange("photoPath", removal.photoPath);
-                        handleInputChange("photoUrl", removal.photoUrl);
-                        handleInputChange("photoHash", removal.photoHash);
-                        handleInputChange("photoMime", removal.photoMime);
-                        handleInputChange("encryptedMetadata", removal.encryptedMetadata);
-                        setPhotoPreview(null);
-                        setUploadError(null);
-                        setFileInputKey((k) => k + 1);
-                        photoStatusRef.current = 'deleted';
-                      }}
-                      className="absolute top-2 right-2 btn btn-danger px-2 py-1 text-xs"
-                    >
-                      Delete Photo
-                    </button>)}
-                  </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
-
-              {/* Photo Preview for newly selected or decrypted photos */}
-              <div className="mt-2">
-                {(isPhotoLoading || isUploadingPhoto || uploadError || photoPreview) && (
-                <div className="text-sm font-medium mb-2" style={{ color: 'var(--secondary-text)' }}>
-                    {isPhotoLoading || isUploadingPhoto ? 'Loading Photo...' : uploadError ? 'Upload Failed' : photoPreview ? 'Selected Photo' : ''}
-                  </div>
-                )}
-                <div className="relative inline-block">
-                  {isPhotoLoading ? (
-                    <div className="flex items-center justify-center w-32 h-32 bg-gray-100 dark:bg-gray-700 rounded">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-                    </div>
-                  ) : photoPreview ? (
-                    <button
-                      type="button"
-                      onClick={() => openPhotoViewer(photoPreview, requiresAuthForExistingPhoto)}
-                      className={`relative block w-32 h-32 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${uploadError ? 'opacity-50' : ''}`}
-                      style={{ border: `1px solid ${uploadError ? 'var(--error-border)' : 'var(--border-color)'}`, overflow: 'hidden' }}
-                      title="View photo"
-                    >
-                      <img
-                        src={photoPreview}
-                        alt="Selected catch"
-                        className="w-full h-full object-cover"
-                      />
-                      {requiresAuthForExistingPhoto && (
-                        <div className="absolute inset-0 flex items-center justify-center"
-                             style={{ backgroundColor: 'rgba(17,24,39,0.6)', color: 'white', border: '1px solid var(--border-color)' }}>
-                          <span className="text-[10px] font-medium">🔒 Sign in</span>
-                        </div>
-                      )}
-                    </button>
-                  ) : null}
-                  {photoPreview && !isPhotoLoading && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (photoPreview && photoPreview.startsWith('blob:')) {
-                          URL.revokeObjectURL(photoPreview);
-                        }
-                        setPhotoPreview(null);
-                        setUploadError(null);
-                        const removal = buildPhotoRemovalFields();
-                        handleInputChange("photo", removal.photo);
-                        handleInputChange("photoPath", removal.photoPath);
-                        handleInputChange("photoUrl", removal.photoUrl);
-                        handleInputChange("photoHash", removal.photoHash);
-                        handleInputChange("photoMime", removal.photoMime);
-                        handleInputChange("encryptedMetadata", removal.encryptedMetadata);
-                        setFileInputKey((k) => k + 1);
-                        photoStatusRef.current = 'deleted';
-                      }}
-                      className="absolute top-2 right-2 btn btn-danger px-2 py-1 text-xs"
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
-                {uploadError && (
-                  <p className="mt-1 text-xs" style={{ color: 'var(--error-text)' }}>{uploadError}</p>
-                )}
-              </div>
+              {uploadError && (
+                <p className="mt-2 text-xs" style={{ color: 'var(--error-text)' }}>{uploadError}</p>
+              )}
               <div className="mt-4">
                 <button
                   type="button"
@@ -1263,10 +1218,15 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
                     <div className="flex justify-center">
                       <i className="fas fa-camera text-2xl" style={{ color: 'var(--secondary-text)' }}></i>
                     </div>
-                    <div className="text-sm" style={{ color: 'var(--secondary-text)' }}>{isUploadingPhoto ? "Uploading..." : "Upload New Photo"}</div>
+                    <div className="text-sm" style={{ color: 'var(--secondary-text)' }}>
+                      {isUploadingPhoto ? "Uploading..." : "Upload Photos"}
+                    </div>
+                    {photos.length > 0 && (
+                      <div className="text-xs" style={{ color: 'var(--secondary-text)' }}>You can add multiple photos</div>
+                    )}
                   </div>
                 </button>
-                <input key={fileInputKey} type="file" id="photo-upload" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+                <input key={fileInputKey} type="file" id="photo-upload" accept="image/*" multiple onChange={handlePhotoUpload} className="hidden" />
               </div>
             </div>
 
@@ -1325,13 +1285,15 @@ export const FishCatchModal: React.FC<FishCatchModalProps> = ({
         overlayStyle="blur"
       />
 
-      {photoViewer && (
+      {photoViewerIndex !== null && viewerPhoto && (
         <PhotoViewerModal
           isOpen={true}
-          photoSrc={photoViewer.photoSrc}
-          requiresAuth={photoViewer.requiresAuth}
-          metadata={photoViewer.metadata}
-          onClose={() => setPhotoViewer(null)}
+          photoSrc={viewerSrc}
+          requiresAuth={viewerRequiresAuth}
+          metadata={viewerMetadata}
+          onClose={handleViewerClose}
+          onNext={photos.length > 1 ? handleViewerNext : undefined}
+          onPrevious={photos.length > 1 ? handleViewerPrevious : undefined}
         />
       )}
     </>

@@ -1,17 +1,27 @@
 // Shared encrypted photo preview logic for modals
-import type { FishCaught } from '../types';
+import type { FishCaught, FishPhoto } from '../types';
 import { firebaseDataService } from '@shared/services/firebaseDataService';
 // no direct storage refs needed here; firebaseDataService handles blob retrieval
 import { compressImage } from './imageCompression';
 import { photoCacheService } from '@shared/services/photoCacheService';
+import { normalizeFishPhotos, getPrimaryPhoto } from './fishPhotoUtils';
 
 // In-memory hot cache for this session (avoids IDB roundtrips)
 const inMemoryPreviewCache = new Map<string, string>();
 
-function makePreviewKey(fish: FishCaught, opts = { dim: 512, q: 0.7 }) {
-  const path = fish.photoPath || fish.photoUrl || fish.photo || 'inline';
-  const hash = fish.photoHash || '';
-  return `preview|${path}|${hash}|${opts.dim}|${opts.q}`;
+type PhotoSource = {
+  id?: string;
+  photo?: string;
+  photoPath?: string;
+  photoUrl?: string;
+  photoHash?: string;
+};
+
+function makePreviewKey(source: PhotoSource, opts = { dim: 512, q: 0.7 }) {
+  const path = source.photoPath || source.photoUrl || source.photo || 'inline';
+  const hash = source.photoHash || '';
+  const id = source.id || 'fish';
+  return `preview|${id}|${path}|${hash}|${opts.dim}|${opts.q}`;
 }
 
 function bytesToDataUri(bytes: Uint8Array, mime: string): string {
@@ -22,6 +32,20 @@ function bytesToDataUri(bytes: Uint8Array, mime: string): string {
   return `data:${mime};base64,${base64}`;
 }
 
+function resolvePhotoTarget(fish: FishCaught, override?: FishPhoto): FishPhoto | null {
+  if (override) return override;
+  const normalized = normalizeFishPhotos(fish.photos, {
+    id: fish.id,
+    photo: fish.photo,
+    photoHash: fish.photoHash,
+    photoPath: fish.photoPath,
+    photoMime: fish.photoMime,
+    photoUrl: fish.photoUrl,
+    encryptedMetadata: fish.encryptedMetadata,
+  });
+  return getPrimaryPhoto(normalized, fish.primaryPhotoId);
+}
+
 /**
  * Returns a displayable photo URL for a FishCaught record, handling encrypted photos.
  * - If encrypted, decrypts and returns a blob URL (async).
@@ -29,18 +53,27 @@ function bytesToDataUri(bytes: Uint8Array, mime: string): string {
  * - If decryption fails, returns a placeholder SVG.
  *
  * @param fish FishCaught record
+ * @param photoOverride Specific photo reference (for multi-photo catches)
  * @returns Promise<string | undefined> - displayable photo URL or undefined
  */
-export async function getFishPhotoPreview(fish: FishCaught): Promise<string | undefined> {
+export async function getFishPhotoPreview(fish: FishCaught, photoOverride?: FishPhoto): Promise<string | undefined> {
+  const photo = resolvePhotoTarget(fish, photoOverride);
+  if (!photo) {
+    if (!fish.photoPath && !fish.photoUrl && !fish.photo) {
+      return undefined;
+    }
+    return fish.photoUrl || fish.photo;
+  }
   // Detect encrypted photo: must have encryptedMetadata and enc_photos path
-  const isEncrypted = Boolean(fish.encryptedMetadata && typeof fish.photoPath === 'string' && fish.photoPath.includes('enc_photos'));
+  const isEncrypted = Boolean(photo.encryptedMetadata && typeof photo.photoPath === 'string' && photo.photoPath.includes('enc_photos'));
   const isGuest = !firebaseDataService.isAuthenticated?.() || (firebaseDataService as any).isGuest;
-  const rawPhoto: string | undefined = fish.photoUrl || fish.photo;
+  const rawPhoto: string | undefined = photo.photoUrl || photo.photo;
+  const sourceInfo: PhotoSource = { id: photo.id, photoPath: photo.photoPath, photoUrl: photo.photoUrl, photo: photo.photo, photoHash: photo.photoHash };
   // If photoPath exists and is not encrypted, build or fetch a cached preview for authed users
-  if (!isEncrypted && fish.photoPath) {
+  if (!isEncrypted && photo.photoPath) {
     if (isGuest) return createSignInEncryptedPlaceholder();
 
-    const key = makePreviewKey(fish);
+    const key = makePreviewKey(sourceInfo);
     const memHit = inMemoryPreviewCache.get(key);
     if (memHit) return memHit;
     const idbHit = await photoCacheService.get(key);
@@ -50,7 +83,7 @@ export async function getFishPhotoPreview(fish: FishCaught): Promise<string | un
     }
 
     try {
-      const data = await firebaseDataService.getDecryptedPhoto(fish.photoPath);
+      const data = await firebaseDataService.getDecryptedPhoto(photo.photoPath);
       if (!data) return createPlaceholderSVG('No Photo');
       const u8 = new Uint8Array(data.data);
       const c = await compressImage(u8, data.mimeType, { maxDimension: 512, quality: 0.7, convertTo: 'image/jpeg' });
@@ -62,13 +95,13 @@ export async function getFishPhotoPreview(fish: FishCaught): Promise<string | un
       return createPlaceholderSVG('No Photo');
     }
   }
-  if (isEncrypted && typeof fish.photoPath === 'string') {
+  if (isEncrypted && typeof photo.photoPath === 'string') {
     // If unauthenticated, prompt sign-in instead of attempting decrypt
     if (isGuest) {
       return createSignInEncryptedPlaceholder();
     }
     try {
-      const key = makePreviewKey(fish);
+      const key = makePreviewKey(sourceInfo);
       const memHit = inMemoryPreviewCache.get(key);
       if (memHit) return memHit;
       const idbHit = await photoCacheService.get(key);
@@ -77,7 +110,7 @@ export async function getFishPhotoPreview(fish: FishCaught): Promise<string | un
         return idbHit.dataUri;
       }
 
-      const decryptedData = await firebaseDataService.getDecryptedPhoto(fish.photoPath, fish.encryptedMetadata);
+      const decryptedData = await firebaseDataService.getDecryptedPhoto(photo.photoPath, photo.encryptedMetadata);
       if (!decryptedData) return createSignInEncryptedPlaceholder();
 
       const u8 = new Uint8Array(decryptedData.data);
@@ -91,7 +124,7 @@ export async function getFishPhotoPreview(fish: FishCaught): Promise<string | un
     }
   }
   // Return null/undefined if no image exists
-  if (!fish.photoPath && !fish.photoUrl && !fish.photo) {
+  if (!photo.photoPath && !photo.photoUrl && !photo.photo) {
     return undefined;
   }
   return rawPhoto || undefined;
