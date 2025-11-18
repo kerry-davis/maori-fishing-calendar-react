@@ -142,11 +142,6 @@ export function CurrentMoonInfo({ className = "", onSettingsClick }: CurrentMoon
         </div>
       </div>
 
-      {/* Moon Phase Description */}
-      <p className="text-sm mb-4" style={{ color: 'var(--secondary-text)' }}>
-        {moonInfo.phase.description}
-      </p>
-
       {/* Moon Data */}
       <div className="grid grid-cols-2 gap-4 mb-4">
         <div>

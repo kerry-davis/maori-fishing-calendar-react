@@ -282,6 +282,11 @@ Notes:
 - Authenticated sessions now trigger a saved-location hydration as soon as the deterministic encryption key is established, eliminating the temporary blank state that previously occurred on refresh.
 - **Tackle Items Decryption Flow**: When authenticated users load tackle items, `useFirebaseTackleBox` and `firebaseDataService.getAllTackleItems()` automatically decrypt encrypted fields. The hook monitors `AuthContext.encryptionReady` to reload items once encryption service initialization completes, ensuring proper decryption timing after login.
 
+### Lunar Reference Dataset
+- `src/shared/types/index.ts` exports the canonical Māori lunar phase table (`LUNAR_PHASES`). Each `LunarPhase` entry now contains only `name`, `quality`, and the historical `biteQualities[]` array; the previous `description` field has been removed from both the type and the dataset.
+- UI layers (CurrentMoonInfo, LunarModal, Calendar) now rely on the solunar service for narrative/quality context, so removing descriptions guarantees content stays aligned with the computed solunar state instead of stale prose.
+- Any consumer that retained a reference to `phase.description` must be updated to avoid runtime errors; new code should derive messaging from current solunar quality or other runtime data rather than static text.
+
 ### Data Persistence & Caching Strategy
 
 **Cloud-First Architecture** (implemented 2025-11-02) keeps the cloud as the source of truth for authenticated users while preserving full offline functionality.

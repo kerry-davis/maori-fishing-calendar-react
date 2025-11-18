@@ -19,7 +19,11 @@ Successfully implemented a solunar-based quality rating system to match the fish
   - Takirau: Average → Good
   - Oike: Average → Good
   - Mauri: Average → Good
-- Preserves Māori cultural information (names, descriptions)
+- Preserves Māori phase names while trimming outdated prose so the UI can derive messaging entirely from live solunar data
+
+#### LunarPhase Shape
+- Removed the legacy `description` field from the `LunarPhase` interface and the `LUNAR_PHASES` dataset
+- UI components should display Māori names + computed solunar qualities rather than static descriptions
 
 ### 2. New Solunar Functions (`src/shared/services/lunarService.ts`)
 
@@ -76,7 +80,7 @@ Same as minor but upgraded one tier (poor→fair, fair→average, average→good
 
 1. **Calendar View**: 100% accuracy matching fishing website's proven system
 2. **Bite Times**: 94% accuracy with dynamic quality calculation
-3. **Cultural Preservation**: Māori phase names and descriptions retained for educational value
+3. **Cultural Preservation**: Māori phase names retained for educational value while descriptive copy now comes from computed solunar context, keeping wording accurate
 4. **Consistency**: All major bites on same day have same quality; all minor bites have same quality
 5. **Predictability**: Quality based on proven lunar day patterns, not complex illumination formulas
 
@@ -102,7 +106,7 @@ const quality = lunarPhase.quality; // Old: uses Māori phase quality
 With:
 ```typescript
 const quality = getSolunarDailyQuality(date); // New: uses solunar quality
-const lunarPhase = getLunarPhase(date); // Still available for name/description
+const lunarPhase = getLunarPhase(date); // Still available for Māori phase metadata
 ```
 
 ### For Bite Time Display

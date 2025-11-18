@@ -293,9 +293,6 @@ export const LunarModal: React.FC<LunarModalProps> = ({
               </p>
             </div>
           </div>
-          <p className="text-sm mb-4" style={{ color: 'var(--secondary-text)' }}>
-            {lunarData.phase.description}
-          </p>
           {/* Trip Log Section */}
           <div className="border-t dark:border-gray-700 pt-4 mb-4">
             <button
