@@ -258,7 +258,8 @@ const AuthContextComposer: React.FC<{ baseValue: AuthContextBaseValue; children:
   return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;
 };
 
-const BIOMETRICS_ENABLED_KEY = 'biometrics_enabled';
+const BIOMETRICS_ENABLED_KEY_PREFIX = 'biometrics_enabled_';
+const LEGACY_BIOMETRICS_ENABLED_KEY = 'biometrics_enabled';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -282,20 +283,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const redirectHandlerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingAutoLogoutRef = useRef(false);
 
+  // Initialize biometrics availability
   useEffect(() => {
-    // Initialize biometrics availability and preference
     const initBiometrics = async () => {
       const available = await biometricService.isAvailable();
       setBiometricsAvailable(available);
+    };
+    initBiometrics();
+  }, []);
+
+  // Load user-specific biometric preference when user changes
+  useEffect(() => {
+    if (!user || !biometricsAvailable) {
+      if (!user) setBiometricsEnabled(false); // Reset when no user
+      return;
+    }
+
+    const loadUserPreference = () => {
+      const userKey = `${BIOMETRICS_ENABLED_KEY_PREFIX}${user.uid}`;
       
-      if (available) {
-        const enabled = localStorage.getItem(BIOMETRICS_ENABLED_KEY) === 'true';
+      // Check for legacy global preference to migrate
+      const legacyValue = localStorage.getItem(LEGACY_BIOMETRICS_ENABLED_KEY);
+      if (legacyValue !== null) {
+        console.log('Migrating legacy biometric preference to user-scoped key');
+        localStorage.setItem(userKey, legacyValue);
+        localStorage.removeItem(LEGACY_BIOMETRICS_ENABLED_KEY);
+        setBiometricsEnabled(legacyValue === 'true');
+      } else {
+        // Load scoped preference
+        const enabled = localStorage.getItem(userKey) === 'true';
         setBiometricsEnabled(enabled);
       }
     };
-    
-    initBiometrics();
-  }, []);
+
+    loadUserPreference();
+  }, [user, biometricsAvailable]);
 
   useEffect(() => {
     if (!auth) {
@@ -870,6 +892,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return false;
     }
     
+    if (!user) {
+      setError('You must be logged in to enable biometric lock.');
+      return false;
+    }
+    
     const newState = !biometricsEnabled;
     
     if (newState) {
@@ -882,7 +909,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     
     setBiometricsEnabled(newState);
-    localStorage.setItem(BIOMETRICS_ENABLED_KEY, String(newState));
+    // Save to user-scoped key
+    localStorage.setItem(`${BIOMETRICS_ENABLED_KEY_PREFIX}${user.uid}`, String(newState));
     
     if (newState) {
       setSuccessMessage('Biometric login enabled');
