@@ -229,7 +229,8 @@ console.log(phaseData);
 // Get the Māori lunar phase information
 const lunarPhase = getLunarPhase(date);
 console.log(lunarPhase);
-// { name: "Atua", quality: "Poor", description: "Not a good day for planting or fishing.", biteQualities: ["fair", "poor", "poor", "poor"] }
+// { name: "Atua", quality: "Poor", biteQualities: ["fair", "poor", "poor", "poor"] }
+// (Static descriptions were removed; derive any user-facing copy from live solunar quality data instead.)
 
 // Get current moon information
 const currentMoon = getCurrentMoonInfo();
