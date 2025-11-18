@@ -31,7 +31,7 @@ import {
   OfflineIndicator,
   SyncToast,
 } from "@features/pwa";
-import { SuccessToast } from "@features/auth";
+import { SuccessToast, BiometricLockScreen } from "@features/auth";
 import { EncryptionMigrationStatus } from '@features/encryption';
 
 // Modal state type for routing different modal views
@@ -75,7 +75,7 @@ function TimingOnReady() {
 
 function AppContent() {
   const { isReady, error } = useDatabaseContext();
-  const { user } = useAuth();
+  const { user, isLocked } = useAuth();
 
   // Timing: mark first render of AppContent
   useEffect(() => {
@@ -348,6 +348,11 @@ function AppContent() {
         </div>
       </div>
     );
+  }
+
+  // If the app is locked, show the biometric lock screen
+  if (isLocked) {
+    return <BiometricLockScreen />;
   }
 
   return (

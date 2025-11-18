@@ -21,7 +21,7 @@ interface SettingsModalProps {
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
-  const { user } = useAuth();
+  const { user, biometricsAvailable, biometricsEnabled, toggleBiometrics } = useAuth();
   const {
     userLocation,
     setLocation,
@@ -73,6 +73,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  const [isTogglingBiometrics, setIsTogglingBiometrics] = useState(false);
 
   // No auto-matching - only show selection when explicitly chosen from dropdown
 
@@ -84,6 +86,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   }, [refreshTideCoverage]);
 
   // Trigger file chooser for import
+  const handleBiometricToggle = async () => {
+    setIsTogglingBiometrics(true);
+    try {
+      await toggleBiometrics();
+    } finally {
+      setIsTogglingBiometrics(false);
+    }
+  };
+
   const handleImportClick = () => {
     fileInputRef.current?.click();
   };
@@ -606,6 +617,35 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             </Button>
           </div>
         </div>
+
+        {/* Security Section */}
+        {biometricsAvailable && (
+          <div className="pb-6" style={{ borderBottom: '1px solid var(--border-color)' }}>
+            <h3 className="text-lg font-semibold mb-3" style={{ color: 'var(--primary-text)' }}>
+              Security
+            </h3>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium" style={{ color: 'var(--primary-text)' }}>
+                  Biometric Lock
+                </p>
+                <p className="text-xs mt-1" style={{ color: 'var(--secondary-text)' }}>
+                  Require fingerprint or Face ID to unlock app after 1 hour of inactivity.
+                </p>
+              </div>
+              <button
+                onClick={handleBiometricToggle}
+                disabled={isTogglingBiometrics}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${biometricsEnabled ? 'bg-blue-600' : 'bg-gray-200'}`}
+                style={{ backgroundColor: biometricsEnabled ? 'var(--button-primary)' : 'var(--tertiary-background)' }}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${biometricsEnabled ? 'translate-x-6' : 'translate-x-1'}`}
+                />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Data Export Section (auth only) */}
         {user && (

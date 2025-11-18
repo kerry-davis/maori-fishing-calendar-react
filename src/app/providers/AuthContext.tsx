@@ -14,6 +14,7 @@ import {
 import { auth } from '@shared/services/firebase';
 import { firebaseDataService } from '@shared/services/firebaseDataService';
 import { encryptionService } from '@shared/services/encryptionService';
+import { biometricService } from '@shared/services/biometricService';
 import { usePWA } from './PWAContext';
 import { mapFirebaseError } from '@shared/utils/firebaseErrorMessages';
 import { clearUserState } from '@shared/utils/userStateCleared';
@@ -43,6 +44,12 @@ interface AuthContextType {
   isFirebaseReachable: boolean | null;
   refreshSyncStatus: () => void;
   markSyncComplete: () => void;
+  // Biometric Lock properties
+  isLocked: boolean;
+  biometricsEnabled: boolean;
+  biometricsAvailable: boolean;
+  unlockWithBiometrics: () => Promise<boolean>;
+  toggleBiometrics: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -251,6 +258,8 @@ const AuthContextComposer: React.FC<{ baseValue: AuthContextBaseValue; children:
   return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;
 };
 
+const BIOMETRICS_ENABLED_KEY = 'biometrics_enabled';
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -259,6 +268,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [encryptionReady, setEncryptionReady] = useState(false);
   const [userDataReady, setUserDataReady] = useState(false);
   const [authStateChanged, setAuthStateChanged] = useState(false);
+  
+  // Biometric Lock State
+  const [isLocked, setIsLocked] = useState(false);
+  const [biometricsEnabled, setBiometricsEnabled] = useState(false);
+  const [biometricsAvailable, setBiometricsAvailable] = useState(false);
+
   const { isPWA } = usePWA();
   const migrationStartedRef = useRef(false);
   const previousUserRef = useRef<User | null>(null);
@@ -266,6 +281,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logoutBackgroundTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const redirectHandlerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingAutoLogoutRef = useRef(false);
+
+  useEffect(() => {
+    // Initialize biometrics availability and preference
+    const initBiometrics = async () => {
+      const available = await biometricService.isAvailable();
+      setBiometricsAvailable(available);
+      
+      if (available) {
+        const enabled = localStorage.getItem(BIOMETRICS_ENABLED_KEY) === 'true';
+        setBiometricsEnabled(enabled);
+      }
+    };
+    
+    initBiometrics();
+  }, []);
 
   useEffect(() => {
     if (!auth) {
@@ -816,6 +846,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const clearSuccessMessage = () => {
     setSuccessMessage(null);
   };
+  
+  const unlockWithBiometrics = async (): Promise<boolean> => {
+    if (!biometricsAvailable) return false;
+    
+    const success = await biometricService.authenticate();
+    if (success) {
+      setIsLocked(false);
+      // Refresh activity timestamp so we don't immediately lock again
+      if (user) {
+        writeLastActivity(user.uid);
+      }
+      setSuccessMessage('Unlocked successfully');
+      return true;
+    }
+    
+    return false;
+  };
+  
+  const toggleBiometrics = async (): Promise<boolean> => {
+    if (!biometricsAvailable) {
+      setError('Biometric authentication is not available on this device.');
+      return false;
+    }
+    
+    const newState = !biometricsEnabled;
+    
+    if (newState) {
+      // If enabling, we must ensure we can register a credential
+      const success = await biometricService.register();
+      if (!success) {
+        setError('Failed to register biometric credential.');
+        return false;
+      }
+    }
+    
+    setBiometricsEnabled(newState);
+    localStorage.setItem(BIOMETRICS_ENABLED_KEY, String(newState));
+    
+    if (newState) {
+      setSuccessMessage('Biometric login enabled');
+    } else {
+      setSuccessMessage('Biometric login disabled');
+    }
+    
+    return true;
+  };
 
   const isFirebaseConfigured = auth !== null;
 
@@ -832,11 +908,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     tagLastActivityUser(currentUserId);
 
     const refreshActivity = () => {
-      writeLastActivity(currentUserId);
+      // If app is locked, do NOT refresh activity timestamp
+      // We want the underlying session to stay valid, but we don't bump activity
+      // because the user is effectively "away" until they unlock.
+      if (!isLocked) {
+        writeLastActivity(currentUserId);
+      }
     };
 
     const checkAndMaybeLogout = async (refreshTimestampAfterCheck = false) => {
       if (pendingAutoLogoutRef.current) {
+        return;
+      }
+      
+      // If already locked, no need to check for inactivity timeout
+      if (isLocked) {
         return;
       }
 
@@ -845,6 +931,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (lastActivity && Number.isFinite(lastActivity)) {
         const inactiveFor = Date.now() - lastActivity;
         if (inactiveFor >= INACTIVITY_TIMEOUT_MS) {
+          // Check if we should LOCK instead of LOGOUT
+          if (biometricsEnabled && biometricsAvailable) {
+            console.log('Inactivity timeout reached. Locking app via Biometrics.');
+            setIsLocked(true);
+            // We don't clear the session, we just lock the UI
+            return;
+          }
+
+          console.log('Inactivity timeout reached. Logging out.');
           pendingAutoLogoutRef.current = true;
           const prevUser = user;
           setUser(null);
@@ -1026,6 +1121,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     clearSuccessMessage,
     clearSyncQueue,
     isFirebaseConfigured,
+    // Biometric exports
+    isLocked,
+    biometricsEnabled,
+    biometricsAvailable,
+    unlockWithBiometrics,
+    toggleBiometrics,
   };
 
   return (
