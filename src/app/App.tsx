@@ -400,6 +400,8 @@ function AppContent() {
     );
   }
 
+  const isUnlockPending = unlockStatus === 'pending';
+
   if (isLocked && biometricsEnabled && biometricsAvailable) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6" style={{ backgroundColor: 'var(--primary-background)', color: 'var(--primary-text)' }}>
@@ -415,7 +417,7 @@ function AppContent() {
               Please scan your fingerprint or Face ID to continue.
             </p>
           </div>
-          {unlockStatus === 'pending' && (
+          {isUnlockPending && (
             <div className="flex flex-col items-center space-y-2">
               <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-current" aria-label="Authenticating"></div>
               <p className="text-xs" style={{ color: 'var(--secondary-text)' }}>
@@ -434,7 +436,7 @@ function AppContent() {
                 onClick={() => void triggerBiometricUnlock()}
                 className="w-full py-2 rounded font-medium transition"
                 style={{ backgroundColor: 'var(--button-primary)', color: 'white' }}
-                disabled={unlockStatus === 'pending'}
+                disabled={isUnlockPending}
               >
                 Retry biometric unlock
               </button>
