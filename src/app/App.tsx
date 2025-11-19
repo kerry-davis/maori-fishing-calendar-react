@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   AppProviders,
   useDatabaseContext,
@@ -83,35 +83,7 @@ function AppContent() {
     unlockWithBiometrics,
     logout,
   } = useAuth();
-  const pendingUnlockRef = useRef(false);
 
-  useEffect(() => {
-    if (!isLocked || !biometricsEnabled || !biometricsAvailable) {
-      pendingUnlockRef.current = false;
-      return;
-    }
-
-    if (pendingUnlockRef.current) {
-      return;
-    }
-
-    pendingUnlockRef.current = true;
-    let cancelled = false;
-
-    (async () => {
-      const success = await unlockWithBiometrics();
-      if (!success && !cancelled) {
-        console.warn('Biometric unlock failed, logging out for safety');
-        await logout();
-      }
-    })().finally(() => {
-      pendingUnlockRef.current = false;
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isLocked, biometricsEnabled, biometricsAvailable, unlockWithBiometrics, logout]);
 
   // Timing: mark first render of AppContent
   useEffect(() => {
@@ -388,12 +360,34 @@ function AppContent() {
 
   if (isLocked && biometricsEnabled && biometricsAvailable) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--primary-background)', color: 'var(--primary-text)' }}>
-        <div className="text-center space-y-3">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-current mx-auto" aria-label="Unlocking"></div>
-          <p style={{ color: 'var(--secondary-text)' }}>
-            Unlocking with biometric authentication…
-          </p>
+      <div className="min-h-screen flex flex-col items-center justify-center p-4" style={{ backgroundColor: 'var(--primary-background)', color: 'var(--primary-text)' }}>
+        <div className="text-center max-w-sm w-full space-y-6">
+          <div className="text-6xl mb-4 opacity-80">
+            <i className="fas fa-lock"></i>
+          </div>
+          
+          <div>
+            <h2 className="text-2xl font-bold mb-2">Locked</h2>
+            <p style={{ color: 'var(--secondary-text)' }}>
+              Authentication required to access your fishing data
+            </p>
+          </div>
+
+          <button
+            onClick={() => unlockWithBiometrics()}
+            className="w-full py-3 px-4 rounded-lg font-medium shadow-lg transition-transform active:scale-95 flex items-center justify-center gap-2"
+            style={{ backgroundColor: 'var(--button-primary)', color: 'white' }}
+          >
+            <i className="fas fa-fingerprint"></i>
+            <span>Unlock with Biometrics</span>
+          </button>
+          
+          <button
+            onClick={logout}
+            className="text-sm underline mt-4 opacity-60 hover:opacity-100 transition-opacity"
+          >
+            Log out
+          </button>
         </div>
       </div>
     );
