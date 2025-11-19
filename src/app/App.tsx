@@ -83,49 +83,35 @@ function AppContent() {
     unlockWithBiometrics,
     logout,
   } = useAuth();
-  const [unlockStatus, setUnlockStatus] = useState<'idle' | 'pending' | 'error'>('idle');
-  const [unlockError, setUnlockError] = useState<string | null>(null);
-  const autoUnlockAttemptedRef = useRef(false);
-  const unlockInFlightRef = useRef(false);
-
-  const triggerBiometricUnlock = useCallback(async () => {
-    if (unlockInFlightRef.current) {
-      return;
-    }
-    unlockInFlightRef.current = true;
-    setUnlockStatus('pending');
-    setUnlockError(null);
-    try {
-      const success = await unlockWithBiometrics();
-      if (!success) {
-        setUnlockStatus('error');
-        setUnlockError('Authentication failed. Please try again.');
-      } else {
-        setUnlockStatus('idle');
-        setUnlockError(null);
-      }
-    } catch (err) {
-      console.error('Biometric unlock attempt failed:', err);
-      setUnlockStatus('error');
-      setUnlockError('Biometric authentication is unavailable. Please try again.');
-    } finally {
-      unlockInFlightRef.current = false;
-    }
-  }, [unlockWithBiometrics]);
+  const pendingUnlockRef = useRef(false);
 
   useEffect(() => {
-    if (isLocked && biometricsEnabled && biometricsAvailable) {
-      if (!autoUnlockAttemptedRef.current) {
-        autoUnlockAttemptedRef.current = true;
-        void triggerBiometricUnlock();
-      }
-    } else {
-      autoUnlockAttemptedRef.current = false;
-      setUnlockStatus('idle');
-      setUnlockError(null);
-      unlockInFlightRef.current = false;
+    if (!isLocked || !biometricsEnabled || !biometricsAvailable) {
+      pendingUnlockRef.current = false;
+      return;
     }
-  }, [isLocked, biometricsEnabled, biometricsAvailable, triggerBiometricUnlock]);
+
+    if (pendingUnlockRef.current) {
+      return;
+    }
+
+    pendingUnlockRef.current = true;
+    let cancelled = false;
+
+    (async () => {
+      const success = await unlockWithBiometrics();
+      if (!success && !cancelled) {
+        console.warn('Biometric unlock failed, logging out for safety');
+        await logout();
+      }
+    })().finally(() => {
+      pendingUnlockRef.current = false;
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isLocked, biometricsEnabled, biometricsAvailable, unlockWithBiometrics, logout]);
 
   // Timing: mark first render of AppContent
   useEffect(() => {
@@ -400,55 +386,14 @@ function AppContent() {
     );
   }
 
-  const isUnlockPending = unlockStatus === 'pending';
-
   if (isLocked && biometricsEnabled && biometricsAvailable) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6" style={{ backgroundColor: 'var(--primary-background)', color: 'var(--primary-text)' }}>
-        <div className="max-w-sm w-full text-center space-y-5">
-          <div className="mx-auto flex items-center justify-center w-16 h-16 rounded-full" style={{ backgroundColor: 'var(--button-primary)' }}>
-            <i className="fas fa-fingerprint text-2xl text-white" aria-hidden="true"></i>
-          </div>
-          <div>
-            <h2 className="text-xl font-semibold" style={{ color: 'var(--primary-text)' }}>
-              Authenticating…
-            </h2>
-            <p className="text-sm mt-2" style={{ color: 'var(--secondary-text)' }}>
-              Please scan your fingerprint or Face ID to continue.
-            </p>
-          </div>
-          {isUnlockPending && (
-            <div className="flex flex-col items-center space-y-2">
-              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-current" aria-label="Authenticating"></div>
-              <p className="text-xs" style={{ color: 'var(--secondary-text)' }}>
-                Waiting for biometric confirmation…
-              </p>
-            </div>
-          )}
-          {unlockStatus === 'error' && (
-            <div className="space-y-3">
-              {unlockError && (
-                <p className="text-sm" style={{ color: 'var(--error-text)' }}>
-                  {unlockError}
-                </p>
-              )}
-              <button
-                onClick={() => void triggerBiometricUnlock()}
-                className="w-full py-2 rounded font-medium transition"
-                style={{ backgroundColor: 'var(--button-primary)', color: 'white' }}
-                disabled={isUnlockPending}
-              >
-                Retry biometric unlock
-              </button>
-            </div>
-          )}
-          <button
-            onClick={() => { void logout(); }}
-            className="text-sm underline transition"
-            style={{ color: 'var(--secondary-text)' }}
-          >
-            Log out instead
-          </button>
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--primary-background)', color: 'var(--primary-text)' }}>
+        <div className="text-center space-y-3">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-current mx-auto" aria-label="Unlocking"></div>
+          <p style={{ color: 'var(--secondary-text)' }}>
+            Unlocking with biometric authentication…
+          </p>
         </div>
       </div>
     );
