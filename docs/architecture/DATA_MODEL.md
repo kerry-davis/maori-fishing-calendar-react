@@ -340,11 +340,18 @@ Notes:
 - `encryptionService.setDeterministicKey()` requires an existing salt (synced from Firestore or previously cached). If none is available it logs a warning and leaves the service in “not ready” mode.
 - Components must wait for `encryptionReady=true` before assuming decrypted data exists. When that flag flips, `firebaseDataService.rehydrateCachedData()` fetches trips/weather/fish to populate IndexedDB with plaintext.
 
-### Inactivity Auto-Logout Storage Contract
-- `AuthContext` writes `localStorage.lastUserActivityAt` for the latest interaction and pairs it with `localStorage.lastUserActivityUid` so timestamps are only honored for the currently signed-in user, preventing cross-account forced logouts.
-- Manual sign-in paths (email/password login, registration, Google auth) set a `sessionStorage.manualLoginPending` flag; once Firebase reports the user change the provider refreshes the activity timestamp one time and clears the flag so users are not immediately logged out after authenticating, while background session restores remain subject to stale timestamps.
-- Auto logout now triggers after 60 minutes of inactivity, aligning the timeout with production expectations while retaining the same storage contract.
-- When the inactivity watchdog fires, the provider clears `user` state, resets `userDataReady`, clears activity markers, and emits the standard `authStateChanged` logout event before delegating to the existing `logout()` routine. The UI flips to logged-out instantly while `secureLogoutWithCleanup()` drains sync queues, triggers Firebase sign-out, and performs storage teardown in parallel.
+### Inactivity Auto-Logout & Biometric Lock Storage Contract
+
+- **Activity Tracking**: `AuthContext` writes `localStorage.lastUserActivityAt` for the latest interaction and pairs it with `localStorage.lastUserActivityUid` to ensure timestamps are only honored for the currently signed-in user, preventing cross-account forced logouts.
+- **Manual Login**: Manual sign-in paths (email/password, registration, Google auth) set a `sessionStorage.manualLoginPending` flag; once Firebase reports the user change, the provider refreshes the activity timestamp one time and clears the flag to prevent immediate logout.
+- **Auto-Lock vs Auto-Logout**:
+  - **Lock Timeout**: If Biometrics are enabled and available, the app enters a "Locked" state after 60 minutes of inactivity instead of logging out. The session remains active but UI access is blocked until biometric authentication succeeds.
+  - **Logout Timeout**: If Biometrics are disabled or unavailable, the app performs a full logout after 60 minutes of inactivity.
+- **Biometric Storage**:
+  - `biometrics_enabled_<uid>`: Boolean flag indicating if the user has enabled biometric locking.
+  - `biometrics_cred_id_<uid>`: Base64URL string storing the unique WebAuthn Credential ID used for authentication (required for non-resident key lookups).
+- **Credential Migration**: If a user has `biometrics_enabled` set to true but is missing the `biometrics_cred_id`, the system automatically disables the lock and prompts for re-registration to generate a valid credential ID, preventing permanent lockout.
+- **Session Cleanup**: When the inactivity watchdog fires for a full logout, the provider clears `user` state, resets `userDataReady`, clears activity markers, and emits the standard `authStateChanged` logout event before delegating to the existing `logout()` routine.
 
 ### Operational Checklist
 - Login → Create trip → Verify appears immediately in Trip Log
