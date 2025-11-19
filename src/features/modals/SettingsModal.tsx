@@ -636,11 +636,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               <button
                 onClick={handleBiometricToggle}
                 disabled={isTogglingBiometrics}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${biometricsEnabled ? 'bg-blue-600' : 'bg-gray-200'}`}
-                style={{ backgroundColor: biometricsEnabled ? 'var(--button-primary)' : 'var(--tertiary-background)' }}
+                aria-pressed={biometricsEnabled}
+                aria-label="Toggle biometric lock"
+                className="relative inline-flex flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 overflow-hidden disabled:cursor-not-allowed disabled:opacity-60"
+                style={{
+                  backgroundColor: biometricsEnabled ? 'var(--button-primary)' : 'var(--tertiary-background)',
+                  width: 44,
+                  height: 24,
+                  padding: 2,
+                }}
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${biometricsEnabled ? 'translate-x-6' : 'translate-x-1'}`}
+                  className="inline-block rounded-full bg-white shadow-sm transition-transform duration-200 ease-out"
+                  style={{
+                    width: 20,
+                    height: 20,
+                    transform: `translateX(${biometricsEnabled ? 20 : 0}px)`,
+                  }}
                 />
               </button>
             </div>
