@@ -259,6 +259,7 @@ const AuthContextComposer: React.FC<{ baseValue: AuthContextBaseValue; children:
 };
 
 const BIOMETRICS_ENABLED_KEY_PREFIX = 'biometrics_enabled_';
+const BIOMETRICS_CREDENTIAL_ID_PREFIX = 'biometrics_cred_id_';
 const LEGACY_BIOMETRICS_ENABLED_KEY = 'biometrics_enabled';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -910,7 +911,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const unlockWithBiometrics = async (): Promise<boolean> => {
     if (!biometricsAvailable) return false;
     
-    const success = await biometricService.authenticate();
+    // Get the stored credential ID for the current user
+    const credentialIdKey = user ? `${BIOMETRICS_CREDENTIAL_ID_PREFIX}${user.uid}` : null;
+    const credentialId = credentialIdKey ? localStorage.getItem(credentialIdKey) : null;
+
+    // If biometrics are enabled but we have no credential ID, something is wrong (migration needed)
+    if (biometricsEnabled && !credentialId) {
+      console.warn('Biometrics enabled but no credential ID found. Disabling biometrics to force re-registration.');
+      // Disable biometrics to force user to re-register
+      setBiometricsEnabled(false);
+      if (user) {
+        localStorage.setItem(`${BIOMETRICS_ENABLED_KEY_PREFIX}${user.uid}`, 'false');
+      }
+      setError('Biometric configuration updated. Please enable biometrics again.');
+      
+      // Unlock automatically since we just disabled the lock
+      setIsLocked(false);
+      requireBiometricUnlockRef.current = false;
+      return true;
+    }
+
+    const success = await biometricService.authenticate(credentialId);
     if (success) {
       requireBiometricUnlockRef.current = false;
       setIsLocked(false);
@@ -937,19 +958,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     
     const newState = !biometricsEnabled;
+    const userEnabledKey = `${BIOMETRICS_ENABLED_KEY_PREFIX}${user.uid}`;
+    const userCredIdKey = `${BIOMETRICS_CREDENTIAL_ID_PREFIX}${user.uid}`;
     
     if (newState) {
       // If enabling, we must ensure we can register a credential
-      const success = await biometricService.register();
-      if (!success) {
+      // registration now returns the credential ID
+      const credentialId = await biometricService.register();
+      
+      if (!credentialId) {
         setError('Failed to register biometric credential.');
         return false;
       }
+      
+      // Store the credential ID
+      localStorage.setItem(userCredIdKey, credentialId);
+    } else {
+      // If disabling, clear the credential ID
+      localStorage.removeItem(userCredIdKey);
     }
     
     setBiometricsEnabled(newState);
     // Save to user-scoped key
-    localStorage.setItem(`${BIOMETRICS_ENABLED_KEY_PREFIX}${user.uid}`, String(newState));
+    localStorage.setItem(userEnabledKey, String(newState));
     
     if (newState) {
       setSuccessMessage('Biometric login enabled');

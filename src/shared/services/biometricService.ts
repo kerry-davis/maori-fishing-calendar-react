@@ -18,6 +18,29 @@ const RP_NAME = 'Maori Fishing Calendar';
 const USER_ID = new Uint8Array([1, 2, 3, 4]); // Dummy user ID
 const USER_NAME = 'local-user';
 
+
+// Helper to convert ArrayBuffer to Base64URL string
+function bufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+// Helper to convert Base64URL string to ArrayBuffer
+function base64ToBuffer(base64: string): ArrayBuffer {
+  const padding = '='.repeat((4 - base64.length % 4) % 4);
+  const base64Standard = (base64 + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const binary = atob(base64Standard);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
 export const biometricService = {
   /**
    * Checks if a platform authenticator (Biometrics) is available on this device.
@@ -41,15 +64,15 @@ export const biometricService = {
 
   /**
    * Registers a credential on the device to "enable" biometrics for this domain.
-   * This essentially asks the user to scan their fingerprint once to save a credential.
+   * Returns the Credential ID (base64url) if successful, or null if failed.
    */
-  register: async (): Promise<boolean> => {
+  register: async (): Promise<string | null> => {
     try {
       const publicKeyCredentialCreationOptions: PublicKeyCredentialCreationOptions = {
         challenge: CHALLENGE,
         rp: {
           name: RP_NAME,
-          id: window.location.hostname, // Must match current domain
+          id: window.location.hostname,
         },
         user: {
           id: USER_ID,
@@ -61,7 +84,7 @@ export const biometricService = {
           { alg: -257, type: 'public-key' }, // RS256
         ],
         authenticatorSelection: {
-          authenticatorAttachment: 'platform', // Forces TouchID/FaceID/Fingerprint
+          authenticatorAttachment: 'platform',
           userVerification: 'required',
           requireResidentKey: false,
         },
@@ -71,26 +94,39 @@ export const biometricService = {
 
       const credential = await navigator.credentials.create({
         publicKey: publicKeyCredentialCreationOptions,
-      });
+      }) as PublicKeyCredential;
 
-      return !!credential;
+      if (credential && credential.rawId) {
+        return bufferToBase64(credential.rawId);
+      }
+      return null;
     } catch (error) {
       console.error('Biometric registration failed:', error);
-      return false;
+      return null;
     }
   },
 
   /**
    * Prompts the user to authenticate using their biometric method.
+   * @param credentialId - The stored credential ID to verify against.
    */
-  authenticate: async (): Promise<boolean> => {
+  authenticate: async (credentialId?: string | null): Promise<boolean> => {
     try {
       const publicKeyCredentialRequestOptions: PublicKeyCredentialRequestOptions = {
         challenge: CHALLENGE,
         timeout: 60000,
         userVerification: 'required',
-        // We don't specify allowCredentials to allow any credential for this RP on this device
+        rpId: window.location.hostname, // Explicitly bind to current domain
       };
+
+      // If we have a stored credential ID, use it to filter allowed credentials
+      if (credentialId) {
+        publicKeyCredentialRequestOptions.allowCredentials = [{
+          id: base64ToBuffer(credentialId),
+          type: 'public-key',
+          transports: ['internal'], // Hint for platform authenticators
+        }];
+      }
 
       const assertion = await navigator.credentials.get({
         publicKey: publicKeyCredentialRequestOptions,
