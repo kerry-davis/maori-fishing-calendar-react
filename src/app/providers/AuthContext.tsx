@@ -14,6 +14,7 @@ import {
 import { auth } from '@shared/services/firebase';
 import { firebaseDataService } from '@shared/services/firebaseDataService';
 import { encryptionService } from '@shared/services/encryptionService';
+import { biometricService } from '@shared/services/biometricService';
 import { usePWA } from './PWAContext';
 import { mapFirebaseError } from '@shared/utils/firebaseErrorMessages';
 import { clearUserState } from '@shared/utils/userStateCleared';
@@ -43,6 +44,12 @@ interface AuthContextType {
   isFirebaseReachable: boolean | null;
   refreshSyncStatus: () => void;
   markSyncComplete: () => void;
+  // Biometric Lock properties
+  isLocked: boolean;
+  biometricsEnabled: boolean;
+  biometricsAvailable: boolean;
+  unlockWithBiometrics: () => Promise<boolean>;
+  toggleBiometrics: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -251,6 +258,10 @@ const AuthContextComposer: React.FC<{ baseValue: AuthContextBaseValue; children:
   return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;
 };
 
+const BIOMETRICS_ENABLED_KEY_PREFIX = 'biometrics_enabled_';
+const BIOMETRICS_CREDENTIAL_ID_PREFIX = 'biometrics_cred_id_';
+const LEGACY_BIOMETRICS_ENABLED_KEY = 'biometrics_enabled';
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -259,6 +270,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [encryptionReady, setEncryptionReady] = useState(false);
   const [userDataReady, setUserDataReady] = useState(false);
   const [authStateChanged, setAuthStateChanged] = useState(false);
+  
+  // Biometric Lock State
+  const [isLocked, setIsLocked] = useState(false);
+  const [biometricsEnabled, setBiometricsEnabled] = useState(false);
+  const [biometricsAvailable, setBiometricsAvailable] = useState(false);
+
   const { isPWA } = usePWA();
   const migrationStartedRef = useRef(false);
   const previousUserRef = useRef<User | null>(null);
@@ -266,6 +283,80 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logoutBackgroundTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const redirectHandlerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingAutoLogoutRef = useRef(false);
+  const requireBiometricUnlockRef = useRef(false);
+
+  // Initialize biometrics availability
+  useEffect(() => {
+    const initBiometrics = async () => {
+      const available = await biometricService.isAvailable();
+      setBiometricsAvailable(available);
+    };
+    initBiometrics();
+  }, []);
+
+  // Load user-specific biometric preference when user changes
+  useEffect(() => {
+    if (!user || !biometricsAvailable) {
+      if (!user) setBiometricsEnabled(false); // Reset when no user
+      return;
+    }
+
+    const loadUserPreference = () => {
+      const userKey = `${BIOMETRICS_ENABLED_KEY_PREFIX}${user.uid}`;
+      
+      // Check for legacy global preference to migrate
+      const legacyValue = localStorage.getItem(LEGACY_BIOMETRICS_ENABLED_KEY);
+      if (legacyValue !== null) {
+        console.log('Migrating legacy biometric preference to user-scoped key');
+        localStorage.setItem(userKey, legacyValue);
+        localStorage.removeItem(LEGACY_BIOMETRICS_ENABLED_KEY);
+        setBiometricsEnabled(legacyValue === 'true');
+      } else {
+        // Load scoped preference
+        const enabled = localStorage.getItem(userKey) === 'true';
+        setBiometricsEnabled(enabled);
+      }
+    };
+
+    loadUserPreference();
+  }, [user, biometricsAvailable]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (!user || !biometricsEnabled || !biometricsAvailable) {
+      requireBiometricUnlockRef.current = false;
+      setIsLocked(false);
+      return;
+    }
+
+    const enforceLock = () => {
+      requireBiometricUnlockRef.current = true;
+      setIsLocked(true);
+    };
+
+    const handleVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        enforceLock();
+      }
+    };
+
+    enforceLock();
+
+    window.addEventListener('pagehide', enforceLock);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
+
+    return () => {
+      window.removeEventListener('pagehide', enforceLock);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
+    };
+  }, [user, biometricsEnabled, biometricsAvailable]);
 
   useEffect(() => {
     if (!auth) {
@@ -816,6 +907,92 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const clearSuccessMessage = () => {
     setSuccessMessage(null);
   };
+  
+  const unlockWithBiometrics = async (): Promise<boolean> => {
+    if (!biometricsAvailable) return false;
+    
+    // Get the stored credential ID for the current user
+    const credentialIdKey = user ? `${BIOMETRICS_CREDENTIAL_ID_PREFIX}${user.uid}` : null;
+    const credentialId = credentialIdKey ? localStorage.getItem(credentialIdKey) : null;
+
+    // If biometrics are enabled but we have no credential ID, something is wrong (migration needed)
+    if (biometricsEnabled && !credentialId) {
+      console.warn('Biometrics enabled but no credential ID found. Disabling biometrics to force re-registration.');
+      // Disable biometrics to force user to re-register
+      setBiometricsEnabled(false);
+      if (user) {
+        localStorage.setItem(`${BIOMETRICS_ENABLED_KEY_PREFIX}${user.uid}`, 'false');
+      }
+      setError('Biometric configuration updated. Please enable biometrics again.');
+      
+      // Unlock automatically since we just disabled the lock
+      setIsLocked(false);
+      requireBiometricUnlockRef.current = false;
+      return true;
+    }
+
+    const success = await biometricService.authenticate(credentialId);
+    if (success) {
+      requireBiometricUnlockRef.current = false;
+      setIsLocked(false);
+      // Refresh activity timestamp so we don't immediately lock again
+      if (user) {
+        writeLastActivity(user.uid);
+      }
+      setSuccessMessage('Unlocked successfully');
+      return true;
+    }
+    
+    return false;
+  };
+  
+  const toggleBiometrics = async (): Promise<boolean> => {
+    if (!biometricsAvailable) {
+      setError('Biometric authentication is not available on this device.');
+      return false;
+    }
+    
+    if (!user) {
+      setError('You must be logged in to enable biometric lock.');
+      return false;
+    }
+    
+    const newState = !biometricsEnabled;
+    const userEnabledKey = `${BIOMETRICS_ENABLED_KEY_PREFIX}${user.uid}`;
+    const userCredIdKey = `${BIOMETRICS_CREDENTIAL_ID_PREFIX}${user.uid}`;
+    
+    if (newState) {
+      // If enabling, we must ensure we can register a credential
+      // registration now returns the credential ID
+      const credentialId = await biometricService.register(
+        user.uid,
+        user.email || user.displayName || 'user'
+      );
+      
+      if (!credentialId) {
+        setError('Failed to register biometric credential.');
+        return false;
+      }
+      
+      // Store the credential ID
+      localStorage.setItem(userCredIdKey, credentialId);
+    } else {
+      // If disabling, clear the credential ID
+      localStorage.removeItem(userCredIdKey);
+    }
+    
+    setBiometricsEnabled(newState);
+    // Save to user-scoped key
+    localStorage.setItem(userEnabledKey, String(newState));
+    
+    if (newState) {
+      setSuccessMessage('Biometric login enabled');
+    } else {
+      setSuccessMessage('Biometric login disabled');
+    }
+    
+    return true;
+  };
 
   const isFirebaseConfigured = auth !== null;
 
@@ -832,11 +1009,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     tagLastActivityUser(currentUserId);
 
     const refreshActivity = () => {
-      writeLastActivity(currentUserId);
+      // If app is locked, do NOT refresh activity timestamp
+      // We want the underlying session to stay valid, but we don't bump activity
+      // because the user is effectively "away" until they unlock.
+      if (!isLocked) {
+        writeLastActivity(currentUserId);
+      }
     };
 
     const checkAndMaybeLogout = async (refreshTimestampAfterCheck = false) => {
       if (pendingAutoLogoutRef.current) {
+        return;
+      }
+      
+      // If already locked, no need to check for inactivity timeout
+      if (isLocked) {
         return;
       }
 
@@ -845,6 +1032,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (lastActivity && Number.isFinite(lastActivity)) {
         const inactiveFor = Date.now() - lastActivity;
         if (inactiveFor >= INACTIVITY_TIMEOUT_MS) {
+          // Check if we should LOCK instead of LOGOUT
+          if (biometricsEnabled && biometricsAvailable) {
+            console.log('Inactivity timeout reached. Locking app via Biometrics.');
+            setIsLocked(true);
+            // We don't clear the session, we just lock the UI
+            return;
+          }
+
+          console.log('Inactivity timeout reached. Logging out.');
           pendingAutoLogoutRef.current = true;
           const prevUser = user;
           setUser(null);
@@ -913,7 +1109,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       window.removeEventListener('focus', handleFocus);
       visibilityTarget?.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [user, logout]);
+  }, [user, logout, isLocked, biometricsEnabled, biometricsAvailable]);
 
   // Debug method to clear sync queue (exposed to window for debugging)
   const clearSyncQueue = useCallback(() => {
@@ -1026,6 +1222,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     clearSuccessMessage,
     clearSyncQueue,
     isFirebaseConfigured,
+    // Biometric exports
+    isLocked,
+    biometricsEnabled,
+    biometricsAvailable,
+    unlockWithBiometrics,
+    toggleBiometrics,
   };
 
   return (
