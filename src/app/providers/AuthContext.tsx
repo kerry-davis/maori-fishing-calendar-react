@@ -282,6 +282,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logoutBackgroundTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const redirectHandlerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingAutoLogoutRef = useRef(false);
+  const requireBiometricUnlockRef = useRef(false);
 
   // Initialize biometrics availability
   useEffect(() => {
@@ -318,6 +319,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     loadUserPreference();
   }, [user, biometricsAvailable]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (!user || !biometricsEnabled || !biometricsAvailable) {
+      requireBiometricUnlockRef.current = false;
+      setIsLocked(false);
+      return;
+    }
+
+    const enforceLock = () => {
+      requireBiometricUnlockRef.current = true;
+      setIsLocked(true);
+    };
+
+    const handleVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        enforceLock();
+      }
+    };
+
+    enforceLock();
+
+    window.addEventListener('pagehide', enforceLock);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
+
+    return () => {
+      window.removeEventListener('pagehide', enforceLock);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
+    };
+  }, [user, biometricsEnabled, biometricsAvailable]);
 
   useEffect(() => {
     if (!auth) {
@@ -874,6 +912,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     const success = await biometricService.authenticate();
     if (success) {
+      requireBiometricUnlockRef.current = false;
       setIsLocked(false);
       // Refresh activity timestamp so we don't immediately lock again
       if (user) {
