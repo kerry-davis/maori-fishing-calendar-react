@@ -315,6 +315,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Load scoped preference
         const enabled = localStorage.getItem(userKey) === 'true';
         setBiometricsEnabled(enabled);
+        if (enabled) {
+          // If enabled on load, default to locked until unlocked
+          setIsLocked(true);
+        }
       }
     };
 
@@ -343,7 +347,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
 
-    enforceLock();
+    // enforceLock(); // Removed unconditional lock call to prevent immediate lock on toggle
 
     window.addEventListener('pagehide', enforceLock);
     if (typeof document !== 'undefined') {
@@ -976,6 +980,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       // Store the credential ID
       localStorage.setItem(userCredIdKey, credentialId);
+      
+      // Explicitly update the activity timestamp so we don't lock immediately
+      writeLastActivity(user.uid);
     } else {
       // If disabling, clear the credential ID
       localStorage.removeItem(userCredIdKey);
