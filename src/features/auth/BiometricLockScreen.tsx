@@ -7,19 +7,27 @@ export const BiometricLockScreen: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const autoAttemptedRef = useRef(false);
 
-  const handleUnlock = useCallback(async () => {
-    setIsUnlocking(true);
-    setError(null);
+  const handleUnlock = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false;
+    if (!silent) {
+      setIsUnlocking(true);
+      setError(null);
+    }
+
     try {
       const success = await unlockWithBiometrics();
-      if (!success) {
+      if (!success && !silent) {
         setError('Authentication failed. Please try again.');
       }
     } catch (err) {
-      setError('An error occurred. Please try again.');
-      console.error(err);
+      if (!silent) {
+        setError('An error occurred. Please try again.');
+        console.error(err);
+      }
     } finally {
-      setIsUnlocking(false);
+      if (!silent) {
+        setIsUnlocking(false);
+      }
     }
   }, [unlockWithBiometrics]);
 
@@ -28,7 +36,7 @@ export const BiometricLockScreen: React.FC = () => {
       return;
     }
     autoAttemptedRef.current = true;
-    void handleUnlock();
+    void handleUnlock({ silent: true });
   }, [handleUnlock]);
 
   return (
