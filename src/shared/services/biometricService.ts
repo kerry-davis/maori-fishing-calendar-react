@@ -15,9 +15,6 @@ const CHALLENGE = new Uint8Array([
 ]); // Fixed dummy challenge for local verification
 
 const RP_NAME = 'Maori Fishing Calendar';
-const USER_ID = new Uint8Array([1, 2, 3, 4]); // Dummy user ID
-const USER_NAME = 'local-user';
-
 
 // Helper to convert ArrayBuffer to Base64URL string
 function bufferToBase64(buffer: ArrayBuffer): string {
@@ -65,9 +62,14 @@ export const biometricService = {
   /**
    * Registers a credential on the device to "enable" biometrics for this domain.
    * Returns the Credential ID (base64url) if successful, or null if failed.
+   * @param userId - Unique identifier for the user (e.g., Firebase UID)
+   * @param username - Display name or email for the user
    */
-  register: async (): Promise<string | null> => {
+  register: async (userId: string, username: string): Promise<string | null> => {
     try {
+      const encoder = new TextEncoder();
+      const userBuffer = encoder.encode(userId);
+
       const publicKeyCredentialCreationOptions: PublicKeyCredentialCreationOptions = {
         challenge: CHALLENGE,
         rp: {
@@ -75,9 +77,9 @@ export const biometricService = {
           id: window.location.hostname,
         },
         user: {
-          id: USER_ID,
-          name: USER_NAME,
-          displayName: USER_NAME,
+          id: userBuffer,
+          name: username,
+          displayName: username,
         },
         pubKeyCredParams: [
           { alg: -7, type: 'public-key' }, // ES256

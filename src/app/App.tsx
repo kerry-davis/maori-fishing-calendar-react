@@ -76,7 +76,6 @@ function TimingOnReady() {
 function AppContent() {
   const { isReady, error } = useDatabaseContext();
   const {
-    user,
     isLocked,
     biometricsEnabled,
     biometricsAvailable,
@@ -106,20 +105,13 @@ function AppContent() {
 
   // Ensure modal state is clean on app initialization (especially for PWA)
   useEffect(() => {
-    console.log('🚀 App initialized - ensuring clean modal state');
-    console.log('Initial modal state:', currentModal);
-    console.log('URL:', window.location.href);
-    console.log('URL hash:', window.location.hash);
-
     // Clear any modal-related URL parameters that might be preserved during PWA redirect
     if (window.location.hash && (window.location.hash.includes('settings') || window.location.hash.includes('modal'))) {
-      console.log('🧹 Clearing modal-related URL hash on app init');
       window.history.replaceState(null, '', window.location.pathname);
     }
 
   // Force modal to none if it's in an unexpected state
   if (currentModal !== "none") {
-      console.log('⚠️ Unexpected modal state on init, resetting to none');
       setCurrentModal("none");
     }
   }, []); // Only run on mount
@@ -131,32 +123,13 @@ function AppContent() {
     const hasModalHash = window.location.hash && window.location.hash.includes('settings');
 
     if (isPWA && hasModalHash && currentModal === "settings") {
-      console.log('🔍 PWA redirect with Settings modal detected - this might be unintended');
-      console.log('Clearing Settings modal state from PWA redirect');
       setCurrentModal("none");
     }
   }, [currentModal]); // Run when modal state changes
 
-  // ELEGANT: Modal state protection during PWA authentication
-  useEffect(() => {
-    // This effect runs when modal state changes during auth window
-    // The monitoring effect above will handle any unwanted modal openings smoothly
-
-    // Only log if we're in an auth window
-    const lastAuthTime: number | undefined = (window as unknown as Record<string, number | undefined>).lastAuthTime;
-    const timeSinceLastAuth = typeof lastAuthTime === 'number'
-      ? Date.now() - lastAuthTime
-      : Number.POSITIVE_INFINITY;
-    if (timeSinceLastAuth < 8000) {
-      console.log('🛡️ Modal protection monitoring active for', Math.round((8000 - timeSinceLastAuth) / 1000), 'more seconds');
-    }
-  }, [currentModal]);
-
   // ELEGANT: Prevent Settings modal during PWA authentication
   useEffect(() => {
     if (currentModal === "settings") {
-      console.log('⚙️ Settings modal opening request detected');
-
       // Check if this might be during PWA authentication
       const lastAuthTime: number | undefined = (window as unknown as Record<string, number | undefined>).lastAuthTime;
       const timeSinceLastAuth = typeof lastAuthTime === 'number'
@@ -166,13 +139,8 @@ function AppContent() {
       const userInitiated = typeof lastSettingsClickAt === 'number' && (Date.now() - lastSettingsClickAt) < 2000;
 
       if (isRecentAuth && !userInitiated) {
-        console.log('🚫 Settings modal blocked during authentication window');
-        console.log('⏰ Time since auth:', Math.round(timeSinceLastAuth / 1000), 'seconds');
-        console.log('ℹ️ Block reason: not user-initiated');
-
         // Don't force close - just log and return to none state smoothly
         setTimeout(() => {
-          console.log('✅ Modal state reset to none after auth completion');
           setCurrentModal("none");
         }, 100);
       }
@@ -189,7 +157,6 @@ function AppContent() {
   }, []);
 
   const handleSettingsClick = useCallback(() => {
-    console.log('⚙️ Settings button clicked - opening Settings modal');
     setLastSettingsClickAt(Date.now());
     setCurrentModal("settings");
   }, []);
@@ -231,21 +198,16 @@ function AppContent() {
   }, []);
 
 
-  const handleTripCreated = useCallback((trip: Trip) => {
-    console.log('App.tsx: handleTripCreated called with trip:', trip);
-    console.log('App.tsx: Current modal before:', currentModal);
+  const handleTripCreated = useCallback((_trip: Trip) => {
     // Close the trip form modal and refresh both trip log and calendar
     setCurrentModal("tripLog");
     setTripLogRefreshTrigger(prev => prev + 1); // Trigger trip log refresh
     setCalendarRefreshTrigger(prev => prev + 1); // Trigger calendar refresh
-    console.log('App.tsx: Set currentModal to tripLog and triggered calendar refresh');
   }, [currentModal]);
 
   const handleTripDeleted = useCallback(() => {
-    console.log('App.tsx: handleTripDeleted called');
     // Trigger calendar refresh when a trip is deleted
     setCalendarRefreshTrigger(prev => prev + 1);
-    console.log('App.tsx: Triggered calendar refresh after trip deletion');
   }, []);
 
   const handleWeatherLogged = useCallback((_weatherLog: WeatherLog) => {
@@ -281,24 +243,11 @@ function AppContent() {
   // }, []);
 
   const handleCloseModal = useCallback(() => {
-    console.log('App.tsx: handleCloseModal called, current modal:', currentModal);
     setCurrentModal("none");
     setSelectedDate(null);
     setEditingTripId(null);
     setEditingWeatherId(null);
-    console.log('App.tsx: Modal closed, set to none');
   }, [currentModal]);
-
-  // Debug effect to track modal state changes
-  useEffect(() => {
-    console.log('🔍 Modal state changed to:', currentModal);
-    if (currentModal === "settings") {
-      console.log('⚠️ Settings modal opened - checking why...');
-      console.log('Current user:', user?.email || 'none');
-      console.log('URL:', window.location.href);
-      console.log('LocalStorage keys:', Object.keys(localStorage));
-    }
-  }, [currentModal, user]);
 
   // Data migration modal and check removed per requirements.
 
@@ -358,73 +307,42 @@ function AppContent() {
     );
   }
 
-  if (isLocked && biometricsEnabled && biometricsAvailable) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-4" style={{ backgroundColor: 'var(--primary-background)', color: 'var(--primary-text)' }}>
-        <div className="text-center max-w-sm w-full space-y-6">
-          <div className="text-6xl mb-4 opacity-80">
-            <i className="fas fa-lock"></i>
-          </div>
-          
-          <div>
-            <h2 className="text-2xl font-bold mb-2">Locked</h2>
-            <p style={{ color: 'var(--secondary-text)' }}>
-              Authentication required to access your fishing data
-            </p>
-          </div>
-
-          <button
-            onClick={() => unlockWithBiometrics()}
-            className="w-full py-3 px-4 rounded-lg font-medium shadow-lg transition-transform active:scale-95 flex items-center justify-center gap-2"
-            style={{ backgroundColor: 'var(--button-primary)', color: 'white' }}
-          >
-            <i className="fas fa-fingerprint"></i>
-            <span>Unlock with Biometrics</span>
-          </button>
-          
-          <button
-            onClick={logout}
-            className="text-sm underline mt-4 opacity-60 hover:opacity-100 transition-opacity"
-          >
-            Log out
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const showLockScreen = isLocked && biometricsEnabled && biometricsAvailable;
 
   return (
-    <div className={`min-h-screen transition-colors duration-200`} style={{ backgroundColor: 'var(--primary-background)', color: 'var(--primary-text)' }}>
-      {/* Timing: if DB just became ready, end total reload timer */}
-      {isReady && (<TimingOnReady />)}
-      <Header
-          onSearchClick={handleSearchClick}
-          onAnalyticsClick={handleAnalyticsClick}
-          onSettingsClick={handleSettingsClick}
-          onTackleBoxClick={handleTackleBoxClick}
-          onGalleryClick={handleGalleryClick}
-        />
+    <div className={`min-h-screen transition-colors duration-200 relative`} style={{ backgroundColor: 'var(--primary-background)', color: 'var(--primary-text)' }}>
+      
+      <div className={showLockScreen ? "filter blur-md pointer-events-none select-none h-screen overflow-hidden" : ""}>
+        {/* Timing: if DB just became ready, end total reload timer */}
+        {isReady && (<TimingOnReady />)}
+        <Header
+            onSearchClick={handleSearchClick}
+            onAnalyticsClick={handleAnalyticsClick}
+            onSettingsClick={handleSettingsClick}
+            onTackleBoxClick={handleTackleBoxClick}
+            onGalleryClick={handleGalleryClick}
+          />
 
-      <Container className="py-6">
-        <main className="space-y-6">
-          {/* Calendar Component */}
-          <Card>
-            <Calendar onDateSelect={handleDateSelect} refreshTrigger={calendarRefreshTrigger} />
-          </Card>
+        <Container className="py-6">
+          <main className="space-y-6">
+            {/* Calendar Component */}
+            <Card>
+              <Calendar onDateSelect={handleDateSelect} refreshTrigger={calendarRefreshTrigger} />
+            </Card>
 
-          {/* Legend Component */}
-          <Legend />
+            {/* Legend Component */}
+            <Legend />
 
-          {/* Current Moon Info */}
-          <CurrentMoonInfo onSettingsClick={handleSettingsClick} />
+            {/* Current Moon Info */}
+            <CurrentMoonInfo onSettingsClick={handleSettingsClick} />
 
-        </main>
-      </Container>
+          </main>
+        </Container>
 
-      <Footer />
+        <Footer />
 
-  {/* Background encryption migration status */}
-  <EncryptionMigrationStatus />
+        {/* Background encryption migration status */}
+        <EncryptionMigrationStatus />
 
         {/* Modal components - Basic integration for UAT */}
         <TackleBoxModal
@@ -520,6 +438,40 @@ function AppContent() {
         {/* End Development Debug Components */}
 
         {/* End of overlay components */}
+      </div>
+
+      {/* Lock Screen Overlay */}
+      {showLockScreen && (
+        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center p-4 bg-black/30 backdrop-blur-sm">
+          <div className="text-center max-w-sm w-full space-y-6">
+            <div className="text-6xl mb-4 text-white drop-shadow-lg">
+              <i className="fas fa-lock"></i>
+            </div>
+            
+            <div className="text-white drop-shadow-md">
+              <h2 className="text-2xl font-bold mb-2">Locked</h2>
+              <p className="opacity-90">
+                Authentication required to access your fishing data
+              </p>
+            </div>
+
+            <button
+              onClick={() => unlockWithBiometrics()}
+              className="w-full py-3 px-4 rounded-lg font-medium shadow-xl transition-transform active:scale-95 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white border border-blue-500"
+            >
+              <i className="fas fa-fingerprint"></i>
+              <span>Unlock with Biometrics</span>
+            </button>
+            
+            <button
+              onClick={logout}
+              className="text-sm underline mt-4 text-white opacity-80 hover:opacity-100 transition-opacity drop-shadow-sm"
+            >
+              Log out
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

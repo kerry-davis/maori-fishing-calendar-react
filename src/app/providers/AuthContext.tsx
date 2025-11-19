@@ -964,7 +964,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (newState) {
       // If enabling, we must ensure we can register a credential
       // registration now returns the credential ID
-      const credentialId = await biometricService.register();
+      const credentialId = await biometricService.register(
+        user.uid,
+        user.email || user.displayName || 'user'
+      );
       
       if (!credentialId) {
         setError('Failed to register biometric credential.');
@@ -1106,7 +1109,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       window.removeEventListener('focus', handleFocus);
       visibilityTarget?.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [user, logout]);
+  }, [user, logout, isLocked, biometricsEnabled, biometricsAvailable]);
 
   // Debug method to clear sync queue (exposed to window for debugging)
   const clearSyncQueue = useCallback(() => {
