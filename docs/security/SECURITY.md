@@ -133,7 +133,9 @@ The application implements an optional Biometric Lock feature (Fingerprint/FaceI
 ### Implementation
 * **Mechanism**: WebAuthn API (Platform Authenticators).
 * **Scope**: Local UI only. This prevents casual access to the app interface but **does not** encrypt the underlying data at rest beyond the standard device encryption. The Firebase Auth token remains active in memory/storage.
-* **Trigger**: 60 minutes of inactivity (mouse/touch/keyboard).
+* **Trigger**: 
+    * 60 minutes of inactivity (mouse/touch/keyboard).
+    * Immediate lock on initial app load/refresh if enabled.
 * **Storage**:
     * Preferences and Credential IDs are stored in `localStorage` (`biometrics_enabled_<uid>`, `biometrics_cred_id_<uid>`).
     * No biometric data is ever sent to the server; validation is purely local via the device's secure enclave.

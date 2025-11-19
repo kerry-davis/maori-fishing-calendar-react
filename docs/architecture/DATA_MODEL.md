@@ -346,6 +346,7 @@ Notes:
 - **Manual Login**: Manual sign-in paths (email/password, registration, Google auth) set a `sessionStorage.manualLoginPending` flag; once Firebase reports the user change, the provider refreshes the activity timestamp one time and clears the flag to prevent immediate logout.
 - **Auto-Lock vs Auto-Logout**:
   - **Lock Timeout**: If Biometrics are enabled and available, the app enters a "Locked" state after 60 minutes of inactivity instead of logging out. The session remains active but UI access is blocked by a blurred overlay until biometric authentication succeeds.
+  - **Persistent Lock**: Enabling biometrics also enforces the lock on initial app load/refresh, requiring authentication before any data is revealed. (Note: Enabling the feature during an active session does not immediately lock the app).
   - **Logout Timeout**: If Biometrics are disabled or unavailable, the app performs a full logout after 60 minutes of inactivity.
 - **Biometric Storage**:
   - `biometrics_enabled_<uid>`: Boolean flag indicating if the user has enabled biometric locking.
