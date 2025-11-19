@@ -33,3 +33,63 @@ KISS and DO NOT EVER CLEAR ANY LOGIC THAT WAS INTRODUCED TO FIX AN ISSUE UNLESS 
 
 8. Build
 Always run a build and fix any errors.
+
+9. UI
+
+9a. UI Enhancement
+**Objective:**  
+Make the current design look more unique and less basic by incorporating sleek fonts and enhancing overall visual appeal.
+
+---
+
+**Requirements:**
+
+- Use sophisticated and modern fonts that elevate the interface’s style.
+- Introduce design elements that bring uniqueness without overwhelming the user.
+- Focus on creating a beautiful and polished user experience that stands out.
+- Balance aesthetics with usability to maintain clarity and functionality.
+
+---
+
+**Output:**  
+Provide design suggestions, font recommendations, and style tips that transform the UI into a more elegant, visually captivating solution.
+
+9b. UI Research - Tailwind CSS V4 UI Modernization (Ray Fernando)
+**Objective:**  
+Research and recommend approaches to modernize the app UI by upgrading from a basic interface to one using the Tailwind CSS V4 design and tokenization system.
+
+---
+
+**Requirements:**
+
+- Explore different UI design styles and theme systems, focusing on the transition to Tailwind CSS V4 and its built-in design token features.
+- Implement both light mode and dark mode, ensuring seamless toggling and consistent application of design tokens and theme variables.
+- Integrate font customization and variations using Tailwind’s V4 mechanisms for font and style tokens.
+- Redesign the user interface to feature a [Style] vibe—applying suitable colors, components, and visuals in harmony with Tailwind V4 principles.
+- Support best practices for search UX (using `ref` for search components) and advanced code patterns (such as using exa code mcps for code presentation and maintainability).
+
+---
+
+**Output:**  
+Deliver a summary of recommended design systems, relevant Tailwind V4 features, practical code samples, and actionable tips for lighting, theming, fonts, and smooth search/code integration. Reference up-to-date resources and Tailwind V4 documentation.
+
+9c. UI Minimalist, Hierarchical Design (Ray Fernando)
+**Objective:**  
+Redesign the site to minimize excessive colors and display a subtle, tasteful hierarchy of information, following Dieter Rams' key design principles.
+
+---
+
+**Requirements:**
+
+- Limit color usage. Only use color purposefully, where it helps usability and clarity, in accordance with "less, but better" thinking.
+- Establish a clear visual hierarchy, prioritizing clarity and subtle presentation over flashy effects.
+- Approach design from the viewpoint of three distinct personas:
+    1. The user (focused on day-to-day usability)
+    2. The admin (needs clear, efficient site management)
+    3. The information seeker (wants fast, accurate navigation)
+- Analyze these personas’ psychology and needs to organize layout, interactions, and content accordingly.
+
+---
+
+**Output:**  
+Explain how careful design hierarchy and restrained color choices improve user experience for each persona. Give specific examples of subtle, well-considered design treatments, and list practical ideas for applying Dieter Rams’ principles and for serving each user type’s priorities.
