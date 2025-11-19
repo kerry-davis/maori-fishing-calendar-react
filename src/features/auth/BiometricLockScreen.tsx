@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@app/providers/AuthContext';
 
 export const BiometricLockScreen: React.FC = () => {
   const { unlockWithBiometrics, logout } = useAuth();
   const [isUnlocking, setIsUnlocking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const autoAttemptedRef = useRef(false);
 
-  const handleUnlock = async () => {
+  const handleUnlock = useCallback(async () => {
     setIsUnlocking(true);
     setError(null);
     try {
@@ -20,7 +21,15 @@ export const BiometricLockScreen: React.FC = () => {
     } finally {
       setIsUnlocking(false);
     }
-  };
+  }, [unlockWithBiometrics]);
+
+  useEffect(() => {
+    if (autoAttemptedRef.current) {
+      return;
+    }
+    autoAttemptedRef.current = true;
+    void handleUnlock();
+  }, [handleUnlock]);
 
   return (
     <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-slate-900 text-white p-6">
