@@ -89,7 +89,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const handleBiometricToggle = async () => {
     setIsTogglingBiometrics(true);
     try {
-      await toggleBiometrics();
+      const success = await toggleBiometrics();
+      // If enabling biometrics was successful, close the modal to reflect the new state immediately
+      // (and potentially trigger the lock if refreshed/reloaded, though lock-on-enable is fixed)
+      if (success && !biometricsEnabled) {
+        onClose();
+      }
     } finally {
       setIsTogglingBiometrics(false);
     }
