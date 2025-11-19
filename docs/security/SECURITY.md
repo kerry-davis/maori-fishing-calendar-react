@@ -125,3 +125,17 @@ If you believe you have found a security issue, please open a private security a
 ## Encrypted Photos in Firebase Storage
 
 User photos are compressed client-side (max 1080px, ~0.85 JPEG) and encrypted before upload to Firebase Storage under `users/<uid>/enc_photos/**`. For encrypted photos we intentionally do not persist a long‑lived `photoUrl` in Firestore (field is present but left empty); clients fetch a download URL on demand using the path and `encryptedMetadata` for decryption. Unencrypted legacy photos continue to store `photoUrl` when available. Access is governed by `storage.rules`. For cross-origin access in previews/staging, configure bucket CORS; see docs/deployment/FIREBASE_STORAGE_CORS.md.
+
+## Biometric Lock (Local UI Gate)
+
+The application implements an optional Biometric Lock feature (Fingerprint/FaceID) to secure the app during inactivity without requiring a full Firebase re-authentication.
+
+### Implementation
+* **Mechanism**: WebAuthn API (Platform Authenticators).
+* **Scope**: Local UI only. This prevents casual access to the app interface but **does not** encrypt the underlying data at rest beyond the standard device encryption. The Firebase Auth token remains active in memory/storage.
+* **Trigger**: 60 minutes of inactivity (mouse/touch/keyboard).
+* **Storage**:
+    * Preferences and Credential IDs are stored in `localStorage` (`biometrics_enabled_<uid>`, `biometrics_cred_id_<uid>`).
+    * No biometric data is ever sent to the server; validation is purely local via the device's secure enclave.
+* **Multi-User Safety**: WebAuthn credentials are registered with the Firebase UID as the User Handle, ensuring that on shared devices (e.g., a family tablet), one user cannot accidentally unlock another user's session with their own biometric credential.
+* **Visual Security**: When locked, the app interface is obscured by a CSS blur filter (`backdrop-blur-sm`) to prevent reading sensitive data from the background.

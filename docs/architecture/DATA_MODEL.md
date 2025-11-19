@@ -345,11 +345,12 @@ Notes:
 - **Activity Tracking**: `AuthContext` writes `localStorage.lastUserActivityAt` for the latest interaction and pairs it with `localStorage.lastUserActivityUid` to ensure timestamps are only honored for the currently signed-in user, preventing cross-account forced logouts.
 - **Manual Login**: Manual sign-in paths (email/password, registration, Google auth) set a `sessionStorage.manualLoginPending` flag; once Firebase reports the user change, the provider refreshes the activity timestamp one time and clears the flag to prevent immediate logout.
 - **Auto-Lock vs Auto-Logout**:
-  - **Lock Timeout**: If Biometrics are enabled and available, the app enters a "Locked" state after 60 minutes of inactivity instead of logging out. The session remains active but UI access is blocked until biometric authentication succeeds.
+  - **Lock Timeout**: If Biometrics are enabled and available, the app enters a "Locked" state after 60 minutes of inactivity instead of logging out. The session remains active but UI access is blocked by a blurred overlay until biometric authentication succeeds.
   - **Logout Timeout**: If Biometrics are disabled or unavailable, the app performs a full logout after 60 minutes of inactivity.
 - **Biometric Storage**:
   - `biometrics_enabled_<uid>`: Boolean flag indicating if the user has enabled biometric locking.
   - `biometrics_cred_id_<uid>`: Base64URL string storing the unique WebAuthn Credential ID used for authentication (required for non-resident key lookups).
+  - **WebAuthn User Handle**: During registration, the system uses the Firebase UID (UTF-8 encoded) as the WebAuthn User ID to ensure unique credential registration on shared devices.
 - **Credential Migration**: If a user has `biometrics_enabled` set to true but is missing the `biometrics_cred_id`, the system automatically disables the lock and prompts for re-registration to generate a valid credential ID, preventing permanent lockout.
 - **Session Cleanup**: When the inactivity watchdog fires for a full logout, the provider clears `user` state, resets `userDataReady`, clears activity markers, and emits the standard `authStateChanged` logout event before delegating to the existing `logout()` routine.
 
