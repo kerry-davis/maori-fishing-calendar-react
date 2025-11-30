@@ -6,159 +6,191 @@ export type BiteQuality = "excellent" | "good" | "average" | "fair" | "poor";
 export interface LunarPhase {
   name: string;
   quality: FishingQuality;
+  description: string;
   biteQualities: BiteQuality[];
 }
 
 // Lunar phases constant array with proper typing
+// Descriptions sourced from Museums Wellington: https://www.museumswellington.org.nz/matariki-the-maori-phases-of-the-moon/
 export const LUNAR_PHASES: readonly LunarPhase[] = [
   {
     name: "Whiro",
     quality: "Poor",
+    description: "Bad day, the Moon is out of sight",
     biteQualities: ["poor", "poor", "poor", "poor"],
   },
   {
     name: "Tirea",
     quality: "Excellent",
+    description: "Bad day, start of lunar month",
     biteQualities: ["poor", "average", "poor", "poor"],
   },
   {
     name: "Hoata",
     quality: "Excellent",
+    description: "Good day for planting & fishing",
     biteQualities: ["good", "excellent", "good", "average"],
   },
   {
     name: "Oue",
     quality: "Good",
+    description: "Good day for planting, good for eeling",
     biteQualities: ["average", "good", "average", "poor"],
   },
   {
     name: "Okoro",
     quality: "Good",
+    description: "Good day for planting, good for eeling",
     biteQualities: ["average", "good", "fair", "poor"],
   },
   {
     name: "Tamatea-a-hotu",
     quality: "Excellent",
+    description: "Bad day for planting & fishing",
     biteQualities: ["fair", "average", "fair", "poor"],
   },
   {
     name: "Tamatea-a-ngana",
     quality: "Good",
+    description: "Bad day for planting & fishing",
     biteQualities: ["good", "fair", "good", "fair"],
   },
   {
     name: "Tamatea-whakapau",
     quality: "Poor",
+    description: "Bad day for planting & fishing",
     biteQualities: ["poor", "fair", "poor", "fair"],
   },
   {
     name: "Huna",
     quality: "Poor",
+    description: "Bad day, everything is hidden",
     biteQualities: ["poor", "poor", "poor", "poor"],
   },
   {
     name: "Ari",
     quality: "Poor",
+    description: "Fairly good, good for spearing eels",
     biteQualities: ["poor", "poor", "poor", "poor"],
   },
   {
     name: "Hotu",
     quality: "Excellent",
+    description: "Fairly good for planting & fishing",
     biteQualities: ["excellent", "average", "fair", "fair"],
   },
   {
     name: "Mawharu",
     quality: "Good",
+    description: "Good day, especially for cray fishing",
     biteQualities: ["good", "good", "fair", "fair"],
   },
   {
     name: "Atua",
     quality: "Poor",
+    description: "Good for planting, good returns",
     biteQualities: ["fair", "poor", "poor", "poor"],
   },
   {
     name: "Ohua",
     quality: "Excellent",
+    description: "Good for planting, good returns",
     biteQualities: ["excellent", "good", "good", "fair"],
   },
   {
     name: "Oanui",
     quality: "Good",
+    description: "Fairly good for planting",
     biteQualities: ["average", "excellent", "good", "fair"],
   },
   {
     name: "Oturu",
     quality: "Good",
+    description: "Fairly good for planting",
     biteQualities: ["fair", "good", "poor", "poor"],
   },
   {
     name: "Rakau-nui",
     quality: "Good",
+    description: "Good for planting, not for fishing",
     biteQualities: ["fair", "good", "poor", "poor"],
   },
   {
     name: "Rakau-matohi",
     quality: "Good",
+    description: "Fairly good day, whitebait moving",
     biteQualities: ["good", "fair", "poor", "poor"],
   },
   {
     name: "Takirau",
     quality: "Good",
+    description: "Best day of all to plant kumara",
     biteQualities: ["excellent", "average", "fair", "fair"],
   },
   {
     name: "Oike",
     quality: "Good",
+    description: "Fairly good for planting & fishing",
     biteQualities: ["average", "average", "fair", "fair"],
   },
   {
     name: "Korekore-te-whiwhia",
     quality: "Good",
+    description: "Bad day, everything unattainable",
     biteQualities: ["good", "good", "average", "average"],
   },
   {
     name: "Korekore-te-rawea",
     quality: "Poor",
+    description: "Bad day, everything unattainable",
     biteQualities: ["poor", "poor", "poor", "poor"],
   },
   {
     name: "Korekore-whakapau",
     quality: "Poor",
+    description: "Bad day, everything unattainable",
     biteQualities: ["poor", "poor", "poor", "poor"],
   },
   {
     name: "Tangaroa-a-mua",
     quality: "Excellent",
+    description: "Good for deep-sea fishing",
     biteQualities: ["excellent", "good", "good", "fair"],
   },
   {
     name: "Tangaroa-a-roto",
     quality: "Excellent",
+    description: "Good for deep-sea fishing",
     biteQualities: ["excellent", "excellent", "good", "good"],
   },
   {
     name: "Tangaroa-kiokio",
     quality: "Excellent",
+    description: "Good for deep-sea fishing & eeling",
     biteQualities: ["excellent", "excellent", "excellent", "good"],
   },
   {
     name: "Otane",
     quality: "Good",
+    description: "Good for deep-sea fishing & eeling",
     biteQualities: ["good", "fair", "fair", "poor"],
   },
   {
     name: "Orongonui",
     quality: "Good",
+    description: "Good day, whitebait descending",
     biteQualities: ["good", "good", "fair", "fair"],
   },
   {
     name: "Mauri",
     quality: "Good",
+    description: "Good from dawn until midday",
     biteQualities: ["fair", "average", "poor", "poor"],
   },
   {
     name: "Mutuwhenua",
     quality: "Poor",
+    description: "The worst day of all (Moon is dead)",
     biteQualities: ["poor", "poor", "poor", "poor"],
   },
 ] as const;

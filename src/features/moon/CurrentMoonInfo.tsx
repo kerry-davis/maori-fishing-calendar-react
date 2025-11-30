@@ -133,12 +133,15 @@ export function CurrentMoonInfo({ className = "", onSettingsClick }: CurrentMoon
           <h4 className="font-semibold" style={{ color: 'var(--primary-text)' }}>
             {moonInfo.phase.name}
           </h4>
-          <p
-            className="text-sm font-medium"
+          <a
+            href="https://www.museumswellington.org.nz/matariki-the-maori-phases-of-the-moon/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm font-medium hover:underline"
             style={getQualityColor(moonInfo.phase.quality)}
           >
-            {moonInfo.phase.quality} Fishing
-          </p>
+            {moonInfo.phase.description}
+          </a>
         </div>
       </div>
 
